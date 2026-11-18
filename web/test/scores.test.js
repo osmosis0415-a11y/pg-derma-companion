@@ -1,0 +1,13 @@
+const {SCORES,pctImprovement,isoCalc,lignoCalc,biCalc}=require('../src/scores.js');
+const a=(n,e,g)=>{const ok=Math.abs(e-g)<1e-6;console.log((ok?'OK ':'FAIL ')+n,e,g);if(!ok)process.exitCode=1};
+const full={e:4,i:4,s:4,a:6};a('PASI max',72,SCORES.PASI.calc({head:full,ul:full,trunk:full,ll:full}));
+a('PASI ex',0.1*6*2+0.3*9*3,SCORES.PASI.calc({head:{e:2,i:2,s:2,a:2},trunk:{e:3,i:3,s:3,a:3}}));
+const ef={e:3,p:3,x:3,l:3,a:6};a('EASI max',72,SCORES.EASI.calc({head:ef,ul:ef,trunk:ef,ll:ef}));a('EASI child max',72,SCORES.EASI.calc({child:true,head:ef,ul:ef,trunk:ef,ll:ef}));
+const reg={hn:100,ula:100,ulb:100,tf:100,tb:100,lla:100,llb:100,gen:100};const int={er:3,ed:3,oo:3,ex:3,li:3,dr:3};
+a('SCORAD max',103,SCORES.SCORAD.calc({reg,int,itch:10,sleep:10}));a('oSCORAD max',83,SCORES.SCORAD.objective({reg,int}));
+a('SALT',40*0.5+24,SCORES.SALT.calc({top:50,back:100}));
+const m={a:6,d:4,h:4};a('MASI max',48,SCORES.MASI.calc({f:m,rm:m,lm:m,c:m}));a('mMASI max',24,SCORES.mMASI.calc({f:m,rm:m,lm:m,c:m}));
+a('VASI',2*0.75+1,SCORES.VASI.calc({hands:{hu:2,dp:75},trunk:{hu:1,dp:100}}));
+a('GAGS max',44,SCORES.GAGS.calc({fh:4,rc:4,lc:4,no:4,ch:4,cb:4}));
+const q={};for(let i=0;i<10;i++)q['q'+i]='3';q.q9='0n';a('DLQI',27,SCORES.DLQI.calc(q));
+a('pct',75,pctImprovement(20,5));console.log(isoCalc(60,30,3600,120),lignoCalc(60),biCalc(['2','4','','3']));
