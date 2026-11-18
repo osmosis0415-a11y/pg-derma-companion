@@ -25,7 +25,7 @@ async function vCam() {
   $('#gop').addEventListener('input', e => { const g = $('#ghost'); if (g) g.style.opacity = e.target.value; });
   if ($('#ghost')) $('#ghost').style.opacity = 0.35;
   $('#c_ghost')?.addEventListener('change', e => go(`#/cam/${v.id}?g=${e.target.value}&cat=${encodeURIComponent(getChips('c_cat'))}`));
-  $('#c_file').addEventListener('change', async e => { for (const f of e.target.files) { await savePhoto(await loadBitmap(f), { pid: p.id, vid: v.id, cat: getChips('c_cat'), site: val('c_site') }); } toast(e.target.files.length + ' photo(s) saved to vault'); });
+  $('#c_file').addEventListener('change', async e => { if (!D) return toast('App locked — unlock and try again'); for (const f of e.target.files) { await savePhoto(await loadBitmap(f), { pid: p.id, vid: v.id, cat: getChips('c_cat'), site: val('c_site') }); } toast(e.target.files.length + ' photo(s) saved to vault'); });
   try {
     stopCam();
     camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: camFacing, width: { ideal: 2560 }, height: { ideal: 1920 } }, audio: false });
@@ -102,10 +102,10 @@ async function vDeid() {
   drawDeid();
   let st = null;
   const pos = e => { const r = c.getBoundingClientRect(), t = e.touches ? e.touches[0] : e; return { x: (t.clientX - r.left) * c.width / r.width, y: (t.clientY - r.top) * c.height / r.height }; };
-  const down = e => { e.preventDefault(); st = pos(e); };
+  const down = e => { e.preventDefault(); c.setPointerCapture?.(e.pointerId); st = pos(e); };
   const move = e => { if (!st) return; e.preventDefault(); const q = pos(e); drawDeid({ x: Math.min(st.x, q.x), y: Math.min(st.y, q.y), w: Math.abs(q.x - st.x), h: Math.abs(q.y - st.y), t: getChips('dtool') }); deid.last = q; };
   const up = () => { if (st && deid.last) { const q = deid.last; const r = { x: Math.min(st.x, q.x), y: Math.min(st.y, q.y), w: Math.abs(q.x - st.x), h: Math.abs(q.y - st.y), t: getChips('dtool') }; if (r.w > 8 && r.h > 8) deid.rects.push(r); } st = null; deid.last = null; drawDeid(); };
-  c.addEventListener('pointerdown', down); c.addEventListener('pointermove', move); window.addEventListener('pointerup', up, { once: false });
+  c.addEventListener('pointerdown', down); c.addEventListener('pointermove', move); c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
 }
 function pixelate(ctx, r) {
   const s = Math.max(8, Math.round(Math.min(r.w, r.h) / 8));
@@ -229,7 +229,7 @@ ACT.remdone = el => { const r = D.reminders.find(x => x.id === el.dataset.id); r
 ACT.remundo = el => { const r = D.reminders.find(x => x.id === el.dataset.id); r.done = false; Store.save(); render(); };
 ACT.icsall = () => { const ev = dueItems(365).filter(i => i.date >= today()).map((i, k) => ({ id: 'pg' + k + i.date, date: i.date, title: i.title + ' – ' + i.sub.split(' · ')[0], desc: i.sub })); if (!ev.length) return toast('Nothing upcoming'); download(makeICS(ev), 'pg-derma-followups.ics'); };
 ACT.notify = async () => { if (!('Notification' in window)) return toast('Notifications not supported'); const r = await Notification.requestPermission(); toast(r === 'granted' ? 'Alerts on — shown when the app is opened' : 'Permission denied'); if (r === 'granted') checkNotify(true); };
-function checkNotify(force) { if (!('Notification' in window) || Notification.permission !== 'granted' || !D) return; const key = 'n' + today(); if (!force && D.settings.lastNotify === key) return; const n = dueItems(0).length; if (n) new Notification('PG Derma', { body: n + ' item(s) due today' }); D.settings.lastNotify = key; Store.save(); }
+function checkNotify(force) { if (!('Notification' in window) || Notification.permission !== 'granted' || !D) return; const key = 'n' + today(); if (!force && D.settings.lastNotify === key) return; const n = dueItems(0).length; if (n) { const body = n + ' item(s) due today'; (navigator.serviceWorker?.ready || Promise.reject()).then(r => r.showNotification('PG Derma', { body, icon: 'icon-192.png' })).catch(() => { try { new Notification('PG Derma', { body }); } catch (e) {} }); } D.settings.lastNotify = key; Store.save(); }
 
 /* ---------- NMC LOGBOOK ---------- */
 const procTarget = name => +(D.settings.procTargets[name] ?? (PROCEDURES.find(p => p[0] === name) || [, , 0])[2]);
@@ -265,7 +265,7 @@ function vLogAdd() {
   $('#l_proc').onchange = e => $('#l_other').hidden = e.target.value !== '__other';
   $('#l_date').onchange = e => $('#l_year').value = residencyYear(e.target.value);
 }
-ACT.lpick = el => { $('#l_proc').value = el.dataset.v; };
+ACT.lpick = el => { const s = $('#l_proc'), v = el.dataset.v; if ([...s.options].some(o => o.value === v)) { s.value = v; $('#l_other').hidden = true; } else { s.value = '__other'; $('#l_other').hidden = false; $('#l_other').value = v; } };
 ACT.logsave = el => {
   let pid = el.dataset.pid || null;
   if (!pid && val('l_uhid')) { const p = D.patients.find(x => x.uhid.toLowerCase() === val('l_uhid').toLowerCase()); if (p) pid = p.id; }
@@ -330,6 +330,7 @@ ACT.tsave = () => {
   const vars = $$('.varrow').map(r => ({ name: $('.v_name', r).value.trim().replace(/[^A-Za-z0-9_]/g, '_'), label: $('.v_label', r).value.trim(), type: $('.v_type', r).value, options: $('.v_opts', r).value.trim(), scope: $('.v_scope', r).value })).filter(x => x.name);
   D.thesis = { title: val('t_title'), scale: val('t_scale'), weeks, groupA: val('t_ga'), groupB: val('t_gb'), blinding: val('t_blind'), vars };
   D.settings.sampleCase = +val('t_na') || 0; D.settings.sampleControl = +val('t_nb') || 0;
+  for (const p of D.patients) if (!p.arm && ((p.buckets || []).includes('Thesis Case') || (p.buckets || []).includes('Thesis Control'))) { p.arm = p.buckets.includes('Thesis Case') ? 'Case' : 'Control'; p.enrolled = (p.created || new Date().toISOString()).slice(0, 10); p.studyId = nextStudyId(); }
   Store.save(); toast('Thesis setup saved'); go('#/thesis');
 };
 function vThesis() {
@@ -358,7 +359,7 @@ function thesisRows(withUHID) {
   const rows = [head];
   for (const p of D.patients.filter(p => p.arm).sort((a, b) => (a.studyId || '').localeCompare(b.studyId || ''))) {
     const sc = thesisSchedule(p), bv = sc[0]?.visit;
-    const r = [p.studyId || '', ...(withUHID ? [p.uhid] : []), p.arm === 'Case' ? 1 : 2, p.age === '' ? '' : +p.age, { M: 1, F: 2, O: 3 }[p.sex] || '', FST.indexOf(p.fst) + 1 || '', p.enrolled || '', ...baseVars.map(x => code(x, bv?.crf?.[x.name]))];
+    const r = [p.studyId || '', ...(withUHID ? [p.uhid] : []), p.arm === 'Case' ? 1 : 2, (p.age === '' || p.age == null || isNaN(+p.age)) ? '' : +p.age, { M: 1, F: 2, O: 3 }[p.sex] || '', FST.indexOf(p.fst) + 1 || '', p.enrolled || '', ...baseVars.map(x => code(x, bv?.crf?.[x.name]))];
     const sv = {};
     for (const s of sc) { const st = s.visit ? D.scores.filter(z => z.vid === s.visit.id && z.scale === scale).pop() : null; sv[s.label] = st ? st.total : ''; if (scale) r.push(sv[s.label]); for (const x of visVars) r.push(code(x, s.visit?.crf?.[x.name])); }
     if (scale) for (const l of labels.slice(1)) r.push(sv.Baseline !== '' && sv[l] !== '' && sv[l] !== undefined ? pctImprovement(sv.Baseline, sv[l]) : '');
@@ -432,7 +433,7 @@ function vFormulary() {
   }
   if (tab === 'iso') { const f = () => { const r = isoCalc(+val('iw'), +val('id'), +val('ig'), +val('it')); $('#ires').innerHTML = +val('iw') ? `Current dose: <b>${r1(+val('id') / +val('iw'))} mg/kg/day</b><br>Target cumulative: <b>${r.target} mg</b><br>Remaining: <b>${r.remaining} mg</b> ≈ <b>${r.days ?? '—'} days</b> (${r.days ? Math.round(r.days / 30 * 10) / 10 : '—'} months) at current dose` : 'Enter weight'; }; ['iw', 'id', 'ig', 'it'].forEach(i => $('#' + i).oninput = f); f(); }
   if (tab === 'ftu') { const f = () => { const g = +val('ff') * 0.5 * +val('fa') * +val('fd'); $('#fres').innerHTML = `Needs ≈ <b>${r1(g)} g</b> → ${Math.ceil(g / 15)} × 15 g or ${Math.ceil(g / 30)} × 30 g tubes`; }; ['ff', 'fa', 'fd'].forEach(i => $('#' + i).oninput = f); f(); }
-  if (tab === 'comp') { const f = () => { const q = +val('cq'); let parts = COMPOUNDS[+val('cf')].parts, base = COMPOUNDS[+val('cf')].base; if (val('cc')) { parts = val('cc').split(',').map(s => { const m = s.trim().match(/^(.*?)\s+([\d.]+)%?$/); return m ? [m[1], +m[2]] : null; }).filter(Boolean); base = 'Base'; } const sum = parts.reduce((a, p) => a + p[1], 0); $('#cres').innerHTML = `<table class="tbl">${parts.map(([n, p]) => `<tr><td>${esc(n)} ${p}%</td><td><b>${r1(q * p / 100 * 1000) / 1000 >= 1 ? r1(q * p / 100) + ' g' : Math.round(q * p / 100 * 1000) + ' mg'}</b></td></tr>`).join('')}<tr><td>${esc(base)} q.s.</td><td><b>${r1(q - q * sum / 100)} g</b></td></tr></table>`; }; ['cf', 'cq', 'cc'].forEach(i => $('#' + i).oninput = f); f(); }
+  if (tab === 'comp') { const f = () => { const q = +val('cq'); let parts = COMPOUNDS[+val('cf')].parts, base = COMPOUNDS[+val('cf')].base; if (val('cc')) { parts = val('cc').split(',').map(s => { const m = s.trim().match(/^(.*?)\s+([\d.]+)%?$/); return m ? [m[1], +m[2]] : null; }).filter(Boolean); base = 'Base'; } const sum = parts.reduce((a, p) => a + p[1], 0); $('#cres').innerHTML = `<table class="tbl">${parts.map(([n, p]) => `<tr><td>${esc(n)} ${p}%</td><td><b>${q * p / 100 >= 1 ? Math.round(q * p) / 100 + ' g' : Math.round(q * p * 10) + ' mg'}</b></td></tr>`).join('')}<tr><td>${esc(base)} q.s.</td><td><b>${r1(q - q * sum / 100)} g</b></td></tr></table>`; }; ['cf', 'cq', 'cc'].forEach(i => $('#' + i).oninput = f); f(); }
   if (tab === 'ligno') { const f = () => { const r = lignoCalc(+val('lw')); $('#lres').innerHTML = `<table class="tbl"><tr><th></th><th>Max mg</th><th>1% (mL)</th><th>2% (mL)</th></tr><tr><td>Plain</td><td>${r.plain}</td><td>${r.plain1}</td><td>${r.plain2}</td></tr><tr><td>With adrenaline</td><td>${r.adr}</td><td>${r.adr1}</td><td>${r.adr2}</td></tr></table>`; }; $('#lw').oninput = f; f(); }
 }
 function drugCard(d, w) {
@@ -487,7 +488,7 @@ function vSettings() {
   <div class="card"><h3>Install on your phone</h3><p class="small">Android (Chrome): ⋮ menu → <b>Install app</b> / Add to Home screen.<br>iPhone / iPad (Safari): Share → <b>Add to Home Screen</b>.<br>Once installed, the app works fully offline.</p></div>
   <div class="card"><h3>Danger zone</h3><button class="btn sm danger" data-act="wipe">Erase all data on this device</button></div>
   <p class="small muted center">PG Derma Companion v1.0 · storage ${D.photos.length} photos · ${D.patients.length} patients</p>`;
-  $('#restore').onchange = async e => { const f = e.target.files[0]; if (!f || !confirm('Restore will REPLACE all data on this device with the backup. Continue?')) return; try { await importBackup(f); toast('Restored — unlock with the backup PIN'); lockApp(); } catch (er) { alert('Restore failed: ' + er.message); } };
+  $('#restore').onchange = async e => { const f = e.target.files[0]; if (!f || !confirm('Restore will REPLACE all data on this device with the backup. Continue?')) return; try { await importBackup(f); toast('Restored — unlock with the backup PIN'); lockApp(true); } catch (er) { alert('Restore failed: ' + er.message); } };
 }
 ACT.ssave = () => { Object.assign(D.settings, { name: val('s_name'), inst: val('s_inst'), unit: val('s_unit'), residencyStart: val('s_start'), lang: getChips('s_lang'), lockMin: Math.max(1, +val('s_lock') || 3) }); Store.save(); toast('Saved'); };
 ACT.backup = () => exportBackup().then(() => toast('Backup downloaded'));

@@ -91,7 +91,7 @@ svg.anat text{font-size:10px;fill:var(--mut);text-anchor:middle;pointer-events:n
 svg.anat .nv circle{fill:none;stroke:var(--acc2);stroke-width:1.5;stroke-dasharray:2 2}svg.anat .nv text{text-anchor:start;font-size:9px;fill:var(--acc2)}
 svg.anat .pin circle{stroke:#fff;stroke-width:1.5;cursor:pointer}svg.anat .pn{fill:#fff;font-size:8px;font-weight:700}
 .camwrap{position:relative;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:3/4;max-height:60vh;margin:0 auto}
-.camwrap video,.camwrap #ghost{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.camwrap #ghost{pointer-events:none;mix-blend-mode:screen}
+.camwrap video,.camwrap #ghost{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.camwrap #ghost{pointer-events:none}
 .camwrap .grid3x3{position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(255,255,255,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.18) 1px,transparent 1px);background-size:33.33% 33.33%}
 .camwrap.flash::after{content:"";position:absolute;inset:0;background:#fff;opacity:.7}.camwrap .empty{color:#ccc;position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center}
 .camctl{display:flex;align-items:center;justify-content:space-between;padding:12px 4px}.camctl label{width:110px}

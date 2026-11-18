@@ -25,6 +25,7 @@ function dueItems(horizon = 0) {
   for (const r of D.reminders) if (!r.done && r.date <= lim) out.push({ kind: 'rem', date: r.date, title: r.type, sub: ptLabel(P(r.pid)) + (r.note ? ' · ' + r.note : ''), href: r.pid ? '#/patient/' + r.pid : '#/cal', id: r.id });
   for (const p of D.patients) if (p.arm && !p.dropout) for (const s of thesisSchedule(p)) if (!s.visit && s.due <= addDays(lim, 3)) out.push({ kind: 'thesis', date: s.due, title: 'Thesis ' + s.label + ' (' + p.arm + ')', sub: ptLabel(p), href: '#/patient/' + p.id });
   for (const i of D.inv) if (i.status === 'sent') { const d = addDays(i.sent, INV_DAYS[i.type] ?? 5); if (d <= lim) out.push({ kind: 'inv', date: d, title: 'Trace: ' + i.type, sub: ptLabel(P(i.pid)), href: '#/inv' }); }
+  for (const i of D.inv) if (i.status === 'traced') { const d = addDays(i.traced || i.sent, 2); if (d <= lim) out.push({ kind: 'inv', date: d, title: 'Correlate: ' + i.type, sub: ptLabel(P(i.pid)) + ' — update final diagnosis', href: '#/inv?c=traced' }); }
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 const dueBadge = d => { const k = daysBetween(today(), d); return k < 0 ? `<span class="badge red">${-k}d overdue</span>` : k === 0 ? '<span class="badge amber">Today</span>' : `<span class="badge">in ${k}d</span>`; };
@@ -87,7 +88,7 @@ function vAdd() {
   const allDx = [...DX.D, ...DX.V, ...DX.L, ...DX.A];
   const fav = (D.settings.favDx || ['Psoriasis', 'Dermatophytosis (Tinea)', 'Acne vulgaris', 'Vitiligo', 'Melasma', 'Scabies', 'Urticaria', 'Atopic dermatitis', 'Alopecia areata', 'Leprosy – BT']);
   main().innerHTML = `<form id="qa" class="form" autocomplete="off">
-  <label>UHID / OPD no. *<div class="inrow"><input id="q_uhid" required value="${esc(ex?.uhid || '')}" placeholder="e.g. 2026-123456" inputmode="text"></div></label>
+  <label>UHID / OPD no. *<div class="inrow"><input id="q_uhid" required value="${esc(ex?.uhid || '')}" placeholder="e.g. 2026-123456" inputmode="text">${'BarcodeDetector' in window ? '<button type="button" class="mic" data-act="scan" aria-label="Scan barcode">▥</button>' : ''}</div></label>
   <div id="exnote"></div>
   <div class="grid2"><label>Name (optional)<div class="inrow"><input id="q_name" value="${esc(ex?.name || '')}">${mic('q_name')}</div></label>
   <label>Phone (for WhatsApp)<input id="q_phone" type="tel" inputmode="tel" value="${esc(ex?.phone || '')}"></label></div>
@@ -132,7 +133,24 @@ ACT.qasave = async btn => {
   toast(isNew ? 'Patient saved' : 'Visit added');
   if (then === 'photo') go('#/cam/' + v.id); else if (then === 'next') { go('#/add?r=' + Date.now()); } else go('#/visit/' + v.id);
 };
-function nextStudyId() { const n = D.patients.filter(p => p.studyId).length + 1; return 'T' + String(n).padStart(3, '0'); }
+/* Scan the UHID barcode / QR on the OPD slip (Android Chrome BarcodeDetector, on-device) */
+let scanStream = null;
+ACT.scan = async () => {
+  openSheet(`<h3>Scan OPD slip barcode</h3><div class="camwrap" style="aspect-ratio:4/3"><video id="sv" playsinline muted autoplay></video></div><p class="small muted">Point at the barcode or QR code on the slip.</p><div class="actions"><button class="btn ghost" data-act="scanstop">Cancel</button></div>`);
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const vid = $('#sv'); vid.srcObject = scanStream; await vid.play().catch(() => {});
+    const det = new BarcodeDetector();
+    const loop = async () => {
+      if (!scanStream) return;
+      try { const r = await det.detect(vid); if (r.length) { $('#q_uhid').value = r[0].rawValue.trim(); $('#q_uhid').dispatchEvent(new Event('input')); ACT.scanstop(); toast('UHID scanned'); return; } } catch (e) {}
+      setTimeout(loop, 250);
+    };
+    loop();
+  } catch (e) { ACT.scanstop(); toast('Camera unavailable for scanning'); }
+};
+ACT.scanstop = () => { if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; } closeSheet(); };
+function nextStudyId() { const n = D.patients.reduce((m, p) => Math.max(m, parseInt((p.studyId || '').replace(/\D/g, '')) || 0), 0) + 1; return 'T' + String(n).padStart(3, '0'); }
 
 /* ---------- PATIENT ---------- */
 function patientDetailHTML(p) {
@@ -166,7 +184,7 @@ function vPatient() {
   hydrateImgs();
 }
 ACT.dropout = el => { const p = P(el.dataset.id); p.dropout = el.checked; Store.save(); toast(el.checked ? 'Marked dropout' : 'Dropout cleared'); };
-ACT.delpt = el => { if (!confirm('Delete this patient with all visits, scores and photos? This cannot be undone.')) return; const id = el.dataset.id; const vids = D.visits.filter(v => v.pid === id).map(v => v.id); for (const ph of D.photos.filter(x => x.pid === id)) deletePhoto(ph.id); D.patients = D.patients.filter(p => p.id !== id); D.visits = D.visits.filter(v => v.pid !== id); D.scores = D.scores.filter(s => !vids.includes(s.vid)); D.pins = D.pins.filter(s => !vids.includes(s.vid)); D.inv = D.inv.filter(i => i.pid !== id); D.reminders = D.reminders.filter(r => r.pid !== id); D.logbook.forEach(l => { if (l.pid === id) l.pid = null; }); Store.save(); go('#/patients'); };
+ACT.delpt = async el => { if (!confirm('Delete this patient with all visits, scores and photos? This cannot be undone.')) return; const id = el.dataset.id; const vids = D.visits.filter(v => v.pid === id).map(v => v.id); for (const ph of D.photos.filter(x => x.pid === id)) await deletePhoto(ph.id); D.patients = D.patients.filter(p => p.id !== id); D.visits = D.visits.filter(v => v.pid !== id); D.scores = D.scores.filter(s => !vids.includes(s.vid)); D.pins = D.pins.filter(s => !vids.includes(s.vid)); D.inv = D.inv.filter(i => i.pid !== id); D.reminders = D.reminders.filter(r => r.pid !== id); D.logbook.forEach(l => { if (l.pid === id) l.pid = null; }); Store.save(); go('#/patients'); };
 ACT.editpt = el => {
   const p = P(el.dataset.id);
   openSheet(`<h3>Edit patient</h3><div class="form">
@@ -230,7 +248,7 @@ function crfInput(x, cur) {
 }
 ACT.savevisit = el => { const v = V(el.dataset.id); Object.assign(v, { date: val('v_date') || v.date, label: val('v_label') || v.label, dx: val('v_dx').split(',').map(s => s.trim()).filter(Boolean), notes: val('v_notes'), finalDx: val('v_final') }); const p = P(v.pid); p.dx = [...new Set([...(p.dx || []), ...v.dx])]; Store.save(); toast('Visit saved'); };
 ACT.savecrf = el => { const v = V(el.dataset.id); v.crf = v.crf || {}; for (const x of D.thesis.vars) { const id = 'crf_' + x.name; if (x.type === 'yesno' || x.type === 'select') { const c = getChips(id); if (c !== null) v.crf[x.name] = c; } else { const e = document.getElementById(id); if (e) v.crf[x.name] = e.value.trim(); } } Store.save(); toast('CRF saved'); };
-ACT.delvisit = el => { if (!confirm('Delete this visit and its scores, pins and photos?')) return; const id = el.dataset.id, v = V(id); for (const ph of D.photos.filter(x => x.vid === id)) deletePhoto(ph.id); D.visits = D.visits.filter(x => x.id !== id); D.scores = D.scores.filter(s => s.vid !== id); D.pins = D.pins.filter(s => s.vid !== id); Store.save(); go('#/patient/' + v.pid); };
+ACT.delvisit = async el => { if (!confirm('Delete this visit and its scores, pins and photos?')) return; const id = el.dataset.id, v = V(id); for (const ph of D.photos.filter(x => x.vid === id)) await deletePhoto(ph.id); D.visits = D.visits.filter(x => x.id !== id); D.scores = D.scores.filter(s => s.vid !== id); D.pins = D.pins.filter(s => s.vid !== id); Store.save(); go('#/patient/' + v.pid); };
 ACT.aeadd = el => openSheet(`<h3>Adverse event</h3><div class="form"><label>Event<input id="ae_ev" placeholder="e.g. Burning, erythema, raised ALT"></label><label>Severity${chips('ae_sev', ['Mild', 'Moderate', 'Severe'], 'Mild')}</label><label>Causality (WHO-UMC)${chips('ae_c', ['Certain', 'Probable', 'Possible', 'Unlikely', 'Unrelated'], 'Possible')}</label><label>Action taken<input id="ae_act" placeholder="Continued / dose reduced / stopped"></label><div class="actions"><button class="btn ghost" data-act="closesheet">Cancel</button><button class="btn" data-act="aesave" data-id="${el.dataset.id}">Save</button></div></div>`);
 ACT.aesave = el => { const v = V(el.dataset.id); const ev = val('ae_ev'); if (!ev) return toast('Describe the event'); (v.ae = v.ae || []).push({ event: ev, sev: getChips('ae_sev', $('#sheet')), cause: getChips('ae_c', $('#sheet')), action: val('ae_act'), date: today() }); Store.save(); closeSheet(); render(); };
 ACT.aedel = el => { const v = V(el.dataset.id); v.ae.splice(+el.dataset.i, 1); Store.save(); render(); };
@@ -284,7 +302,7 @@ ACT.delscore = el => { const s = D.scores.find(x => x.id === el.dataset.id); D.s
 /* ---------- BODY / FACE / MUCOSA / NERVE MAPPER ---------- */
 function vMap() {
   const v = V(ROUTE.id); if (!v) return go('#/home');
-  const chart = ROUTE.q.c || 'body-front', ptype = ROUTE.q.t || 'lesion';
+  const chart = MAPS[ROUTE.q.c] ? ROUTE.q.c : 'body-front', ptype = PIN_TYPES.some(t => t[0] === ROUTE.q.t) ? ROUTE.q.t : 'lesion';
   setTitle('Body map');
   const pins = D.pins.filter(x => x.vid === v.id && x.chart === chart);
   main().innerHTML = `<a class="crumb" href="#/visit/${v.id}">‹ ${esc(v.label)} · ${esc(P(v.pid).uhid)}</a>
@@ -306,12 +324,15 @@ ACT.pindel = el => { D.pins = D.pins.filter(x => x.id !== el.dataset.id); Store.
 ACT.pinsel = el => { const x = D.pins.find(p => p.id === el.dataset.id); const n2 = prompt('Edit note', x.note || ''); if (n2 !== null) { x.note = n2; Store.save(); render(); } };
 
 /* ---------- WHATSAPP CARE CARDS ---------- */
+let WA_SUBS = {};
 function vWA() {
   const p = P(ROUTE.id); if (!p) return go('#/patients');
   setTitle('WhatsApp care card');
-  const lang = ROUTE.q.l || D.settings.lang || 'en', tid = ROUTE.q.t || 'biopsy';
+  const lang = ['en', 'hi', 'te'].includes(ROUTE.q.l) ? ROUTE.q.l : (D.settings.lang || 'en'), tid = WA_TEMPLATES.some(t => t.id === ROUTE.q.t) ? ROUTE.q.t : 'biopsy';
   const T = WA_TEMPLATES.find(t => t.id === tid), custom = (D.templates[tid] || {})[lang];
   const next = D.reminders.filter(r => r.pid === p.id && !r.done).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const subs = { name: p.name || 'Patient', date: next ? fmt(next.date) : '____', plan: 'twice daily × 1 week, then once daily × 1 week, then alternate days × 1 week' };
+  WA_SUBS = subs;
   const text = (custom || T[lang]).replaceAll('{name}', p.name || 'Patient').replaceAll('{date}', next ? fmt(next.date) : '____').replaceAll('{plan}', 'twice daily × 1 week, then once daily × 1 week, then alternate days × 1 week');
   main().innerHTML = `<a class="crumb" href="#/patient/${p.id}">‹ ${esc(ptLabel(p))}</a>
   ${chips('wl', [['en', 'English'], ['hi', 'हिन्दी'], ['te', 'తెలుగు']], lang)}
@@ -325,9 +346,9 @@ function vWA() {
 }
 ACT.wacopy = () => { navigator.clipboard?.writeText(val('wa_txt')).then(() => toast('Copied')); };
 ACT.wasend = () => {
-  let ph = val('wa_ph').replace(/\D/g, ''); if (ph.length === 10) ph = '91' + ph;
+  let ph = val('wa_ph').replace(/\D/g, ''); if (ph.length === 11 && ph[0] === '0') ph = ph.slice(1); if (ph.length === 10) ph = '91' + ph;
   if (ph.length < 11) return toast('Enter a valid phone number');
-  if ($('#wa_savetpl').checked) { const tid = ROUTE.q.t || 'biopsy', l = ROUTE.q.l || D.settings.lang || 'en'; (D.templates[tid] = D.templates[tid] || {})[l] = val('wa_txt'); }
+  if ($('#wa_savetpl').checked) { const tid = ROUTE.q.t || 'biopsy', l = ROUTE.q.l || D.settings.lang || 'en'; let raw = val('wa_txt'); for (const k of ['plan', 'date', 'name']) if (WA_SUBS[k] && WA_SUBS[k] !== '____') raw = raw.split(WA_SUBS[k]).join('{' + k + '}'); (D.templates[tid] = D.templates[tid] || {})[l] = raw; }
   const p = P(ROUTE.id); if (p && !p.phone) p.phone = val('wa_ph'); Store.save();
   window.open('https://wa.me/' + ph + '?text=' + encodeURIComponent(val('wa_txt')), '_blank');
 };

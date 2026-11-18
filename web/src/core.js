@@ -13,7 +13,16 @@ const fmt = s => { if (!s) return ''; const d = new Date(s.length <= 10 ? s + 'T
 const toast = (m, ms = 2200) => { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), ms); };
 const b64 = buf => { let s = ''; const u = new Uint8Array(buf); for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
 const unb64 = s => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
-const download = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); };
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const anchorDownload = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); };
+/* On phones, the share sheet is the reliable way to save to Files / Drive / WhatsApp; desktop downloads directly. */
+async function download(blob, name) {
+  if (isMobile && navigator.canShare) {
+    const f = new File([blob], name, { type: blob.type || 'application/octet-stream' });
+    if (navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  }
+  anchorDownload(blob, name);
+}
 
 /* ---------- IndexedDB ---------- */
 const IDB = {
@@ -122,24 +131,33 @@ async function photoBlob(id) { const o = await IDB.get('photos', id); return new
 async function deletePhoto(id) { await IDB.del('photos', id); await IDB.del('photos', id + '_t'); D.photos = D.photos.filter(p => p.id !== id); for (const k of [id, id + '_t']) { if (urlCache.has(k)) { URL.revokeObjectURL(urlCache.get(k)); urlCache.delete(k); } } Store.save(); }
 async function hydrateImgs(root = document) { for (const im of $$('img[data-pid]', root)) { im.src = await photoURL(im.dataset.pid, im.dataset.thumb === '1'); } }
 
-/* ---------- Encrypted backup (.pgbak) ---------- */
+/* ---------- Encrypted backup (.pgbak) — binary container, memory-friendly ----------
+   Layout: "PGBK1" | uint32 LE header length | header JSON | raw ciphertext blobs (in header order).
+   Everything stays AES-GCM encrypted with the PIN-derived key; the PIN is needed to restore. */
 async function exportBackup() {
   await Store.flush();
   const auth = await IDB.get('meta', 'auth');
-  const pack = o => ({ iv: b64(o.iv), data: b64(o.data) });
-  const out = { app: 'pg-derma-companion', v: 1, created: new Date().toISOString(), auth: { salt: b64(auth.salt), iter: auth.iter, check: pack(auth.check) }, db: pack(await IDB.get('kv', 'db')), photos: {} };
-  for (const k of await IDB.keys('photos')) out.photos[k] = pack(await IDB.get('photos', k));
-  download(new Blob([JSON.stringify(out)], { type: 'application/octet-stream' }), 'pgderma-backup-' + today() + '.pgbak');
+  const entries = [], parts = [];
+  const add = (store, k, o) => { entries.push({ s: store, k, iv: b64(o.iv), n: o.data.byteLength }); parts.push(o.data); };
+  add('kv', 'db', await IDB.get('kv', 'db'));
+  for (const k of await IDB.keys('photos')) add('photos', k, await IDB.get('photos', k));
+  const header = new TextEncoder().encode(JSON.stringify({ app: 'pg-derma-companion', v: 2, created: new Date().toISOString(), auth: { salt: b64(auth.salt), iter: auth.iter, check: { iv: b64(auth.check.iv), data: b64(auth.check.data) } }, entries }));
+  const len = new Uint8Array(4); new DataView(len.buffer).setUint32(0, header.length, true);
+  await download(new Blob([new TextEncoder().encode('PGBK1'), len, header, ...parts], { type: 'application/octet-stream' }), 'pgderma-backup-' + today() + '.pgbak');
   D.settings.lastBackup = new Date().toISOString(); Store.save();
 }
 async function importBackup(file) {
-  const j = JSON.parse(await file.text());
-  if (j.app !== 'pg-derma-companion') throw new Error('Not a PG Derma backup file');
-  const unpack = o => ({ iv: unb64(o.iv), data: unb64(o.data).buffer });
+  const magic = new TextDecoder().decode(await file.slice(0, 5).arrayBuffer());
+  if (magic !== 'PGBK1') throw new Error('Not a PG Derma backup file');
+  const hl = new DataView(await file.slice(5, 9).arrayBuffer()).getUint32(0, true);
+  let h; try { h = JSON.parse(new TextDecoder().decode(await file.slice(9, 9 + hl).arrayBuffer())); } catch (e) { throw new Error('Backup file is incomplete or damaged'); }
+  let off = 9 + hl; const total = h.entries.reduce((a, e) => a + e.n, 0);
+  if (off + total !== file.size) throw new Error('Backup file is incomplete or damaged');
+  /* verify the database blob decrypts structure-wise before wiping anything */
+  if (!h.entries.length || h.entries[0].k !== 'db') throw new Error('Backup has no database');
   await IDB.clear('photos'); await IDB.clear('kv');
-  await IDB.put('meta', 'auth', { salt: unb64(j.auth.salt), iter: j.auth.iter, check: unpack(j.auth.check) });
-  await IDB.put('kv', 'db', unpack(j.db));
-  for (const k in j.photos) await IDB.put('photos', k, unpack(j.photos[k]));
+  await IDB.put('meta', 'auth', { salt: unb64(h.auth.salt), iter: h.auth.iter, check: { iv: unb64(h.auth.check.iv), data: unb64(h.auth.check.data).buffer } });
+  for (const e of h.entries) { const data = await file.slice(off, off + e.n).arrayBuffer(); off += e.n; await IDB.put(e.s, e.k, { iv: unb64(e.iv), data }); }
 }
 
 /* ---------- Minimal XLSX writer (stored ZIP + SpreadsheetML, no dependencies) ---------- */

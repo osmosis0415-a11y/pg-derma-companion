@@ -12,7 +12,7 @@ const ROUTES = [
 ];
 function render() {
   if (!D) return;
-  stopCam(); closeSheet();
+  stopCam(); if (scanStream) ACT.scanstop(); closeSheet();
   const h = location.hash.replace(/^#\/?/, '') || 'home';
   const [path, qs] = h.split('?');
   ROUTE = { path: path.split('/')[0], q: Object.fromEntries(new URLSearchParams(qs || '')) };
@@ -48,8 +48,9 @@ async function showLock() {
   $('#unlock').onclick = go2; pin.onkeydown = e => e.key === 'Enter' && (auth ? go2() : $('#pin2').focus());
   $('#pin2')?.addEventListener('keydown', e => e.key === 'Enter' && go2());
 }
-async function lockApp() {
-  await Store.flush().catch(() => {});
+async function lockApp(skipFlush) {
+  if (skipFlush !== true) await Store.flush().catch(() => {});
+  closeSheet();
   stopCam(); D = null; Vault.key = null;
   for (const u of urlCache.values()) URL.revokeObjectURL(u); urlCache.clear();
   $('#main').innerHTML = ''; showLock();
@@ -76,6 +77,7 @@ document.addEventListener('click', e => {
   if (a && ACT[a.dataset.act] && a.type !== 'checkbox') { e.preventDefault(); ACT[a.dataset.act](a, e); }
 });
 document.addEventListener('change', e => { const a = e.target.closest('input[type=checkbox][data-act]'); if (a && ACT[a.dataset.act]) ACT[a.dataset.act](a, e); });
+document.addEventListener('submit', e => e.preventDefault());
 ACT.mic = el => dictate(document.getElementById(el.dataset.for), el);
 $('#back').onclick = () => history.length > 1 ? history.back() : go('#/home');
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
