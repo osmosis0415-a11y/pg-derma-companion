@@ -25,9 +25,23 @@ Open it on your phone and install it to the home screen (Android Chrome: ⋮ →
 | **3 · Formulary & OT** | Searchable personal formulary with weight-based dosing (editable), isotretinoin cumulative-dose calculator, FTU guide (adult + paediatric) and tube calculator, compounding calculator (Kligman's, Whitfield's, salicylic acid, coal tar…), lignocaine maximum-dose calculator, 9 minor-OT tray checklists |
 | **5 · Privacy & analytics** | PIN vault, **Conference mode** de-identification (eye bars, pixelate, black box, auto face detection where the browser supports it; re-encoding strips EXIF/GPS), logbook quota tracker, thesis recruitment gauge, case mix (Derm / Ven / Lep / Aesthetics), monthly visits |
 
+| **Batch hub** (online, optional) | Firebase-backed: create or join your batch with a code, a **shared batch calendar** (seminars, journal clubs, postings, exams; weekly repeats; add to your phone calendar; share the week on WhatsApp) and **anonymous logbook comparison** (you vs batch average / median / top, per procedure and year). Only event details, display names and procedure *counts* are uploaded, never patient data |
+
 Phone gets a bottom nav with a central ＋ button; iPad and tablet (≥900 px) get a sidebar and a two-pane patient list and detail view.
 
 > ⚠️ The formulary is a personal quick reference. Verify every dose against current guidelines and the product label. The DLQI screen uses short item summaries for bedside use; for thesis data, use the official licensed DLQI form.
+
+## Batch hub setup (one person per batch, ~5 minutes)
+
+1. Go to https://console.firebase.google.com, choose **Add project** (Google Analytics is not needed).
+2. **Build → Authentication → Get started.** Enable **Email/Password** and **Google**.
+3. **Authentication → Settings → Authorised domains → Add domain:** `osmosis0415-a11y.github.io`
+4. **Build → Firestore Database → Create database**, in production mode with location `asia-south1` (Mumbai). Open the **Rules** tab, paste [`firestore.rules`](firestore.rules) and publish.
+5. **Project settings → Your apps → Web (</>)** → register the app, then copy the `firebaseConfig` object.
+6. Paste it into [`web/src/firebase-config.js`](web/src/firebase-config.js) as `window.FIREBASE_CONFIG = {...}` and push. Everyone then gets the batch hub automatically. (Or paste it in the app under **More → Batch hub** to try it on one phone first.)
+7. In the app: **Batch hub → sign in → Create batch**, then tap **Invite** to send the link and code on your batch WhatsApp group.
+
+The free Spark plan is enough for a batch. The Firebase web config is public by design; access is enforced by the Firestore rules (members only, only your own counts, fixed field whitelist).
 
 ## Repository layout
 

@@ -8,7 +8,7 @@ const ROUTES = [
   [/^deid\/([\w-]+)$/, vDeid, 'vault', ['id']], [/^compare\/([\w-]+)$/, vCompare, 'vault', ['id']],
   [/^inv$/, vInv, 'more'], [/^cal$/, vCal, 'more'], [/^logbook$/, vLogbook, 'more'], [/^logadd$/, vLogAdd, 'more'], [/^targets$/, vTargets, 'more'],
   [/^thesis$/, vThesis, 'more'], [/^thesis-setup$/, vThesisSetup, 'more'], [/^analytics$/, vAnalytics, 'more'],
-  [/^formulary$/, vFormulary, 'more'], [/^checklists$/, vChecklists, 'more'], [/^more$/, vMore, 'more'], [/^settings$/, vSettings, 'more']
+  [/^formulary$/, vFormulary, 'more'], [/^checklists$/, vChecklists, 'more'], [/^more$/, vMore, 'more'], [/^settings$/, vSettings, 'more'], [/^batch$/, vBatch, 'more']
 ];
 function render() {
   if (!D) return;
@@ -16,6 +16,7 @@ function render() {
   const h = location.hash.replace(/^#\/?/, '') || 'home';
   const [path, qs] = h.split('?');
   ROUTE = { path: path.split('/')[0], q: Object.fromEntries(new URLSearchParams(qs || '')) };
+  if (ROUTE.path !== 'batch' && typeof Cloud !== 'undefined') Cloud.stop();
   for (const [re, fn, tab, keys] of ROUTES) {
     const m = path.match(re);
     if (m) { (keys || []).forEach((k, i) => ROUTE[k] = m[i + 1]); $$('.nav a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab)); window.scrollTo(0, 0); fn(); return; }
@@ -51,7 +52,7 @@ async function showLock() {
 async function lockApp(skipFlush) {
   if (skipFlush !== true) await Store.flush().catch(() => {});
   closeSheet();
-  stopCam(); D = null; Vault.key = null;
+  stopCam(); Cloud.stop(); D = null; Vault.key = null;
   for (const u of urlCache.values()) URL.revokeObjectURL(u); urlCache.clear();
   $('#main').innerHTML = ''; showLock();
 }

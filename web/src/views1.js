@@ -25,6 +25,7 @@ function dueItems(horizon = 0) {
   for (const r of D.reminders) if (!r.done && r.date <= lim) out.push({ kind: 'rem', date: r.date, title: r.type, sub: ptLabel(P(r.pid)) + (r.note ? ' · ' + r.note : ''), href: r.pid ? '#/patient/' + r.pid : '#/cal', id: r.id });
   for (const p of D.patients) if (p.arm && !p.dropout) for (const s of thesisSchedule(p)) if (!s.visit && s.due <= addDays(lim, 3)) out.push({ kind: 'thesis', date: s.due, title: 'Thesis ' + s.label + ' (' + p.arm + ')', sub: ptLabel(p), href: '#/patient/' + p.id });
   for (const i of D.inv) if (i.status === 'sent') { const d = addDays(i.sent, INV_DAYS[i.type] ?? 5); if (d <= lim) out.push({ kind: 'inv', date: d, title: 'Trace: ' + i.type, sub: ptLabel(P(i.pid)), href: '#/inv' }); }
+  for (const e of (D.batch?.events || [])) if (e.date >= t && e.date <= lim) out.push({ kind: 'batch', date: e.date, title: e.type + ': ' + e.title, sub: [e.time, e.venue, e.presenter].filter(Boolean).join(' · ') || D.batch.name, href: '#/batch' });
   for (const i of D.inv) if (i.status === 'traced') { const d = addDays(i.traced || i.sent, 2); if (d <= lim) out.push({ kind: 'inv', date: d, title: 'Correlate: ' + i.type, sub: ptLabel(P(i.pid)) + ' — update final diagnosis', href: '#/inv?c=traced' }); }
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }

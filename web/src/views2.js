@@ -469,7 +469,7 @@ ACT.chkreset = () => { delete D.checks[CHECKLISTS[+(ROUTE.q.k || 0)].name]; Stor
 /* ---------- MORE & SETTINGS ---------- */
 function vMore() {
   setTitle('More', false);
-  const t = [['#/logbook', '📒', 'NMC Logbook'], ['#/thesis', '🎓', 'Thesis tracker'], ['#/inv', '🧪', 'Investigations'], ['#/cal', '📅', 'Follow-ups'], ['#/analytics', '📊', 'Analytics'], ['#/formulary', '💊', 'Formulary & calculators'], ['#/checklists', '✅', 'OT checklists'], ['#/vault', '🖼️', 'Photo vault'], ['#/settings', '⚙️', 'Settings & backup']];
+  const t = [['#/batch', '🧑‍🤝‍🧑', 'Batch hub'], ['#/logbook', '📒', 'NMC Logbook'], ['#/thesis', '🎓', 'Thesis tracker'], ['#/inv', '🧪', 'Investigations'], ['#/cal', '📅', 'Follow-ups'], ['#/analytics', '📊', 'Analytics'], ['#/formulary', '💊', 'Formulary & calculators'], ['#/checklists', '✅', 'OT checklists'], ['#/vault', '🖼️', 'Photo vault'], ['#/settings', '⚙️', 'Settings & backup']];
   main().innerHTML = `<div class="tiles">${t.map(([h, i, l]) => `<a class="tile" href="${h}">${i}<span>${l}</span></a>`).join('')}</div>`;
 }
 function vSettings() {
@@ -485,6 +485,7 @@ function vSettings() {
   <div class="btnrow wrap"><button class="btn" data-act="backup">⬇ Export encrypted backup</button><label class="btn ghost filebtn">⬆ Restore<input type="file" id="restore" accept=".pgbak,application/octet-stream,application/json" hidden></label></div></div>
   <div class="card"><h3>Security</h3><button class="btn sm ghost" data-act="chpin">Change PIN</button> <button class="btn sm ghost" data-act="lock">Lock now</button>
   <p class="small muted">Data is encrypted with AES-256-GCM using a key derived from your PIN (PBKDF2, 310k iterations). The PIN is never stored. <b>If you forget it, data cannot be recovered</b> — keep backups.</p></div>
+  <div class="card"><h3>Batch hub</h3><p class="small muted">Shared batch calendar and anonymous logbook comparison (Firebase). ${D.batch ? 'Member of <b>' + esc(D.batch.name) + '</b>.' : 'Not joined.'}</p><a class="btn sm ghost" href="#/batch">Open batch hub</a> ${D.settings.fbConfig ? '<button class="btn sm ghost" data-act="fbcfgclear">Remove custom Firebase config</button>' : ''}</div>
   <div class="card"><h3>Install on your phone</h3><p class="small">Android (Chrome): ⋮ menu → <b>Install app</b> / Add to Home screen.<br>iPhone / iPad (Safari): Share → <b>Add to Home Screen</b>.<br>Once installed, the app works fully offline.</p></div>
   <div class="card"><h3>Danger zone</h3><button class="btn sm danger" data-act="wipe">Erase all data on this device</button></div>
   <p class="small muted center">PG Derma Companion v1.0 · storage ${D.photos.length} photos · ${D.patients.length} patients</p>`;

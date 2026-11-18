@@ -69,7 +69,7 @@ fieldset{border:1px solid var(--line);border-radius:12px;margin:10px 0;padding:6
 .ring{position:relative;width:110px;text-align:center}.ring svg{width:92px;height:92px;transform:rotate(-90deg)}.ring .rbg{fill:none;stroke:var(--line);stroke-width:8}.ring .rfg{fill:none;stroke-width:8;stroke-linecap:round;transition:stroke-dashoffset .6s}
 .ring div{position:absolute;top:30px;left:0;right:0}.ring b{font-size:22px}.ring span{display:block;font-size:12px;font-weight:600;color:var(--mut)}
 .strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}.strip p{margin:4px 0}
-.due{flex:0 0 230px;display:block;border-radius:12px;padding:10px 12px;background:var(--bg);border-left:4px solid var(--acc)}.due.thesis{border-color:#7c3aed}.due.inv{border-color:var(--acc2)}.due small{display:block;color:var(--mut)}
+.due{flex:0 0 230px;display:block;border-radius:12px;padding:10px 12px;background:var(--bg);border-left:4px solid var(--acc)}.due.thesis{border-color:#7c3aed}.due.batch,.li.due.batch{border-color:#db2777}.due.inv{border-color:var(--acc2)}.due small{display:block;color:var(--mut)}
 .li.due{flex:none;border-left:4px solid var(--acc);margin:6px 0;border-radius:10px;background:var(--card)}
 .bar{height:9px;background:var(--line);border-radius:9px;overflow:hidden;flex:1}.bar i{display:block;height:100%;background:var(--acc);border-radius:9px}.bar i.ok{background:var(--green)}
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
@@ -132,3 +132,7 @@ svg.ftu{width:100%;max-width:340px}svg.ftu .fing{fill:#f2d0b6;stroke:#b98b6c}svg
  #print h1{font-size:16px}#print h2{font-size:13px;margin-top:16px;page-break-after:avoid}#print table{width:100%;border-collapse:collapse;margin-top:6px}#print td,#print th{border:1px solid #444;padding:3px 4px;text-align:left}#print th{background:#eee}
  #print tr{page-break-inside:avoid}.sig{display:flex;justify-content:space-between;margin:34px 10px 10px}.sig span{border-top:1px solid #000;padding-top:4px;width:28%;text-align:center}
 }
+
+.cmprow{padding:8px 0;border-bottom:1px solid var(--line)}.cmprow:last-child{border-bottom:0}.cmprow span{font-size:13.5px;font-weight:600}
+.bar.rel{position:relative;overflow:visible;margin-top:6px}.bar.rel em{position:absolute;top:-4px;bottom:-4px;width:3px;margin-left:-1px;background:var(--acc2);border-radius:2px}
+ol.small{padding-left:18px}ol.small li{margin:4px 0}code{font-size:12px;background:var(--accs);padding:1px 4px;border-radius:4px}
