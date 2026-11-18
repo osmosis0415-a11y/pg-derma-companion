@@ -45,8 +45,8 @@ async function showLock() {
       lastAct = Date.now(); render(); checkNotify();
     } catch (e) { $('#lerr').textContent = e.message; $('#unlock').disabled = false; $('#unlock').textContent = auth ? 'Unlock' : 'Create vault'; pin.select(); }
   };
-  $('#unlock').onclick = go2; pin.onkeydown = e => e.key === 'Enter' && (auth ? go2() : $('#pin2').focus());
-  $('#pin2')?.addEventListener('keydown', e => e.key === 'Enter' && go2());
+  $('#unlock').onclick = go2; pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); if (auth) go2(); else $('#pin2').focus(); } });
+  $('#pin2')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go2(); } });
 }
 async function lockApp(skipFlush) {
   if (skipFlush !== true) await Store.flush().catch(() => {});
