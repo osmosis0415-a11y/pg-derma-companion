@@ -12,12 +12,45 @@
  *   CLIENT_ID     = <OAuth web client id>
  *   CLIENT_SECRET = <OAuth web client secret>
  * Deploy -> New deployment -> Web app -> Execute as: Me, Who has access: Anyone.
+ *
+ * Calls (optional): also hands out short-lived Cloudflare TURN relay passes so batch calls connect
+ * across any network. Only signed-in, admin-approved app users get one (checked with their Firebase
+ * ID token) whom the admin has also allowed to call. Script properties:
+ *   TURN_KEY_ID     = <Cloudflare Realtime TURN key ID>
+ *   TURN_API_TOKEN  = <that key's API token>
+ *   FIREBASE_API_KEY, FIREBASE_PROJECT = the web app's public Firebase config values
  */
+function turnPass_(b, p) {
+  var keyId = p.getProperty('TURN_KEY_ID'), tok = p.getProperty('TURN_API_TOKEN');
+  if (!keyId || !tok) return { error: 'turn_not_configured' };
+  var apiKey = p.getProperty('FIREBASE_API_KEY'), proj = p.getProperty('FIREBASE_PROJECT');
+  if (typeof b.idToken !== 'string' || b.idToken.length > 4000) return { error: 'bad_request' };
+  // 1. Is this a real, signed-in user of our Firebase project?
+  var lr = UrlFetchApp.fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + encodeURIComponent(apiKey),
+    { method: 'post', contentType: 'application/json', payload: JSON.stringify({ idToken: b.idToken }), muteHttpExceptions: true });
+  var u = (JSON.parse(lr.getContentText()).users || [])[0];
+  if (!u || !u.emailVerified) return { error: 'not_signed_in' };
+  // 2. Has the admin approved them? (Read their own approval record with their own token.)
+  var ar = UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/' + proj + '/databases/(default)/documents/approvals/' + encodeURIComponent(u.localId),
+    { headers: { Authorization: 'Bearer ' + b.idToken }, muteHttpExceptions: true });
+  var ad = JSON.parse(ar.getContentText()), st = ad.fields && ad.fields.status && ad.fields.status.stringValue;
+  var calls = ad.fields && ad.fields.calls && ad.fields.calls.booleanValue === true;
+  var isAdmin = String(u.email || '').toLowerCase() === 'sriramdeverashetty@gmail.com';
+  if (!isAdmin && (st !== 'approved' || !calls)) return { error: 'calls_not_allowed' };
+  // 3. Mint a 6-hour relay pass.
+  var cr = UrlFetchApp.fetch('https://rtc.live.cloudflare.com/v1/turn/keys/' + keyId + '/credentials/generate-ice-servers',
+    { method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + tok }, payload: JSON.stringify({ ttl: 21600 }), muteHttpExceptions: true });
+  if (cr.getResponseCode() >= 300) return { error: 'turn_error', code: cr.getResponseCode() };
+  var j = JSON.parse(cr.getContentText()), ice = j.iceServers;
+  if (ice && !Array.isArray(ice)) ice = [ice];
+  return { iceServers: ice || [], ttl: 21600 };
+}
 function doPost(e) {
   var out;
   try {
     var b = JSON.parse(e.postData.contents);
     var p = PropertiesService.getScriptProperties();
+    if (b.action === 'turn') return ContentService.createTextOutput(JSON.stringify(turnPass_(b, p))).setMimeType(ContentService.MimeType.JSON);
     var form = { client_id: p.getProperty('CLIENT_ID'), client_secret: p.getProperty('CLIENT_SECRET') };
     if (!form.client_id || !form.client_secret) throw new Error('Helper not configured');
     if (b.action === 'exchange' && typeof b.code === 'string' && b.code.length < 1000) {
@@ -37,5 +70,5 @@ function doPost(e) {
 }
 
 function doGet() {
-  return ContentService.createTextOutput(JSON.stringify({ ok: true, app: 'pg-derma-drive-token-helper' })).setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify({ ok: true, app: 'pg-derma-drive-token-helper', turn: !!PropertiesService.getScriptProperties().getProperty('TURN_KEY_ID') })).setMimeType(ContentService.MimeType.JSON);
 }

@@ -140,7 +140,7 @@ function vAdmin() {
       const list = all.filter(x => x.status === tab).sort((a, b) => ts(b.requestedAt) - ts(a.requestedAt));
       const el = $('#alist'); if (!el) return;
       el.innerHTML = list.map(x => `<div class="li"><div class="row" style="gap:10px">${x.photo ? `<img class="gav sm" src="${esc(x.photo)}" alt="" referrerpolicy="no-referrer">` : ''}<div><b>${esc(x.name || x.email)}</b><small>${esc(x.email)}${ts(x.requestedAt) ? ' · requested ' + fmt(new Date(ts(x.requestedAt)).toISOString()) : ''}</small></div></div>
-        <div class="btnrow" style="margin:0">${x.status !== 'approved' ? `<button class="btn xs" data-act="adminset" data-id="${x.id}" data-s="approved">Approve</button>` : ''}${x.status === 'pending' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Reject</button>` : ''}${x.status === 'approved' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Revoke</button>` : ''}${x.status === 'rejected' ? `<button class="btn xs ghost" data-act="admindel" data-id="${x.id}">Remove</button>` : ''}</div></div>`).join('') || `<p class="muted small">No ${tab} requests.</p>`;
+        <div class="btnrow" style="margin:0">${x.status !== 'approved' ? `<button class="btn xs" data-act="adminset" data-id="${x.id}" data-s="approved">Approve</button>` : ''}${x.status === 'pending' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Reject</button>` : ''}${x.status === 'approved' && !ADMIN_EMAILS.includes((x.email || '').toLowerCase()) ? `<button class="btn xs ${x.calls ? '' : 'ghost'}" data-act="admincalls" data-id="${x.id}" data-on="${x.calls ? 1 : 0}" title="Voice/video calls">${ic('phone')} Calls ${x.calls ? 'on' : 'off'}</button>` : ''}${x.status === 'approved' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Revoke</button>` : ''}${x.status === 'rejected' ? `<button class="btn xs ghost" data-act="admindel" data-id="${x.id}">Remove</button>` : ''}</div></div>`).join('') || `<p class="muted small">No ${tab} requests.</p>`;
     }, e => { const el = $('#alist'); if (el) el.innerHTML = `<p class="err">${esc(e.code || e.message)}</p>`; });
   }).catch(() => { $('#alist').innerHTML = '<p class="err">Could not reach Firebase.</p>'; });
 }
@@ -154,15 +154,23 @@ ACT.adminset = async el => {
 ACT.adminshare = () => { const url = location.origin + location.pathname; const msg = `PG Derma Companion — app for DVL residents 🩺\n${url}\nOpen it, tap “Continue with Google”, and I'll approve you.`; if (navigator.share) navigator.share({ text: msg }).catch(() => {}); else window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };
 ACT.appsignout = () => Gate.signOut();
 const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['batches', 'Batches'], ['errors', 'Errors']];
+ACT.admincalls = async el => {
+  const on = el.dataset.on !== '1';
+  if (on && !(await uiConfirm('Allow this person to make and receive voice/video calls with batchmates?', { ok: 'Allow calls' }))) return;
+  try { await Cloud.f.updateDoc(Cloud.f.doc(Cloud.db, 'approvals', el.dataset.id), { calls: on }); toast(on ? 'Calls switched on' : 'Calls switched off'); }
+  catch (e) { toast('Could not update: ' + (e.code || e.message)); }
+};
 ACT.admindel = async el => {
   if (!(await uiConfirm('Remove this record? If they sign in again they will appear as a new request.'))) return;
   try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'approvals', el.dataset.id)); toast('Removed'); } catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
 };
 function vAdminBatches() {
   main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === 'batches' ? ' on' : ''}" href="#/admin?t=${k}">${l}</a>`).join('')}</div>
-  <p class="small muted">Every batch in the app. Deleting removes its chat, calendar, shared counts and members for everyone.</p><div id="blist" class="card"><p class="muted small">Loading…</p></div>`;
+  <p class="small muted">Every batch in the app. Deleting removes its chat, calendar, shared counts and members for everyone.</p><div id="relayuse" class="info small" style="margin-bottom:10px">Call relay this month: loading…</div><div id="blist" class="card"><p class="muted small">Loading…</p></div>`;
   Cloud.init().then(async () => {
     const f = Cloud.f, db = Cloud.db, snap = await f.getDocs(f.collection(db, 'batches'));
+    f.getDoc(f.doc(db, 'usage', new Date().toISOString().slice(0, 7))).then(u => { const x = u.exists() ? u.data() : {}, mb = x.relayMB || 0, el = $('#relayuse');
+      if (el) el.textContent = `Call relay this month: about ${mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb + ' MB'} over ${x.relayCalls || 0} relayed call${x.relayCalls === 1 ? '' : 's'} — free up to 1,000 GB/month. Direct calls use none.`; }).catch(() => { const el = $('#relayuse'); if (el) el.hidden = true; });
     const rows = await Promise.all(snap.docs.map(async d => {
       const x = d.data(), [m, msg] = await Promise.all([f.getDocs(f.collection(db, 'batches', d.id, 'members')), f.getDocs(f.collection(db, 'batches', d.id, 'messages'))]);
       return { id: d.id, name: x.name, created: x.createdAt && x.createdAt.seconds ? x.createdAt.seconds * 1000 : 0, members: m.docs.map(z => ({ id: z.id, name: z.data().name, year: z.data().year })), msgs: msg.size };

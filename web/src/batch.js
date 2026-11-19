@@ -94,7 +94,7 @@ ACT.bcreate = async () => {
   try {
     await f.setDoc(f.doc(Cloud.db, 'batches', id), { name, createdBy: uid, admins: [uid], createdAt: f.serverTimestamp() });
     await f.setDoc(f.doc(Cloud.db, 'batches', id, 'members', uid), memberDoc());
-    D.batch = { id, name, events: [], members: [], stats: [], shareStats: false, admin: true }; Store.save(); toast('Batch created'); render();
+    D.batch = { id, name, events: [], members: [], stats: [], shareStats: false, admin: true }; Store.save(); toast('Batch created'); render(); Calls.start();
   } catch (e) { toast('Could not create batch: ' + (e.code || e.message)); }
 };
 ACT.bjoin = async () => {
@@ -104,7 +104,7 @@ ACT.bjoin = async () => {
     const s = await f.getDoc(f.doc(Cloud.db, 'batches', id)); if (!s.exists()) return toast('No batch with that code');
     await f.setDoc(f.doc(Cloud.db, 'batches', id, 'members', Cloud.user.uid), memberDoc());
     D.batch = { id, name: s.data().name, events: [], members: [], stats: [], shareStats: false, admin: (s.data().admins || []).includes(Cloud.user.uid) };
-    delete D.settings.pendingJoin; Store.save(); toast('Joined ' + s.data().name); render();
+    delete D.settings.pendingJoin; Store.save(); toast('Joined ' + s.data().name); render(); Calls.start();
   } catch (e) { toast('Could not join: ' + (e.code || e.message)); }
 };
 ACT.bsignout = async () => { Cloud.stop(); Sync.stop(); await Cloud.f.signOut(Cloud.auth); render(); };
@@ -142,14 +142,16 @@ function paintBatch() {
     $('[data-group="blr"]').addEventListener('click', () => setTimeout(() => go('#/batch?t=log&y=' + yr + '&r=' + getChips('blr'))));
   }
   if (t === 'mem') {
-    el.innerHTML = `<div class="card">${(B().members || []).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(m => `<div class="li"><div><b>${esc(m.name)}</b>${m.id === Cloud.user?.uid ? ' <span class="tag">You</span>' : ''}<small>${esc(m.year || '')}</small></div>${bAdmin() && m.id !== Cloud.user?.uid ? `<button class="icon" data-act="bkick" data-id="${m.id}" aria-label="Remove">✕</button>` : ''}</div>`).join('') || '<p class="muted">Loading…</p>'}</div>
-    <div class="btnrow"><button class="btn sm ghost" data-act="bleave">Leave batch</button><button class="btn sm ghost" data-act="bsignout">Sign out</button></div>
+    el.innerHTML = `<div class="card">${(B().members || []).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(m => { const me = m.id === Cloud.user?.uid, on = me || Calls.isOnline(m.id);
+      return `<div class="li"><div class="row" style="gap:10px"><span class="pres${on ? ' on' : ''}" title="${on ? 'Online' : 'Offline'}"></span><div><b>${esc(m.name)}</b>${me ? ' <span class="tag">You</span>' : ''}<small>${esc(m.year || '')}${!me ? (on ? ' · online' : ' · offline') : ''}</small></div></div>
+      <div class="row" style="gap:2px">${!me && Calls.canCall(m.id) ? `<button class="icon callbtn" data-act="bcall" data-id="${m.id}" data-n="${esc(m.name)}" data-v="0" aria-label="Voice call ${esc(m.name)}" ${on ? '' : 'disabled'}>${ic('phone')}</button><button class="icon callbtn" data-act="bcall" data-id="${m.id}" data-n="${esc(m.name)}" data-v="1" aria-label="Video call ${esc(m.name)}" ${on ? '' : 'disabled'}>${ic('video')}</button>` : ''}${bAdmin() && !me ? `<button class="icon" data-act="bkick" data-id="${m.id}" aria-label="Remove">✕</button>` : ''}</div></div>`; }).join('') || '<p class="muted">Loading…</p>'}</div>
+    ${Calls.allowed ? '' : '<p class="small muted">Voice/video calls are switched on by the admin. Ask the admin if you need calling.</p>'}<div class="btnrow"><button class="btn sm ghost" data-act="bleave">Leave batch</button><button class="btn sm ghost" data-act="bsignout">Sign out</button></div>
     ${bAdmin() ? `<div class="card"><h3>Admin</h3><p class="small muted">${B().admin ? 'You created this batch.' : 'You are the app admin.'} These actions affect everyone.</p><div class="btnrow"><button class="btn sm ghost danger" data-act="bclearchat">Clear chat</button><button class="btn sm danger" data-act="bdelete">Delete batch</button></div></div>` : ''}`;
   }
 }
 function subscribeBatch() {
   Cloud.stop(); Chat.msgs = []; const f = Cloud.f, id = B().id, db = Cloud.db;
-  const err = e => { if (e.code === 'permission-denied') { toast('You are no longer a member of this batch'); D.batch = null; Store.save(); render(); } };
+  const err = e => { if (e.code === 'permission-denied') { toast('You are no longer a member of this batch'); Calls.stop(); D.batch = null; Store.save(); render(); } };
   Cloud.unsubs.push(f.onSnapshot(f.query(f.collection(db, 'batches', id, 'events'), f.where('date', '>=', addDays(today(), -60)), f.orderBy('date')), s => { B().events = s.docs.map(d => Object.assign({ id: d.id }, d.data(), { createdAt: null })); Store.save(); if ((ROUTE.q.t || 'cal') === 'cal') paintBatch(); }, err));
   Cloud.unsubs.push(f.onSnapshot(f.collection(db, 'batches', id, 'members'), s => { B().members = s.docs.map(d => ({ id: d.id, name: d.data().name, year: d.data().year })); if (ROUTE.q.t === 'mem') paintBatch(); }, err));
   Cloud.unsubs.push(f.onSnapshot(f.collection(db, 'batches', id, 'logstats'), s => { B().stats = s.docs.map(d => ({ id: d.id, counts: d.data().counts || {} })); if (ROUTE.q.t === 'log') paintBatch(); }, err));
@@ -186,7 +188,7 @@ ACT.bevsave = async () => {
 ACT.bevdel = async el => { if (!(await uiConfirm('Delete this event for everyone?'))) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'batches', B().id, 'events', el.dataset.id)); } catch (e) { toast(e.code || e.message); } };
 ACT.bevics = () => { const ev = (B().events || []).filter(e => e.date >= today()).map(e => ({ id: 'b' + e.id, date: e.date, time: e.time, title: e.type + ': ' + e.title, desc: [e.presenter, e.venue, e.notes].filter(Boolean).join(' · ') })); if (!ev.length) return toast('No upcoming events'); download(makeICS(ev), 'batch-calendar.ics'); };
 ACT.bevwa = () => { const ev = (B().events || []).filter(e => e.date >= today() && e.date <= addDays(today(), 7)).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))); if (!ev.length) return toast('Nothing in the next 7 days'); const msg = `📅 ${B().name} — this week\n\n` + ev.map(e => `• ${fmt(e.date)}${e.time ? ' ' + e.time : ''} — ${e.type}: ${e.title}${e.presenter ? ' (' + e.presenter + ')' : ''}${e.venue ? ' @ ' + e.venue : ''}`).join('\n'); window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };
-ACT.bleave = async () => { if (!(await uiConfirm('Leave this batch? Your shared counts will be removed.'))) return; const f = Cloud.f, id = B().id, uid = Cloud.user.uid; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'logstats', uid)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'members', uid)); } catch (e) {} Cloud.stop(); D.batch = null; Store.save(); render(); };
+ACT.bleave = async () => { if (!(await uiConfirm('Leave this batch? Your shared counts will be removed.'))) return; Calls.stop(); const f = Cloud.f, id = B().id, uid = Cloud.user.uid; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'presence', uid)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'logstats', uid)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'members', uid)); } catch (e) {} Cloud.stop(); D.batch = null; Store.save(); render(); };
 ACT.bkick = async el => { if (!(await uiConfirm('Remove this member?'))) return; const f = Cloud.f; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', B().id, 'logstats', el.dataset.id)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', B().id, 'members', el.dataset.id)); } catch (e) { toast(e.code || e.message); } };
 ACT.fbcfgclear = () => { delete D.settings.fbConfig; Store.save(); Cloud.ready = null; toast('Removed'); render(); };
 
@@ -195,7 +197,8 @@ const bAdmin = () => !!(B() && (B().admin || amAdmin()));
    Members go last because the batch-admin rules check membership. Used by the batch admin and the app admin. */
 async function deleteBatchAll(id, onProgress) {
   const f = Cloud.f, db = Cloud.db; let n = 0;
-  for (const sub of ['messages', 'events', 'logstats', 'members']) {
+  for (const sub of ['calls', 'presence', 'messages', 'events', 'logstats', 'members']) {
+    if (sub === 'calls') { const cs = await f.getDocs(f.collection(db, 'batches', id, 'calls')); for (const d of cs.docs) { const cd = await f.getDocs(f.collection(db, 'batches', id, 'calls', d.id, 'cands')); for (let i = 0; i < cd.docs.length; i += 400) { const wb = f.writeBatch(db); cd.docs.slice(i, i + 400).forEach(x => wb.delete(x.ref)); await wb.commit(); } } }
     const snap = await f.getDocs(f.collection(db, 'batches', id, sub));
     for (let i = 0; i < snap.docs.length; i += 400) {
       const wb = f.writeBatch(db); snap.docs.slice(i, i + 400).forEach(d => wb.delete(d.ref)); await wb.commit();
@@ -213,7 +216,7 @@ async function clearBatchChat(id) {
 ACT.bdelete = async () => {
   const b = B(); if (!b || !bAdmin()) return;
   if (!(await uiType(`This permanently deletes "${b.name}" for everyone: chat, calendar, shared counts and members.`, 'DELETE'))) return;
-  try { Cloud.stop(); toast('Deleting…'); const n = await deleteBatchAll(b.id); D.batch = null; Store.save(); toast(`Batch deleted (${n} items)`); render(); }
+  try { Cloud.stop(); Calls.stop(); toast('Deleting…'); const n = await deleteBatchAll(b.id); D.batch = null; Store.save(); toast(`Batch deleted (${n} items)`); render(); }
   catch (e) { toast('Could not delete: ' + (e.code || e.message)); subscribeBatch(); }
 };
 ACT.bclearchat = async () => {

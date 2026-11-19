@@ -47,7 +47,7 @@ async function showLock() {
       else if (!(await Vault.unlock(v))) throw new Error('Incorrect PIN');
       await Store.load(); await Store.flush(); await Session.save();
       $('#lock').hidden = true; $('#app').hidden = false; pin.value = '';
-      lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck();
+      lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); Calls.start();
     } catch (e) { $('#lerr').textContent = e.message; $('#unlock').disabled = false; $('#unlock').textContent = auth ? 'Unlock' : 'Create vault'; pin.select(); }
   };
   $('#unlock').onclick = go2; pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); if (auth) go2(); else $('#pin2').focus(); } });
@@ -55,7 +55,7 @@ async function showLock() {
 }
 async function lockApp(skipFlush) {
   if (skipFlush !== true) await Store.flush().catch(() => {});
-  closeSheet(); await Session.clear(); Sync.stop(); Sync.set('off');
+  closeSheet(); await Session.clear(); Sync.stop(); Sync.set('off'); Calls.stop();
   stopCam(); Cloud.stop(); D = null; Vault.key = null;
   for (const u of urlCache.values()) URL.revokeObjectURL(u); urlCache.clear();
   $('#main').innerHTML = ''; showLock();
@@ -63,10 +63,10 @@ async function lockApp(skipFlush) {
 ACT.lock = lockApp;
 let lastAct = Date.now(), hiddenAt = 0;
 ['pointerdown', 'keydown', 'scroll'].forEach(e => addEventListener(e, () => { lastAct = Date.now(); Session.touch(); }, { passive: true }));
-setInterval(() => { if (D && Date.now() - lastAct > (D.settings.lockMin || 15) * 60000) lockApp(); }, 15000);
+setInterval(() => { if (Calls.cur) { lastAct = Date.now(); return; } if (D && Date.now() - lastAct > (D.settings.lockMin || 15) * 60000) lockApp(); }, 15000);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { hiddenAt = Date.now(); Store.flush(); Session.save().catch(() => {}); }
-  else if (D && hiddenAt && Date.now() - hiddenAt > (D.settings.lockMin || 15) * 60000) lockApp();
+  else if (D && hiddenAt && !Calls.cur && Date.now() - hiddenAt > (D.settings.lockMin || 15) * 60000) lockApp();
   else if (D && Sync.on()) Sync.run();
 });
 addEventListener('pagehide', () => Store.flush());
@@ -98,7 +98,7 @@ let lastW = innerWidth; addEventListener('resize', () => { if ((lastW >= 900) !=
   await IDB.open();
   await Gate.ensure();
   if (await Session.resume()) {
-    try { await Store.load(); $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); }
+    try { await Store.load(); $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); Calls.start(); }
     catch (e) { Vault.key = null; D = null; await Session.clear(); showLock(); }
   } else showLock();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

@@ -232,3 +232,15 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc);box
 .dlg-in{margin:0 0 12px}
 .dlg-btns{display:flex;gap:8px;justify-content:flex-end}.dlg-btns .btn{min-width:96px}
 @keyframes dlgin{from{opacity:0}to{opacity:1}}
+/* presence + calls */
+.pres{width:10px;height:10px;border-radius:50%;background:#cbd5e1;flex:none}.pres.on{background:#16a34a;box-shadow:0 0 0 3px color-mix(in srgb,#16a34a 18%,transparent)}
+.callbtn{color:var(--acc)}.callbtn:disabled{color:var(--line);cursor:not-allowed}
+.callui{position:fixed;inset:0;z-index:95;background:#0b1120;color:#fff;display:flex;flex-direction:column;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 48px) 20px calc(36px + var(--safeb))}
+.callui video#cremote{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#0b1120}
+.callui video#clocal{position:absolute;right:14px;top:calc(env(safe-area-inset-top,0px) + 14px);width:28vw;max-width:150px;aspect-ratio:3/4;object-fit:cover;border-radius:12px;border:2px solid rgba(255,255,255,.6);z-index:2;transform:scaleX(-1)}
+.call-top{position:relative;z-index:1;text-align:center}.callui.video .call-top{text-shadow:0 1px 4px rgba(0,0,0,.6)}
+.call-av{width:96px;height:96px;border-radius:50%;background:#134e4a;color:#99f6e4;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;margin:0 auto 14px}
+.callui.video.live .call-av{display:none}.callui.video:not(.live) video{opacity:.25}.call-top h2{color:#fff;font-size:24px;margin:0}.call-top p{color:#cbd5e1;margin:6px 0 0;font-size:15px}
+.call-ctl{position:relative;z-index:2;display:flex;justify-content:center;gap:22px}
+.cbtn{width:62px;height:62px;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(6px)}
+.cbtn svg.ic{width:26px;height:26px}.cbtn.on{background:#fff;color:#0b1120}.cbtn.red{background:#dc2626}.cbtn.green{background:#16a34a}

@@ -2,6 +2,12 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 19 Nov 2026 (calls)
+- **1:1 voice & video calls** between batchmates: Batch hub → Members. A green dot shows who has the app open; tap 📞 or 🎥 to call. The call screen has ringing, answer (voice or video), mute, camera on/off, switch camera and a timer.
+- **Calling is off by default.** The admin switches it on per person in Access requests → Approved ("Calls on/off"), and the database rules enforce it.
+- Calls go phone-to-phone; across blocked networks they relay through Cloudflare's free tier. Nothing is recorded or stored.
+- The app won't auto-lock in the middle of a call.
+
 ## 19 Nov 2026 (fix)
 - **Fixed: "Delete batch" did nothing** in some browsers and installed apps. The browser's pop-up box was blocked. All confirmations (delete, clear chat, PIN change, erase, remove member…) now use the app's own dialog, which works everywhere.
 

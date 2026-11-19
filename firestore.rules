@@ -14,20 +14,27 @@ service cloud.firestore {
     }
     function isMember(b) { return approved() && exists(/databases/$(database)/documents/batches/$(b)/members/$(request.auth.uid)); }
     function isAdmin(b) { return approved() && request.auth.uid in get(/databases/$(database)/documents/batches/$(b)).data.admins; }
+    // Calling is off by default; the admin switches it on per person (approvals/{uid}.calls == true).
+    function canCall(u) {
+      return exists(/databases/$(database)/documents/approvals/$(u))
+        && get(/databases/$(database)/documents/approvals/$(u)).data.get('calls', false) == true;
+    }
     function shortStr(v, n) { return v is string && v.size() <= n; }
 
     // Access requests. A user can only file their own request as "pending"; only the admin decides.
     match /approvals/{u} {
       allow get: if signedIn() && (u == request.auth.uid || isAdminUser());
       allow list: if isAdminUser();
-      allow create: if signedIn() && u == request.auth.uid
+      allow create: if (isAdminUser() && request.resource.data.keys().hasOnly(['email', 'name', 'photo', 'status', 'requestedAt', 'decidedAt', 'decidedBy', 'calls']))
+        || (signedIn() && u == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.keys().hasOnly(['email', 'name', 'photo', 'status', 'requestedAt'])
-        && shortStr(request.resource.data.name, 120) && shortStr(request.resource.data.photo, 500);
+        && shortStr(request.resource.data.name, 120) && shortStr(request.resource.data.photo, 500));
       allow update: if isAdminUser()
         && request.resource.data.status in ['pending', 'approved', 'rejected']
-        && request.resource.data.keys().hasOnly(['email', 'name', 'photo', 'status', 'requestedAt', 'decidedAt', 'decidedBy']);
+        && request.resource.data.keys().hasOnly(['email', 'name', 'photo', 'status', 'requestedAt', 'decidedAt', 'decidedBy', 'calls'])
+        && (!('calls' in request.resource.data) || request.resource.data.calls is bool);
       allow delete: if isAdminUser();
     }
 
@@ -38,6 +45,13 @@ service cloud.firestore {
         && shortStr(request.resource.data.msg, 300) && shortStr(request.resource.data.stack, 900)
         && shortStr(request.resource.data.route, 60) && shortStr(request.resource.data.ua, 160);
       allow read, delete: if isAdminUser();
+    }
+
+    // Monthly call-relay estimate for the admin page.
+    match /usage/{m} {
+      allow read: if isAdminUser();
+      allow create, update: if approved() && request.resource.data.keys().hasOnly(['relayMB', 'relayCalls', 'updatedAt'])
+        && request.resource.data.relayMB is int && request.resource.data.relayCalls is int;
     }
 
     match /batches/{b} {
@@ -86,6 +100,43 @@ service cloud.firestore {
           && request.resource.data.at == request.time;
         allow delete: if isAdminUser() || (isMember(b) && (resource.data.uid == request.auth.uid || isAdmin(b)));
         allow update: if false;
+      }
+
+      // Online status: members see who has the app open; you only write your own heartbeat.
+      match /presence/{u} {
+        allow read: if isMember(b) || isAdminUser();
+        allow create, update: if isMember(b) && u == request.auth.uid
+          && request.resource.data.keys().hasOnly(['name', 'at', 'calls']) && shortStr(request.resource.data.name, 80);
+        allow delete: if signedIn() && (u == request.auth.uid || isAdmin(b) || isAdminUser());
+      }
+
+      // 1:1 calls: only the two people on a call can see it. Media never touches Firestore.
+      match /calls/{c} {
+        function party() { return resource.data.caller == request.auth.uid || resource.data.callee == request.auth.uid; }
+        allow read: if isMember(b) && party();
+        allow create: if isMember(b)
+          && request.resource.data.caller == request.auth.uid
+          && request.resource.data.callee != request.auth.uid
+          && canCall(request.auth.uid) && canCall(request.resource.data.callee)
+          && exists(/databases/$(database)/documents/batches/$(b)/members/$(request.resource.data.callee))
+          && request.resource.data.status == 'ringing'
+          && request.resource.data.keys().hasOnly(['caller', 'callerName', 'callee', 'calleeName', 'video', 'status', 'offer', 'createdAt'])
+          && shortStr(request.resource.data.callerName, 80) && shortStr(request.resource.data.calleeName, 80);
+        allow update: if isMember(b) && party() && canCall(request.auth.uid)
+          && request.resource.data.caller == resource.data.caller && request.resource.data.callee == resource.data.callee
+          && request.resource.data.status in ['ringing', 'accepted', 'declined', 'ended', 'missed', 'busy']
+          && request.resource.data.keys().hasOnly(['caller', 'callerName', 'callee', 'calleeName', 'video', 'status', 'offer', 'answer', 'createdAt', 'endedAt']);
+        allow delete: if isAdminUser() || isAdmin(b) || (isMember(b) && resource.data.caller == request.auth.uid);
+        match /cands/{x} {
+          function inCall() {
+            let call = get(/databases/$(database)/documents/batches/$(b)/calls/$(c)).data;
+            return call.caller == request.auth.uid || call.callee == request.auth.uid;
+          }
+          allow read: if isMember(b) && inCall();
+          allow create: if isMember(b) && inCall() && request.resource.data.keys().hasOnly(['from', 'c'])
+            && request.resource.data.from in ['caller', 'callee'];
+          allow delete: if isAdminUser() || isAdmin(b) || (isMember(b) && inCall());
+        }
       }
 
       match /logstats/{u} {
