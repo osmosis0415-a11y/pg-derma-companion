@@ -49,7 +49,7 @@ The free Spark plan is enough for a batch. The Firebase web config is public by 
 web/src/        app source (plain JS, no dependencies)
 web/build.py    bundles everything into dist/index.html + PWA files
 web/test/       scoring-engine unit tests
-flutter/        native Flutter (Android/iOS/iPadOS) version of the same app
+flutter/        native Flutter starter (Android/iOS/iPadOS): SQLCipher, biometrics, ML Kit OCR + face masking
 .github/workflows/pages.yml   build → test → deploy to GitHub Pages on every push to main
 ```
 
