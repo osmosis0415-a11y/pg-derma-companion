@@ -14,7 +14,7 @@ UrlFetchApp:{fetch:(url,o)=>{fetches.push([o.method,url]);const doc=(id)=>({name
  return {getResponseCode:()=>200,getContentText:()=>JSON.stringify(body)}}}};
 const src=fs.readFileSync(require('path').join(__dirname,'../../tools/admin-bot.gs'),'utf8');const f=new Function(...Object.keys(g),src+';return {checkNew,doGet,decide,setup,link_,dashLink_};');const B=f(...Object.values(g));
 const ok=(n,c)=>console.log((c?'PASS ':'FAIL ')+n);
-B.setup();B.checkNew();ok('email for new pending',sent.length===1&&sent[0].htmlBody.includes('Asha')&&!sent[0].htmlBody.includes('Bo<'));
+B.setup();ok('setup sends confirmation',sent[0].subject.includes('connected'));sent.shift();B.checkNew();ok('email for new pending',sent.length===1&&sent[0].htmlBody.includes('Asha')&&!sent[0].htmlBody.includes('Bo<'));
 B.checkNew();ok('no duplicate email',sent.length===1);
 const L=new URL(B.link_('u1','approve'));const q=Object.fromEntries(L.searchParams);
 ok('confirm page does not change status',B.doGet({parameter:q}).h.includes('Confirm: Approve')&&db.u1.status==='pending');
