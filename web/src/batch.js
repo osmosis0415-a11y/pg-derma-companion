@@ -75,7 +75,7 @@ function signInHTML() {
   <button class="btn gbtn" data-act="gsign2" style="width:100%"><span class="g">G</span> Continue with Google</button></div>`;
 }
 ACT.gsign2 = async () => { try { await googleSignIn(); render(); } catch (e) { toast(authMsg(e)); } };
-ACT.gsign = async () => { const f = Cloud.f, pr = new f.GoogleAuthProvider(); const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone; try { if (standalone) await f.signInWithRedirect(Cloud.auth, pr); else await f.signInWithPopup(Cloud.auth, pr); } catch (e) { if (e.code === 'auth/popup-blocked') await f.signInWithRedirect(Cloud.auth, pr); else toast(authMsg(e)); } };
+ACT.gsign = ACT.gsign2;
 ACT.esignin = async () => { try { await Cloud.f.signInWithEmailAndPassword(Cloud.auth, val('b_email'), $('#b_pw').value); Cloud.user = Cloud.auth.currentUser; render(); } catch (e) { toast(authMsg(e)); } };
 ACT.esignup = async () => { try { await Cloud.f.createUserWithEmailAndPassword(Cloud.auth, val('b_email'), $('#b_pw').value); Cloud.user = Cloud.auth.currentUser; await sendVerify(); render(); } catch (e) { toast(authMsg(e)); } };
 ACT.ereset = async () => { if (!val('b_email')) return toast('Enter your email first'); try { await Cloud.f.sendPasswordResetEmail(Cloud.auth, val('b_email')); toast('Reset link sent to your email'); } catch (e) { toast(authMsg(e)); } };

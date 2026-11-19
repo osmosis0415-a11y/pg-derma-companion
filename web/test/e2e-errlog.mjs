@@ -1,0 +1,27 @@
+const list = await (await fetch('http://127.0.0.1:9333/json')).json();
+const ws = new WebSocket(list.find(t=>t.type==='page').webSocketDebuggerUrl); await new Promise(r=>ws.onopen=r);
+let id=0; const pend={}; ws.onmessage=m=>{const d=JSON.parse(m.data); if(d.id&&pend[d.id]){pend[d.id](d);delete pend[d.id]}};
+const send=(method,params={})=>new Promise(r=>{const i=++id;pend[i]=r;ws.send(JSON.stringify({id:i,method,params}))});
+const ev=async e=>(await send('Runtime.evaluate',{expression:e,returnByValue:true,awaitPromise:true})).result.result?.value;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms)); const chk=(n,c)=>console.log((c?'PASS ':'FAIL ')+n);
+await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"});
+await send('Page.navigate',{url:'http://localhost:8765/'}); await sleep(1500);
+await ev(`$('#pin').value='1234';$('#pin2').value='1234';$('#unlock').click()`); await sleep(2500);
+await ev(`(()=>{ window.__docs=[]; const f={ serverTimestamp:()=>'TS', collection:(db,...p)=>({p}), doc:(db,...p)=>({p}), query:(c)=>c, orderBy:()=>0, limit:()=>0,
+  addDoc:async(c,v)=>{__docs.push(v)}, getDocs:async()=>({docs:__docs.map((v,i)=>({id:'e'+i,data:()=>v}))}), deleteDoc:async(d)=>{__docs.splice(0,1)}, onSnapshot:()=>()=>{} };
+  D.settings.fbConfig={apiKey:'x',projectId:'p'}; Gate.cached={uid:'U1',email:'sriramdeverashetty@gmail.com',status:'approved'};
+  Cloud.init=function(){this.f=f;this.db={};this.user={uid:'U1',email:'sriramdeverashetty@gmail.com'};return Promise.resolve()}; })()`);
+await ev(`location.hash='#/visit/abcdef123456?x=1'`); await sleep(300);
+await ev(`setTimeout(()=>{ throw new Error('Cannot read "Ravi Kumar" UHID 2026-1001 for ravi@gmail.com') },0)`); await sleep(3000);
+const d = await ev(`__docs[0]`);
+chk('error reported', !!d); console.log(JSON.stringify(d).slice(0,400));
+chk('patient name scrubbed', d && !JSON.stringify(d).includes('Ravi Kumar'));
+chk('UHID scrubbed', d && !JSON.stringify(d).includes('2026-1001'));
+chk('email scrubbed', d && !d.msg.includes('ravi@gmail.com'));
+chk('route shape only', d && !d.route.includes('abcdef123456'));
+await ev(`setTimeout(()=>{ throw new Error('Cannot read "Ravi Kumar" UHID 2026-1001 for ravi@gmail.com') },0)`); await sleep(2500);
+chk('duplicate suppressed', await ev(`__docs.length===1`));
+await ev(`setTimeout(()=>{ Promise.reject(new Error('async fail')) },0); 1`); await sleep(2500); chk('promise rejection reported', await ev(`__docs.some(x=>x.type==='promise')`));
+await ev(`location.hash='#/admin?t=errors'`); await sleep(800);
+chk('admin errors tab lists reports', (await ev(`$('#elist').textContent`)).includes('Cannot read'));
+process.exit(0);

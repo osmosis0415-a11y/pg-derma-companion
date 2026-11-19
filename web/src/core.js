@@ -65,6 +65,7 @@ const Vault = {
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const nk = await this.derive(newPin, salt);
     for (const k of await IDB.keys('photos')) { const o = await IDB.get('photos', k); const plain = await this.dec(o, oldKey); await IDB.put('photos', k, await this.enc(plain, nk)); }
+    const drt = await IDB.get('kv', 'drt').catch(() => null); if (drt) await IDB.put('kv', 'drt', await this.enc(await this.dec(drt, oldKey), nk));
     this.key = nk;
     await IDB.put('meta', 'auth', { salt, iter: ITER, check: await this.encJSON('PGDERMA-OK') });
     await Store.flush();

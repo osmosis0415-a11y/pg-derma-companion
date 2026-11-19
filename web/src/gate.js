@@ -6,14 +6,32 @@ const ADMIN_EMAILS = ['sriramdeverashetty@gmail.com'];
 const isAdminUser = u => !!(u && u.email && ADMIN_EMAILS.includes(u.email.toLowerCase()));
 const amAdmin = () => isAdminUser(Cloud.user) || !!(Gate.cached && ADMIN_EMAILS.includes((Gate.cached.email || '').toLowerCase()));
 
+// Google Identity Services popup → Google access token → Firebase credential. Works in installed PWAs.
+async function gisSignIn(f) {
+  await Drive.loadGis();
+  const tok = await new Promise((res, rej) => {
+    const c = google.accounts.oauth2.initTokenClient({ client_id: DRIVE_CLIENT_ID, scope: 'openid email profile',
+      callback: r => r && r.access_token ? res(r.access_token) : rej(Object.assign(new Error('Sign-in was cancelled'), { code: 'auth/popup-closed-by-user' })),
+      error_callback: e => rej(Object.assign(new Error('Sign-in was cancelled'), { code: e && e.type === 'popup_failed_to_open' ? 'auth/popup-blocked' : 'auth/popup-closed-by-user' })) });
+    c.requestAccessToken({ prompt: 'select_account' });
+  });
+  await f.signInWithCredential(Cloud.auth, f.GoogleAuthProvider.credential(null, tok));
+}
 async function googleSignIn() {
   await Cloud.init();
   const f = Cloud.f, pr = new f.GoogleAuthProvider();
   pr.setCustomParameters({ prompt: 'select_account' });
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-  if (standalone) { await f.signInWithRedirect(Cloud.auth, pr); return; }
-  try { await f.signInWithPopup(Cloud.auth, pr); }
-  catch (e) { if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') await f.signInWithRedirect(Cloud.auth, pr); else throw e; }
+  // Installed app (or popup refused): Firebase's redirect flow breaks when the auth domain differs from
+  // the site (browser storage partitioning), so sign in through Google Identity Services instead.
+  if (standalone) await gisSignIn(f);
+  else {
+    try { await f.signInWithPopup(Cloud.auth, pr); }
+    catch (e) {
+      if (!['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/web-storage-unsupported', 'auth/internal-error'].includes(e.code)) throw e;
+      await gisSignIn(f);
+    }
+  }
   Cloud.user = Cloud.auth.currentUser;
 }
 
@@ -40,6 +58,7 @@ const Gate = {
       this.box(`<p class="small">Sign in with your Google account to continue. New accounts are approved by the app admin before first use.</p>
         <button class="btn gbtn" id="gsign" style="width:100%"><span class="g">G</span> Continue with Google</button><p id="lerr" class="err"></p>
         <p class="tiny muted">Patient data stays encrypted on your device. Google sign-in only confirms who you are.</p>`);
+      Drive.loadGis().catch(() => {});
       $('#gsign').onclick = async () => { $('#gsign').disabled = true; try { await googleSignIn(); this.screen(); } catch (e) { $('#lerr').textContent = authMsg(e); $('#gsign').disabled = false; } };
       return;
     }
@@ -106,7 +125,8 @@ function vAdmin() {
   setTitle('Access requests', false);
   if (!amAdmin()) { main().innerHTML = empty('Admins only'); return; }
   const tab = ROUTE.q.t || 'pending';
-  main().innerHTML = `<div class="chips">${[['pending', '⏳ Pending'], ['approved', '✅ Approved'], ['rejected', '⛔ Rejected']].map(([k, l]) => `<a class="chip${k === tab ? ' on' : ''}" href="#/admin?t=${k}">${l} <span id="cnt_${k}"></span></a>`).join('')}</div>
+  if (tab === 'errors') return vAdminErrors();
+  main().innerHTML = `<div class="chips">${[['pending', '⏳ Pending'], ['approved', '✅ Approved'], ['rejected', '⛔ Rejected'], ['errors', '🐞 Errors']].map(([k, l]) => `<a class="chip${k === tab ? ' on' : ''}" href="#/admin?t=${k}">${l} <span id="cnt_${k}"></span></a>`).join('')}</div>
   <div id="alist" class="card"><p class="muted small">Loading…</p></div>
   <div class="card"><h3>Invite people</h3><p class="small muted">Share the app link. They sign in with Google and appear here for your approval.</p><button class="btn sm ghost" data-act="adminshare">Share app link</button></div>`;
   Cloud.init().then(() => {
@@ -132,3 +152,15 @@ ACT.adminset = async el => {
 };
 ACT.adminshare = () => { const url = location.origin + location.pathname; const msg = `PG Derma Companion — app for DVL residents 🩺\n${url}\nOpen it, tap “Continue with Google”, and I'll approve you.`; if (navigator.share) navigator.share({ text: msg }).catch(() => {}); else window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };
 ACT.appsignout = () => Gate.signOut();
+function vAdminErrors() {
+  main().innerHTML = `<div class="chips">${[['pending', '⏳ Pending'], ['approved', '✅ Approved'], ['rejected', '⛔ Rejected'], ['errors', '🐞 Errors']].map(([k, l]) => `<a class="chip${k === 'errors' ? ' on' : ''}" href="#/admin?t=${k}">${l}</a>`).join('')}</div>
+  <p class="small muted">App errors from approved users (last 50). Messages are scrubbed — no patient data is sent.</p>
+  <div class="btnrow"><button class="btn sm ghost" data-act="errclear">Clear all</button></div><div id="elist" class="card"><p class="muted small">Loading…</p></div>`;
+  Cloud.init().then(async () => {
+    const f = Cloud.f, s = await f.getDocs(f.query(f.collection(Cloud.db, 'errors'), f.orderBy('createdAt', 'desc'), f.limit(50)));
+    const el = $('#elist'); if (!el) return;
+    window.__errDocs = s.docs.map(d => d.id);
+    el.innerHTML = s.docs.map(d => { const x = d.data(); return `<details class="err-item"><summary><b>${esc(x.msg)}</b><br><small class="muted">${esc(x.type)} · ${esc(x.route)} · v${esc(x.version)} · ${esc((x.at || '').replace('T', ' ').slice(0, 16))}</small></summary><pre class="small">${esc(x.stack)}</pre><small class="muted">${esc(x.ua)}</small></details>`; }).join('') || '<p class="muted small">No errors reported 🎉</p>';
+  }).catch(e => { const el = $('#elist'); if (el) el.innerHTML = `<p class="err">${esc(e.code || e.message)}</p>`; });
+}
+ACT.errclear = async () => { if (!confirm('Delete all error reports?')) return; const f = Cloud.f; for (const id of window.__errDocs || []) await f.deleteDoc(f.doc(Cloud.db, 'errors', id)).catch(() => {}); render(); };

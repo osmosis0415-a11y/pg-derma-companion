@@ -2,6 +2,12 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 19 Nov 2026 (admin bot, Drive stays connected, error reports)
+- **Google Drive stays connected.** No more "reconnect" bar every hour; the app renews access silently in the background.
+- **Sign-in fixed for the installed app** (home-screen icon): Google sign-in now uses a popup that works inside installed apps.
+- **Approval bot for the admin:** an email (optionally Telegram) arrives for every new sign-up, with one-tap Approve / Reject.
+- **Error reports:** if something breaks, a short, scrubbed report (no names, emails, UHIDs or notes) reaches the admin under More → Access requests → Errors.
+
 ## 19 Nov 2026 (Google sign-in & approval)
 - **Sign in with Google** is now required to open the app. New accounts wait for **approval by the admin (Dr. Sriram)**; the screen unlocks automatically once approved. There's a button to ask for approval on WhatsApp.
 - Admin: **More → Access requests** to approve, reject or revoke. Revoked accounts are locked out the next time the app goes online.

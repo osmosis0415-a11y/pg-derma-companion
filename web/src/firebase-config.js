@@ -8,3 +8,6 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "567044730190",
   appId: "1:567044730190:web:23fe45145f62421df7421f"
 };
+
+/* Google Apps Script token helper URL (tools/drive-token-helper.gs). Empty = hourly one-tap Drive reconnect. */
+window.DRIVE_TOKEN_HELPER = 'https://script.google.com/macros/s/AKfycbxbRc1lnIR6cE91QWQT3qT9ifdSL6xtr6M3W581TcIVr6Fb2AYwgqCPvOMkkJW1prrD/exec';

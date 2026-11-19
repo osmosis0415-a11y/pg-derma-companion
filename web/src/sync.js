@@ -56,8 +56,16 @@ const packBlob = o => { const iv = new Uint8Array(o.iv), d = new Uint8Array(o.da
 const unpackBlob = buf => { const u = new Uint8Array(buf); return { iv: u.slice(0, 12), data: u.slice(12).buffer }; };
 const driveErr = (code, msg) => Object.assign(new Error(msg), { code });
 
+/* Optional token helper (tools/drive-token-helper.gs). When set, Drive access renews silently in the background
+   using a refresh token kept on this device, encrypted with the PIN key. Without it, a one-tap reconnect is needed hourly. */
+const driveHelper = () => window.DRIVE_TOKEN_HELPER || '';
+const helperCall = async (action, body) => {
+  let r; try { r = await fetch(driveHelper(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action }, body)) }); }
+  catch (e) { throw driveErr('drive/offline', 'Could not reach the Drive helper'); }
+  return r.json();
+};
 const Drive = {
-  token: null, exp: 0, client: null, files: null,
+  token: null, exp: 0, client: null, codeClient: null, files: null, _pendingRT: null,
   loadGis() {
     if (window.google?.accounts?.oauth2) return Promise.resolve();
     if (this._gis) return this._gis;
@@ -65,10 +73,45 @@ const Drive = {
     return this._gis;
   },
   valid() { return !!this.token && Date.now() < this.exp; },
-  async restoreToken() { if (this.valid()) return true; const t = await IDB.get('meta', 'dtoken').catch(() => null); if (t && Date.now() < t.exp) { this.token = t.t; this.exp = t.exp; return true; } return false; },
+  async setToken(t) { this.token = t.access_token; this.exp = Date.now() + (Number(t.expires_in || 3600) - 120) * 1000; this.files = null; await IDB.put('meta', 'dtoken', { t: this.token, exp: this.exp }); const b = $('#drivebar'); if (b) b.hidden = true; },
+  async saveRefresh(rt) { if (!Vault.key) { this._pendingRT = rt; return; } await IDB.put('kv', 'drt', await Vault.encJSON(rt)); this._pendingRT = null; },
+  async persistPending() { if (this._pendingRT) await this.saveRefresh(this._pendingRT); },
+  hasRefresh() { return IDB.get('kv', 'drt').then(x => !!x).catch(() => false); },
+  async refresh() {
+    if (!driveHelper() || !Vault.key) return false;
+    const enc = await IDB.get('kv', 'drt').catch(() => null); if (!enc) return false;
+    const rt = await Vault.decJSON(enc);
+    const t = await helperCall('refresh', { refresh_token: rt });
+    if (!t.access_token) { if (t.error === 'invalid_grant') await IDB.del('kv', 'drt'); return false; }
+    await this.setToken(t); return true;
+  },
+  async restoreToken() {
+    if (this.valid()) return true;
+    const t = await IDB.get('meta', 'dtoken').catch(() => null); if (t && Date.now() < t.exp) { this.token = t.t; this.exp = t.exp; return true; }
+    try { return await this.refresh(); } catch (e) { return false; }
+  },
   /* Must be started from a tap (browsers block the Google popup otherwise). */
   async connect(hint, prompt = '') {
     await this.loadGis();
+    if (driveHelper()) {
+      return new Promise((res, rej) => {
+        this.codeClient = google.accounts.oauth2.initCodeClient({
+          client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPE, ux_mode: 'popup', login_hint: hint || undefined,
+          select_account: prompt === 'select_account',
+          callback: async r => {
+            if (r.error) return rej(driveErr('drive/denied', r.error === 'access_denied' ? 'Google Drive access was not allowed' : r.error));
+            if (r.scope && !r.scope.split(' ').includes(DRIVE_SCOPE)) return rej(driveErr('drive/denied', 'Please allow access to the app folder in Google Drive'));
+            try {
+              const t = await helperCall('exchange', { code: r.code });
+              if (!t.access_token) return rej(driveErr('drive/helper', 'Google Drive sign-in failed (' + (t.error_description || t.error || 'helper') + ')'));
+              await this.setToken(t); if (t.refresh_token) await this.saveRefresh(t.refresh_token); res();
+            } catch (e) { rej(e); }
+          },
+          error_callback: e => rej(driveErr('drive/popup', e && e.type === 'popup_closed' ? 'Google sign-in was closed' : 'Google sign-in popup was blocked — tap again'))
+        });
+        this.codeClient.requestCode();
+      });
+    }
     if (!this.client) this.client = google.accounts.oauth2.initTokenClient({ client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPE, callback: () => {} });
     return new Promise((res, rej) => {
       this.client.callback = async r => {
@@ -81,13 +124,17 @@ const Drive = {
       this.client.requestAccessToken({ prompt, login_hint: hint || undefined });
     });
   },
-  async forget() { const t = this.token; this.token = null; this.exp = 0; this.files = null; await IDB.del('meta', 'dtoken').catch(() => {}); if (t && window.google?.accounts?.oauth2) try { google.accounts.oauth2.revoke(t, () => {}); } catch (e) {} },
-  async api(path, opts = {}) {
-    if (!this.valid()) throw driveErr('drive/token', 'Google Drive needs reconnecting');
+  async forget() {
+    const enc = await IDB.get('kv', 'drt').catch(() => null);
+    if (enc && Vault.key) { try { const rt = await Vault.decJSON(enc); fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(rt), { method: 'POST' }).catch(() => {}); } catch (e) {} }
+    await IDB.del('kv', 'drt').catch(() => {});
+    const t = this.token; this.token = null; this.exp = 0; this.files = null; await IDB.del('meta', 'dtoken').catch(() => {}); if (t && window.google?.accounts?.oauth2) try { google.accounts.oauth2.revoke(t, () => {}); } catch (e) {} },
+  async api(path, opts = {}, retried) {
+    if (!this.valid() && !(await this.refresh().catch(() => false))) throw driveErr('drive/token', 'Google Drive needs reconnecting');
     let r;
     try { r = await fetch('https://www.googleapis.com/' + path, Object.assign({}, opts, { headers: Object.assign({}, opts.headers || {}, { Authorization: 'Bearer ' + this.token }) })); }
     catch (e) { throw driveErr('drive/offline', 'No internet connection'); }
-    if (r.status === 401) { this.token = null; await IDB.del('meta', 'dtoken').catch(() => {}); throw driveErr('drive/token', 'Google Drive session expired'); }
+    if (r.status === 401) { this.token = null; this.exp = 0; await IDB.del('meta', 'dtoken').catch(() => {}); if (!retried && await this.refresh().catch(() => false)) return this.api(path, opts, true); throw driveErr('drive/token', 'Google Drive session expired'); }
     if (r.status === 403 && /storageQuotaExceeded|quotaExceeded/.test(await r.clone().text())) throw driveErr('drive/full', 'Your Google Drive is full');
     if (!r.ok) throw driveErr('drive/http', 'Google Drive error ' + r.status);
     return r;
@@ -171,7 +218,8 @@ const Sync = {
       this.quiet = false; console.warn('sync', e);
       if (e.code === 'drive/token') this.set('reconnect', 'Tap to reconnect Google Drive');
       else if (e.code === 'drive/offline') this.set('offline', 'Offline — will sync when back online');
-      else this.set('error', e.code === 'drive/full' ? 'Your Google Drive is full — free up space or turn off photo sync' : 'Sync failed: ' + (e.message || e.code));
+      else { if (e.code !== 'drive/full') ErrLog.capture('sync', e.message || e.code, e.stack); }
+      if (!['drive/token', 'drive/offline'].includes(e.code)) this.set('error', e.code === 'drive/full' ? 'Your Google Drive is full — free up space or turn off photo sync' : 'Sync failed: ' + (e.message || e.code));
     } finally {
       this.busy = false;
       if (this.again) { this.again = false; this.schedule(1500); }
@@ -199,6 +247,7 @@ const Sync = {
     const ok = Vault.key;
     for (const k of await IDB.keys('photos')) { const o = await IDB.get('photos', k); await IDB.put('photos', k, await Vault.enc(await Vault.dec(o, ok), nk)); }
     await IDB.put('meta', 'auth', { salt, iter: m.iter, check });
+    const drt = await IDB.get('kv', 'drt').catch(() => null); if (drt) await IDB.put('kv', 'drt', await Vault.enc(await Vault.dec(drt, ok), nk));
     Vault.key = nk; urlCache.clear();
     await IDB.del('kv', 'syncbase'); await IDB.put('kv', 'psynced', []);
     await Store.flush(); await Session.save();
@@ -285,7 +334,7 @@ async function restoreFlow() {
         await IDB.put('kv', 'db', blob);
         await IDB.put('kv', 'syncbase', { v: m.v, h: await sha(JSON.stringify(remote)), enc: await Vault.encJSON(remote) });
         await IDB.put('kv', 'psynced', []);
-        await Store.load(); D.sync = { on: true, photos: true, email: about.user && about.user.emailAddress }; await Store.flush(); await Session.save();
+        await Store.load(); D.sync = { on: true, photos: true, email: about.user && about.user.emailAddress }; await Store.flush(); await Session.save(); await Drive.persistPending();
         $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); toast('Restored — downloading photos in the background', 4000); Sync.start();
       } catch (e) { Vault.key = null; $('#lerr').textContent = e.message; $('#rgo').disabled = false; $('#rgo').textContent = 'Restore'; }
     };

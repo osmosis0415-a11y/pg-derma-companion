@@ -31,6 +31,15 @@ service cloud.firestore {
       allow delete: if isAdminUser();
     }
 
+    // Error reports (scrubbed, no patient data): approved users write their own; only the admin reads.
+    match /errors/{e} {
+      allow create: if approved() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['type', 'msg', 'stack', 'route', 'version', 'ua', 'at', 'uid', 'createdAt'])
+        && shortStr(request.resource.data.msg, 300) && shortStr(request.resource.data.stack, 900)
+        && shortStr(request.resource.data.route, 60) && shortStr(request.resource.data.ua, 160);
+      allow read, delete: if isAdminUser();
+    }
+
     match /batches/{b} {
       // The batch ID is the secret invite code (DVL-XXXX-XXXX). Approved users may look up a code they know,
       // but nobody can list batches.
