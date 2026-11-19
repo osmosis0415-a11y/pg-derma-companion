@@ -18,11 +18,14 @@
  * ID token) whom the admin has also allowed to call. Script properties:
  *   TURN_KEY_ID     = <Cloudflare Realtime TURN key ID>
  *   TURN_API_TOKEN  = <that key's API token>
+ *   (or, card-free: TURN_URLS = relay address(es), TURN_USERNAME, TURN_PASSWORD from e.g. ExpressTURN)
  *   FIREBASE_API_KEY, FIREBASE_PROJECT = the web app's public Firebase config values
  */
 function turnPass_(b, p) {
   var keyId = p.getProperty('TURN_KEY_ID'), tok = p.getProperty('TURN_API_TOKEN');
-  if (!keyId || !tok) return { error: 'turn_not_configured' };
+  // Card-free alternative (e.g. ExpressTURN free 1 TB/month): a fixed relay login, handed only to approved users.
+  var sUrls = p.getProperty('TURN_URLS'), sUser = p.getProperty('TURN_USERNAME'), sPass = p.getProperty('TURN_PASSWORD');
+  if ((!keyId || !tok) && !(sUrls && sUser && sPass)) return { error: 'turn_not_configured' };
   var apiKey = p.getProperty('FIREBASE_API_KEY'), proj = p.getProperty('FIREBASE_PROJECT');
   if (typeof b.idToken !== 'string' || b.idToken.length > 4000) return { error: 'bad_request' };
   // 1. Is this a real, signed-in user of our Firebase project?
@@ -37,7 +40,12 @@ function turnPass_(b, p) {
   var calls = ad.fields && ad.fields.calls && ad.fields.calls.booleanValue === true;
   var isAdmin = String(u.email || '').toLowerCase() === 'sriramdeverashetty@gmail.com';
   if (!isAdmin && (st !== 'approved' || !calls)) return { error: 'calls_not_allowed' };
-  // 3. Mint a 6-hour relay pass.
+  // 3a. Fixed relay login (card-free providers).
+  if (sUrls && sUser && sPass && (!keyId || !tok)) {
+    var urls = sUrls.split(/[\s,]+/).filter(String).map(function (x) { return /^turns?:/.test(x) ? x : 'turn:' + x; });
+    return { iceServers: [{ urls: urls, username: sUser, credential: sPass }], ttl: 21600 };
+  }
+  // 3b. Cloudflare: mint a 6-hour relay pass.
   var cr = UrlFetchApp.fetch('https://rtc.live.cloudflare.com/v1/turn/keys/' + keyId + '/credentials/generate-ice-servers',
     { method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + tok }, payload: JSON.stringify({ ttl: 21600 }), muteHttpExceptions: true });
   if (cr.getResponseCode() >= 300) return { error: 'turn_error', code: cr.getResponseCode() };
@@ -70,5 +78,5 @@ function doPost(e) {
 }
 
 function doGet() {
-  return ContentService.createTextOutput(JSON.stringify({ ok: true, app: 'pg-derma-drive-token-helper', turn: !!PropertiesService.getScriptProperties().getProperty('TURN_KEY_ID') })).setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify({ ok: true, app: 'pg-derma-drive-token-helper', turn: !!(PropertiesService.getScriptProperties().getProperty('TURN_KEY_ID') || PropertiesService.getScriptProperties().getProperty('TURN_USERNAME')) })).setMimeType(ContentService.MimeType.JSON);
 }
