@@ -24,11 +24,11 @@ function avA(uid, name, cls = 'pav') { return `<a class="${cls}" data-av="${esc(
 
 /* ---------- App layout chosen by the admin ---------- */
 const AppCfg = {
-  layout: localStorage.getItem('pgd_layout') || 'insta',
+  layout: localStorage.getItem('pgd_layout') || 'twitter',
   apply() { document.body.classList.toggle('lay-twitter', this.layout === 'twitter'); },
   async load() {
     if (!Comm.ok()) return;
-    try { const d = await Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'config', 'app')); const l = d.exists() && d.data().layout; if (l && l !== this.layout) { this.layout = l; localStorage.setItem('pgd_layout', l); this.apply(); if (ROUTE.path === 'community') render(); } } catch (e) {}
+    try { const d = await Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'config', 'app')); const l = (d.exists() && d.data().layout) || 'twitter'; if (l !== this.layout) { this.layout = l; localStorage.setItem('pgd_layout', l); this.apply(); if (ROUTE.path === 'community') render(); } } catch (e) {}
   }
 };
 AppCfg.apply();
@@ -215,8 +215,53 @@ ACT.pushon = async () => { if (await Push.enable()) render(); };
 const Social = {
   async start() {
     if (!Cloud.cfg()) return; try { await Cloud.init(); } catch (e) { return; } if (!Cloud.user) return;
-    Notif.listen(); DM.listen(); Follow.load(); Prof.load(); AppCfg.load(); Stories.load();
+    Notif.listen(); DM.listen(); Follow.load(); Prof.load(); AppCfg.load(); Stories.load(); Comm.pushProfile(); // everyone gets a public, searchable profile
     if (localStorage.getItem('pgd_push') === '1') Push.enable(true);
   },
   stop() { Notif.stop(); DM.stop(); }
 };
+
+/* ---------- People: search, suggestions, followers / following lists ---------- */
+function personRow(uid, p) {
+  const me = Cloud.user?.uid;
+  return `<div class="li prow"><a class="pav" data-av="${esc(uid)}" href="#/u/${esc(uid)}">${av(uid, p.name)}</a><a class="nt" href="#/u/${esc(uid)}"><b>${esc(p.name || 'Resident')}</b><small>${esc([p.year, p.college].filter(Boolean).join(' · '))}${p.streak ? ' · 🔥' + p.streak : ''}</small></a>
+    ${uid === me ? '<span class="tag">You</span>' : `<button class="btn xs${Follow.has(uid) ? ' ghost' : ''}" data-act="pfollow" data-id="${esc(uid)}" data-n="${esc(p.name || 'Resident')}">${Follow.has(uid) ? 'Following' : 'Follow'}</button>`}</div>`;
+}
+function vPeople() {
+  setTitle('Find people', true);
+  const q = ROUTE.q.q || '';
+  main().innerHTML = `<div class="psearch">${ic('search')}<input id="pq" type="search" placeholder="Search by name, college or year" value="${esc(q)}" autocomplete="off"></div><div id="presults"><p class="muted small">Loading…</p></div>`;
+  const inp = $('#pq'); inp.focus(); inp.setSelectionRange(q.length, q.length);
+  let t; inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { history.replaceState(null, '', '#/people' + (inp.value ? '?q=' + encodeURIComponent(inp.value) : '')); ROUTE.q.q = inp.value; paintPeople(); }, 150); });
+  Cloud.init().then(async () => { await Promise.all([Prof.load(true), Follow.load()]); paintPeople(); }).catch(() => { $('#presults').innerHTML = '<p class="err">Sign in to search people.</p>'; });
+}
+function paintPeople() {
+  const el = $('#presults'); if (!el) return;
+  const me = Cloud.user?.uid, q = (ROUTE.q.q || '').trim().toLowerCase(), all = Object.entries(Prof.map).filter(([, p]) => p && p.name);
+  if (q) {
+    const words = q.split(/\s+/), hit = all.filter(([, p]) => { const h = [p.name, p.college, p.year, p.bio].join(' ').toLowerCase(); return words.every(w => h.includes(w)); })
+      .sort((a, b) => (b[1].name.toLowerCase().startsWith(q) - a[1].name.toLowerCase().startsWith(q)) || ((b[1].total || 0) - (a[1].total || 0)));
+    el.innerHTML = hit.length ? `<div class="list">${hit.slice(0, 60).map(([u, p]) => personRow(u, p)).join('')}</div>` : `<p class="muted small center">No one found for "${esc(q)}".</p>`;
+    return;
+  }
+  const mine = (Prof.map[me] || {}).college || (D.community || {}).college || D.settings.inst || '';
+  const sugg = all.filter(([u]) => u !== me && !Follow.has(u)).sort((a, b) => ((b[1].college === mine) - (a[1].college === mine)) || ((b[1].total || 0) - (a[1].total || 0)));
+  const fol = all.filter(([u]) => Follow.has(u));
+  el.innerHTML = `${sugg.length ? `<h4 class="nh">Suggested for you</h4><div class="list">${sugg.slice(0, 30).map(([u, p]) => personRow(u, p)).join('')}</div>` : ''}
+    ${fol.length ? `<h4 class="nh">Following (${fol.length})</h4><div class="list">${fol.map(([u, p]) => personRow(u, p)).join('')}</div>` : ''}
+    ${!sugg.length && !fol.length ? '<p class="muted small center">No other residents yet. Invite your batchmates from Profile.</p>' : ''}
+    <p class="small muted center">${all.length} residents on PG Derma</p>`;
+}
+ACT.pfollow = async el => { await Follow.toggle(el.dataset.id, el.dataset.n); if (ROUTE.path === 'people') paintPeople(); else if (ROUTE.path === 'flist') vFList(); };
+/* followers / following of any profile */
+function vFList() {
+  const uid = ROUTE.id, mode = ROUTE.q.l === 'following' ? 'following' : 'followers';
+  setTitle(mode === 'followers' ? 'Followers' : 'Following', true);
+  main().innerHTML = `<div class="seg"><a class="${mode === 'followers' ? 'on' : ''}" href="#/flist/${esc(uid)}?l=followers">Followers</a><a class="${mode === 'following' ? 'on' : ''}" href="#/flist/${esc(uid)}?l=following">Following</a></div><div id="flist"><p class="muted small">Loading…</p></div>`;
+  Cloud.init().then(async () => {
+    await Promise.all([Prof.load(), Follow.load()]); const f = Cloud.f;
+    const s = await f.getDocs(f.query(f.collection(Cloud.db, 'follows'), f.where(mode === 'followers' ? 'b' : 'a', '==', uid)));
+    const ids = s.docs.map(d => mode === 'followers' ? d.data().a : d.data().b);
+    $('#flist').innerHTML = ids.length ? `<div class="list">${ids.map(u => personRow(u, Prof.map[u] || { name: 'Resident' })).join('')}</div>` : `<p class="muted small center">${mode === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}</p>`;
+  }).catch(() => { $('#flist').innerHTML = '<p class="err">Could not load.</p>'; });
+}

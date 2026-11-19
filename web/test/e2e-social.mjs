@@ -21,7 +21,7 @@ const t2 = await (await fetch(base + '/json/new?about:blank', { method: 'PUT' })
 const A = await page(t1), B = await page(t2);
 await A.send('Page.navigate', { url: 'http://localhost:8765/' }); await sleep(1500);
 await A.ev(`localStorage.removeItem('fsmock'); $('#pin').value='1234';$('#pin2').value='1234';$('#unlock').click()`); await sleep(2000);
-await A.ev(`D.settings.name='Sriram'; __installFsMock('uA','sriramdeverashetty@gmail.com','Sriram'); Cloud.init()`); await sleep(300);
+await A.ev(`D.settings.name='Sriram'; __installFsMock('uA','sriramdeverashetty@gmail.com','Sriram'); Cloud.init(); (()=>{const o=JSON.parse(localStorage.fsmock||'{}');o['config/app']={layout:'insta'};localStorage.fsmock=JSON.stringify(o)})(); AppCfg.layout='insta'; localStorage.setItem('pgd_layout','insta'); AppCfg.apply()`); await sleep(300);
 await B.send('Page.navigate', { url: 'http://localhost:8765/' }); await sleep(1500);
 await B.ev(`$('#pin')&&($('#pin').value='1234',$('#unlock').click())`); await sleep(2000);
 await B.ev(`D.settings.name='Priya Rao'; __installFsMock('uB','priya@x.com','Priya Rao'); Cloud.init()`); await sleep(300);
@@ -82,6 +82,16 @@ await B.ev(`$$('#storyui .sopt')[1].click()`); await sleep(1500);
 chk('answer shows result', (await B.ev(`$('#storyui').textContent`)).includes('You got it'));
 await B.ev(`$('#storyui [data-sclose]').click()`); await sleep(300);
 chk('vote notifies story owner', await A.ev(`new Promise(r=>setTimeout(()=>r(Notif.list.some(n=>n.type==='vote')),1200))`));
+// people search
+await B.ev(`location.hash='#/people'`); await sleep(1500);
+chk('people page suggests residents', (await B.ev(`$$('#presults .prow').length`)) >= 1);
+await B.ev(`$('#pq').value='srir'; $('#pq').dispatchEvent(new Event('input'))`); await sleep(600);
+chk('search by name finds Sriram', (await B.ev(`$('#presults').textContent`)).includes('Sriram'));
+await B.ev(`$('#pq').value='zzzz'; $('#pq').dispatchEvent(new Event('input'))`); await sleep(600);
+chk('no-match message', (await B.ev(`$('#presults').textContent`)).includes('No one found'));
+await shot(B, 'soc-people');
+await B.ev(`location.hash='#/flist/uA?l=followers'`); await sleep(1500);
+chk('followers list shows follower', (await B.ev(`$('#flist').textContent`)).includes('Priya'));
 // admin layout switch
 await A.ev(`location.hash='#/admin'`); await sleep(1200);
 await A.ev(`document.querySelector('[data-act=setlayout][data-l=twitter]').click()`); await sleep(1000);
@@ -91,6 +101,7 @@ await shot(B, 'soc-twitter');
 await A.ev(`document.querySelector('[data-act=setlayout][data-l=insta]').click()`); await sleep(800);
 await B.ev(`AppCfg.load()`); await sleep(500);
 chk('back to Instagram style', await B.ev(`!document.body.classList.contains('lay-twitter')`));
+chk('Twitter is the default when admin has not chosen', await B.ev(`(()=>{const o=JSON.parse(localStorage.fsmock);delete o['config/app'];localStorage.fsmock=JSON.stringify(o)})(), AppCfg.load().then(()=>AppCfg.layout==='twitter')`));
 const errs = [...A.errs, ...B.errs].filter(e => e && !/getComputedStyle/.test(e));
 console.log('ERRORS', JSON.stringify(errs).slice(0, 900));
 process.exit(0);

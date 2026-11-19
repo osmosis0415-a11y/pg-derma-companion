@@ -515,3 +515,17 @@ body.lay-twitter #plist{gap:0;background:var(--card);border-radius:14px;overflow
 .authcard input#pin,.authcard input#pin2{text-align:center;font-size:20px;letter-spacing:6px;margin:6px 0}
 .authcard .link{background:none;border:0;margin-top:10px;color:var(--mut)}
 #lock{align-items:flex-start}.authcard{margin:auto}.btn.abtn.wa{background:#25D366;box-shadow:0 8px 20px rgba(37,211,102,.3)}
+
+.psearch{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 12px;margin-bottom:12px;text-decoration:none;color:var(--ink)}.psearch svg{color:var(--mut);flex:none}.psearch input{border:0;margin:0;padding:10px 0;background:transparent;flex:1}.psearch span{padding:10px 0}
+.prow{display:flex;align-items:center;gap:10px}.prow .nt{flex:1;min-width:0;display:flex;flex-direction:column;color:var(--ink);text-decoration:none}.prow .nt small{color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.prow .pav{width:44px;height:44px}
+.uprof .pstats a{color:var(--ink);text-decoration:none}
+
+/* Twitter / X look (default) */
+.fabtw{position:fixed;right:18px;bottom:calc(80px + var(--safeb));width:56px;height:56px;border-radius:50%;background:var(--acc);color:#fff;display:none;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(11,122,117,.4);z-index:6}.fabtw svg{width:26px;height:26px}
+body.lay-twitter .fabtw{display:flex}
+body.lay-twitter .seg{background:transparent;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:0}body.lay-twitter .seg a{border-radius:0;padding:12px 4px;background:none!important}body.lay-twitter .seg a.on{color:var(--ink);box-shadow:inset 0 -4px 0 var(--acc)}
+body.lay-twitter a.composer{border-radius:0;border-left:0;border-right:0;box-shadow:none;margin:0 -12px 0;background:var(--card)}
+body.lay-twitter #pfilt{margin:8px 0}
+body.lay-twitter #plist{margin:0 -12px;border-radius:0;border-left:0;border-right:0}
+.twh b{font-weight:800}.tweet .pact .icon{color:var(--mut)}.tweet .pact .plike.on{color:#e11d48}
+@media (prefers-color-scheme:dark){body.lay-twitter #plist{background:#000}.tweet{background:#000;border-color:#2f3336}}

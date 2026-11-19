@@ -2,6 +2,13 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 2026-11-20 — Find people, Twitter/X look by default
+- **Find people:** a 🔍 search icon on Community (and a search bar on Explore). Search residents by name, college or level, with "Suggested for you" (your college first, then the most active) and Follow buttons in the list.
+- **Every resident gets a public profile** as soon as they sign in, so everyone can find, view, follow and message each other.
+- **Followers / Following lists:** tap the counts on any profile.
+- **Twitter / X look is now the default:** compact timeline with @handles, X-style tabs, a "What's happening in your OPD?" composer and a floating ＋ post button. The admin can still switch to Instagram style.
+- "Show me on the leaderboard" off now only hides you from the leaderboard; your profile stays visible.
+
 ## 2026-11-20 — New sign-up, log-in and invites
 - **Welcome screen:** an animated brand background, a swipeable tour of the app (Swipe to learn, Community, Logbook, Streaks), and separate **Create account** and **Log in with Google** buttons. Still no passwords.
 - **Sign-up details:** name, college and level (JR1/JR2/JR3, Senior resident, Faculty, PG aspirant), an optional referral code, and the community rules to accept.

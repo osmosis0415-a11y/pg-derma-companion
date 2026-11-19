@@ -21,7 +21,7 @@ const t2 = await (await fetch(base + '/json/new?about:blank', { method: 'PUT' })
 const A = await page(t1), B = await page(t2);
 await A.send('Page.navigate', { url: 'http://localhost:8765/' }); await sleep(1500);
 await A.ev(`localStorage.removeItem('fsmock'); $('#pin').value='1234';$('#pin2').value='1234';$('#unlock').click()`); await sleep(2000);
-await A.ev(`D.settings.name='Sriram'; __installFsMock('uA','sriramdeverashetty@gmail.com','Sriram'); Cloud.init()`); await sleep(300);
+await A.ev(`D.settings.name='Sriram'; __installFsMock('uA','sriramdeverashetty@gmail.com','Sriram'); Cloud.init(); (()=>{const o=JSON.parse(localStorage.fsmock||'{}');o['config/app']={layout:'insta'};localStorage.fsmock=JSON.stringify(o)})(); AppCfg.layout='insta'; localStorage.setItem('pgd_layout','insta'); AppCfg.apply()`); await sleep(300);
 await B.send('Page.navigate', { url: 'http://localhost:8765/' }); await sleep(1500);
 await B.ev(`$('#pin')&&($('#pin').value='1234',$('#unlock').click())`); await sleep(2000);
 await B.ev(`D.settings.name='Priya Rao'; __installFsMock('uB','priya@x.com','Priya Rao'); Cloud.init()`); await sleep(300);

@@ -115,7 +115,7 @@ service cloud.firestore {
     match /profiles/{u} {
       allow read: if approved();
       allow create, update: if approved() && u == request.auth.uid
-        && request.resource.data.keys().hasOnly(['name', 'year', 'college', 'bio', 'streak', 'best', 'total', 'xp', 'posts', 'photo', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['name', 'year', 'college', 'bio', 'streak', 'best', 'total', 'xp', 'posts', 'photo', 'board', 'updatedAt'])
         && (!('photo' in request.resource.data) || (request.resource.data.photo is string && request.resource.data.photo.size() < 70000))
         && shortStr(request.resource.data.name, 80) && shortStr(request.resource.data.college, 80) && shortStr(request.resource.data.bio, 200)
         && request.resource.data.xp is map && request.resource.data.xp.size() <= 4

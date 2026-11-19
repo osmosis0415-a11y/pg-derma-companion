@@ -21,8 +21,7 @@ const Comm = {
   pushProfile() {
     if (!this.ok()) return; const c = this.st(), f = Cloud.f, s = typeof Study !== 'undefined' ? Study.st() : {};
     const xp = {}; Object.keys(c.xp).sort().slice(-4).forEach(k => { xp[k] = c.xp[k]; });
-    if (c.board === false) { f.deleteDoc(f.doc(Cloud.db, 'profiles', Cloud.user.uid)).catch(() => {}); return; }
-    const ph = c.photo ? { photo: c.photo } : {};
+    const ph = Object.assign(c.photo ? { photo: c.photo } : {}, { board: c.board !== false });
     f.setDoc(f.doc(Cloud.db, 'profiles', Cloud.user.uid), { ...ph, name: (D.settings.name || Cloud.user.displayName || 'Resident').slice(0, 80), year: residencyYear(new Date()), college: (c.college || '').slice(0, 80), bio: (c.bio || '').slice(0, 200),
       streak: typeof Study !== 'undefined' ? Study.streakNow() : 0, best: s.best || 0, total: c.total || 0, xp, posts: c.posts || 0, updatedAt: f.serverTimestamp() }).catch(() => {});
   },
@@ -59,7 +58,7 @@ function commBadge() { const n = Comm.newOnMine(), el = document.querySelector('
 /* ---------- Community hub ---------- */
 function vCommunity() {
   const t = ROUTE.q.t || 'posts';
-  setTitle('Community', false, `<a class="icon" href="#/compose" aria-label="New post">${ic('plussq')}</a><a class="icon topic" href="#/notifs" aria-label="Notifications">${ic('heart')}<i class="nb" data-nbadge hidden></i></a><a class="icon topic" href="#/dms" aria-label="Messages">${ic('send')}</a>`); setTimeout(() => Notif.badge());
+  setTitle('Community', false, `<a class="icon" href="#/people" aria-label="Find people">${ic('search')}</a><a class="icon" href="#/compose" aria-label="New post">${ic('plussq')}</a><a class="icon topic" href="#/notifs" aria-label="Notifications">${ic('heart')}<i class="nb" data-nbadge hidden></i></a><a class="icon topic" href="#/dms" aria-label="Messages">${ic('send')}</a>`); setTimeout(() => Notif.badge());
   const tabs = [['posts', 'For you'], ['explore', 'Explore'], ['top', 'Leaderboard'], ['batch', 'Batch']];
   main().innerHTML = `<div class="seg">${tabs.map(([k, l]) => `<a class="${k === t ? 'on' : ''}" href="${k === 'batch' ? '#/batch' : '#/community?t=' + k}">${l}</a>`).join('')}</div><div id="cpane"></div>`;
   if (!Cloud.cfg()) { $('#cpane').innerHTML = `<div class="card"><p>Sign in with Google (Batch hub) to join the community.</p><a class="btn" href="#/batch">Sign in</a></div>`; return; }
@@ -67,7 +66,7 @@ function vCommunity() {
     if (!Cloud.user) { $('#cpane').innerHTML = `<div class="card"><p>Sign in with Google to join the community.</p><a class="btn" href="#/batch">Sign in</a></div>`; return; }
     if (t === 'top') return vBoard();
     if (t === 'explore') { Comm.listen(); $('#cpane').innerHTML = '<p class="muted small">Loading…</p>'; setTimeout(vExplore, Comm.posts.length ? 0 : 900); return; }
-    $('#cpane').innerHTML = `${pushPromptHTML()}<div id="stories"></div><a class="card composer" href="#/compose"><span class="pav" data-av="${esc(Cloud.user.uid)}">${av(Cloud.user.uid, D.settings.name || 'PG')}</span><span class="muted">Share a case, ask a doubt, post a pearl…</span>${ic('image')}</a>
+    $('#cpane').innerHTML = `${pushPromptHTML()}<div id="stories"></div><a class="card composer" href="#/compose"><span class="pav" data-av="${esc(Cloud.user.uid)}">${av(Cloud.user.uid, D.settings.name || 'PG')}</span><span class="muted">${AppCfg.layout === 'twitter' ? 'What\'s happening in your OPD?' : 'Share a case, ask a doubt, post a pearl…'}</span>${ic('image')}</a>${AppCfg.layout === 'twitter' ? `<a class="fabtw" href="#/compose" aria-label="New post">${ic('plus')}</a>` : ''}
       <div class="chips scroll" id="pfilt">${[['', 'All'], ...Object.entries(POST_KINDS)].map(([k, l]) => `<a class="chip${(ROUTE.q.k || '') === k ? ' on' : ''}" href="#/community?k=${k}">${l}${k ? 's' : ''}</a>`).join('')}<a class="chip${ROUTE.q.k === 'following' ? ' on' : ''}" href="#/community?k=following">Following</a><a class="chip${ROUTE.q.k === 'mine' ? ' on' : ''}" href="#/community?k=mine">Mine</a><a class="chip${ROUTE.q.k === 'new' ? ' on' : ''}" href="#/community?k=new">Latest</a></div>
       <div id="plist" class="feed"><p class="muted small">Loading posts…</p></div>`;
     Comm.listen(); paintPosts(); Comm.pushProfile(); Social.start(); Prof.load(); Follow.load().then(() => { if (ROUTE.q.k === 'following') paintPosts(); });
@@ -86,10 +85,11 @@ function postHTML(p, full) {
       <a class="icon" href="#/post/${p.id}" aria-label="Comments">${ic('chat')}<b>${p.comments || 0}</b>${n ? `<i class="nb">${n}</i>` : ''}</a>
       <button class="icon" data-act="pshare" data-id="${p.id}" aria-label="Share">${ic('send')}</button></div><i class="fburst">${ic('heartfill')}</i></article>`;
 }
+const handleOf = (uid, name) => '@' + String(name || 'resident').replace(/^Dr\.?\s+/i, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14) + String(uid || '').slice(0, 3).toLowerCase();
 function tweetHTML(p, full) {
   const txt = p.text || '', cut = !full && txt.length > 420;
   return `<article class="tweet cpost" data-pid="${p.id}">${avA(p.uid, p.name)}<div class="tw">
-    <div class="twh"><a href="#/u/${esc(p.uid)}"><b>${esc(p.name || 'Resident')}</b></a><small>${esc(p.year || '')} · ${agoTxt(tsMs(p.createdAt))}</small><span class="ptag k-${esc(p.kind)}">${POST_KINDS[p.kind] || 'Post'}</span><button class="icon" data-act="pmenu" data-id="${p.id}" aria-label="More">${ic('more')}</button></div>
+    <div class="twh"><a href="#/u/${esc(p.uid)}"><b>${esc(p.name || 'Resident')}</b></a><small>${esc(handleOf(p.uid, p.name))} · ${agoTxt(tsMs(p.createdAt))}</small><span class="ptag k-${esc(p.kind)}">${POST_KINDS[p.kind] || 'Post'}</span><button class="icon" data-act="pmenu" data-id="${p.id}" aria-label="More">${ic('more')}</button></div>
     <a class="pbody" href="#/post/${p.id}"><p class="pre">${esc(cut ? txt.slice(0, 420) + '…' : txt)}</p></a>
     ${p.img ? `<a class="pmedia" href="#/post/${p.id}"><img src="${esc(p.img)}" alt="Case photo" loading="lazy"></a>` : ''}
     ${(p.tags || []).length ? `<div class="ptags">${p.tags.map(t => `<span>#${esc(t)}</span>`).join('')}</div>` : ''}
@@ -238,7 +238,7 @@ function vBoard() {
   const f = Cloud.f, field = mode === 'week' ? 'xp.' + w : mode === 'all' ? 'total' : 'streak';
   f.getDocs(f.query(f.collection(Cloud.db, 'profiles'), f.orderBy(field, 'desc'), f.limit(50))).then(s => {
     const me = Cloud.user.uid, val = x => mode === 'week' ? (x.xp || {})[w] || 0 : mode === 'all' ? x.total || 0 : x.streak || 0;
-    const rows = s.docs.map(d => Object.assign({ id: d.id }, d.data())).filter(x => val(x) > 0);
+    const rows = s.docs.map(d => Object.assign({ id: d.id }, d.data())).filter(x => val(x) > 0 && x.board !== false);
     $('#blist2').innerHTML = rows.map((x, i) => `<a class="li rank${x.id === me ? ' me' : ''}" href="#/u/${esc(x.id)}"><span class="rk">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span><span class="pav sm" data-av="${esc(x.id)}">${av(x.id, x.name)}</span><span class="rn"><b>${esc(x.name)}</b><small>${esc([x.year, x.college].filter(Boolean).join(' · '))}</small></span><b class="rv">${val(x)}${mode === 'streak' ? ' 🔥' : ' XP'}</b></a>`).join('') || '<p class="muted small">No one on the board yet this week. Study a few cards to get on it.</p>';
   }).catch(e => { $('#blist2').innerHTML = `<p class="err small">${esc(e.code || 'Could not load')}</p>`; });
 }
@@ -254,8 +254,8 @@ function vUser() {
     const name = pr.name || (posts[0] && posts[0].name) || 'Resident', w = weekKey();
     const badges = [[pr.best >= 7, 'flame', '7-day streak'], [pr.best >= 30, 'flame', '30-day streak'], [(pr.total || 0) >= 100, 'bolt', '100 XP'], [(pr.total || 0) >= 1000, 'bolt', '1000 XP'], [(pr.posts || 0) >= 1, 'chat', 'First post'], [(pr.posts || 0) >= 10, 'chat', '10 posts']].filter(b => b[0]);
     if (pr.photo) Prof.map[uid] = pr; await Follow.load(); const fc = await Follow.counts(uid);
-    main().innerHTML = `<section class="card uprof"><div class="phead"><span class="pbig${me ? ' edit' : ''}" ${me ? 'data-act="avpick" role="button" aria-label="Change profile photo"' : ''}>${pr.photo ? `<img src="${esc(pr.photo)}" alt="">` : esc(initials(name))}${me ? `<i class="avplus">+</i>` : ''}</span><div class="pstats"><div><b>${posts.length}</b><small>posts</small></div><div><b>${fc.followers}</b><small>followers</small></div><div><b>${fc.following}</b><small>following</small></div></div></div>
-      <h2>${esc(name)}</h2><p class="small muted">${esc([pr.year, pr.college].filter(Boolean).join(' · '))}</p>${pr.bio ? `<p class="pre">${esc(pr.bio)}</p>` : ''}
+    main().innerHTML = `<section class="card uprof"><div class="phead"><span class="pbig${me ? ' edit' : ''}" ${me ? 'data-act="avpick" role="button" aria-label="Change profile photo"' : ''}>${pr.photo ? `<img src="${esc(pr.photo)}" alt="">` : esc(initials(name))}${me ? `<i class="avplus">+</i>` : ''}</span><div class="pstats"><div><b>${posts.length}</b><small>posts</small></div><a href="#/flist/${esc(uid)}?l=followers"><b>${fc.followers}</b><small>followers</small></a><a href="#/flist/${esc(uid)}?l=following"><b>${fc.following}</b><small>following</small></a></div></div>
+      <h2>${esc(name)}</h2><p class="small muted">${esc(handleOf(uid, name))} · ${esc([pr.year, pr.college].filter(Boolean).join(' · '))}</p>${pr.bio ? `<p class="pre">${esc(pr.bio)}</p>` : ''}
       ${badges.length ? `<div class="badges">${badges.map(b => `<span>${ic(b[1])}${b[2]}</span>`).join('')}</div>` : ''}
       <p class="small muted">🔥 ${pr.streak || 0}-day streak · ${(pr.xp || {})[w] || 0} XP this week</p>
       ${me ? `<div class="btnrow"><a class="btn sm ghost" href="#/settings">Edit profile</a><button class="btn sm ghost" data-act="avpick">${pr.photo ? 'Change' : 'Add'} photo</button><a class="btn sm ghost" href="#/story-new">Add story</a></div>${inviteCardHTML()}` : `<div class="btnrow"><button class="btn sm${Follow.has(uid) ? ' ghost' : ''}" data-act="follow" data-id="${esc(uid)}" data-n="${esc(name)}">${Follow.has(uid) ? 'Following' : 'Follow'}</button><button class="btn sm ghost" data-act="dmopen" data-id="${esc(uid)}" data-n="${esc(name)}">Message</button></div>`}
@@ -367,7 +367,7 @@ function vExplore() {
   const cards = Study.all().filter(x => x.t === 'pearl' || x.t === 'spot').map(x => [x, Rank.itemScore(x, weak, now)]).sort((a, b) => b[1] - a[1]).slice(0, 24).map(a => a[0]);
   const tiles = []; let pi = 0, ci = 0;
   while (pi < posts.length || ci < cards.length) { for (let k = 0; k < 2 && pi < posts.length; k++) tiles.push(['p', posts[pi++]]); if (ci < cards.length) tiles.push(['c', cards[ci++]]); if (tiles.length > 90) break; }
-  $('#cpane').innerHTML = `<div class="xgrid">${tiles.map(([k, x]) => k === 'p'
+  $('#cpane').innerHTML = `<a class="psearch" href="#/people">${ic('search')}<span class="muted">Search residents by name or college</span></a><div class="xgrid">${tiles.map(([k, x]) => k === 'p'
     ? `<a class="xt${x.img ? '' : ' txt k-' + esc(x.kind)}" href="#/post/${x.id}">${x.img ? `<img src="${esc(x.img)}" alt="" loading="lazy">` : `<span>${esc((x.text || '').slice(0, 90))}</span>`}${(x.likes || x.comments) ? `<i>${ic('heart')}${x.likes || 0}</i>` : ''}</a>`
     : `<a class="xt card-${x.t}" href="#/feed" data-act="xcard" data-id="${esc(x.id)}"><span>${esc((x.p || x.dx ? (x.t === 'spot' ? 'Spot: ' + x.v : x.p) : '').slice(0, 90))}</span><em>${esc(x.top)}</em></a>`).join('') || '<p class="muted small">Nothing to explore yet.</p>'}</div>`;
 }
