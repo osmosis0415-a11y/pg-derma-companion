@@ -1,3 +1,5 @@
+import { readFileSync as __rf } from 'fs';
+const __DLG = __rf(new URL('./dlg-auto.js', import.meta.url), 'utf8');
 import fs from 'fs';
 const list = await (await fetch('http://127.0.0.1:9333/json')).json();
 const ws = new WebSocket(list.find(t=>t.type==='page').webSocketDebuggerUrl);
@@ -11,7 +13,7 @@ const ev=async(expr)=>{const r=await send('Runtime.evaluate',{expression:expr,aw
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const shot=async(n)=>{const r=await send('Page.captureScreenshot',{format:'png'}); fs.writeFileSync('/tmp/shots/'+n+'.png',Buffer.from(r.result.data,'base64'));};
 fs.mkdirSync('/tmp/shots',{recursive:true});
-await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"});
+await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"+';'+__DLG});
 await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
 await send('Page.navigate',{url:'http://localhost:8765/'}); await sleep(1500);
 await shot('01-lock');
@@ -90,7 +92,7 @@ const sid = await ev(`D.scores.find(s=>s.scale==='PASI').id`); await ev(`locatio
 await ev(`(()=>{const s=$('#sform');s.querySelector('[data-k="trunk.e"]').value='3';s.querySelector('[data-k="trunk.i"]').value='3';s.querySelector('[data-k="trunk.s"]').value='3';s.querySelector('[data-k="trunk.a"]').value='3';ACT.savescore()})()`); await sleep(200);
 chk('PASI edit = 8.1', await ev(`D.scores.find(s=>s.id==='${sid}').total===8.1`));
 // map pins on every chart
-await ev(`window.prompt=()=> 'note'`);
+await ev(`window.__dlgDefault='note';`);
 for (const c of ['body-front','body-back','face','scalp','oral','genital','hands','nerves']) { await ev(`location.hash='#/map/${vid2}?c=${c}&t=biopsy'`); await sleep(200); await ev(`(()=>{const r=$('#map').getBoundingClientRect();$('#map').dispatchEvent(new MouseEvent('click',{clientX:r.left+r.width/2,clientY:r.top+r.height/2,bubbles:true}))})()`); await sleep(150); }
 chk('8 pins', await ev(`D.pins.length===8`)); await shot('20-nerves');
 // bad route params
@@ -99,7 +101,7 @@ await ev(`location.hash='#/map/${vid2}?c=bogus&t=bogus'`); await sleep(200); awa
 await ev(`ACT.invadd({dataset:{pid:'${pid}'}})`); await sleep(200);
 await ev(`(()=>{$('#i_type').value='Slit skin smear';$('#i_type').onchange({target:$('#i_type')});const s=$$('.ssi');s[0].value='2';s[1].value='3';s[2].value='4';ACT.invsave($('[data-act=invsave]'))})()`); await sleep(200);
 chk('BI = 3', await ev(`D.inv.at(-1).bi===3`));
-await ev(`window.prompt=()=> 'BT Hansen, BI 3+'; ACT.invnext({dataset:{id:D.inv.at(-1).id}}); ACT.invnext({dataset:{id:D.inv.at(-1).id}})`); await sleep(200);
+await ev(`window.__dlgDefault='BT Hansen, BI 3+'; ACT.invnext({dataset:{id:D.inv.at(-1).id}}); ACT.invnext({dataset:{id:D.inv.at(-1).id}})`); await sleep(200);
 chk('inv correlated', await ev(`D.inv.at(-1).status==='done'`));
 // reminders + ics
 await ev(`ACT.remadd({dataset:{pid:'${pid}'}})`); await sleep(200); await ev(`$('#r_time').value='10:30';ACT.remsave($('[data-act=remsave]'))`); await sleep(300);
@@ -138,7 +140,7 @@ chk('residency year', await ev(`residencyYear('2026-11-19')==='JR2'`));
 const before = await ev(`JSON.stringify({p:D.patients.length,v:D.visits.length,ph:D.photos.length,s:D.scores.length})`);
 await ev(`exportBackup()`); await sleep(800);
 chk('backup file', await ev(`window.__dl.some(d=>d.n.endsWith('.pgbak'))`));
-await ev(`window.__bk=window.__dl.find(d=>d.n.endsWith('.pgbak')).b; window.confirm=()=>true;`);
+await ev(`window.__bk=window.__dl.find(d=>d.n.endsWith('.pgbak')).b; window.__dlgDefault=true;`);
 // wipe then restore
 await ev(`(async()=>{await IDB.clear('photos');await IDB.clear('kv');await IDB.clear('meta');})()`);
 await ev(`(async()=>{await importBackup(new File([window.__bk],'b.pgbak'));})()`); await sleep(300);
@@ -149,12 +151,12 @@ chk('photo decrypts after restore', await ev(`photoURL(D.photos[0].id).then(u=>u
 // corrupt backup rejected
 const bad = await ev(`importBackup(new File([window.__bk.slice(0,100)],'x')).then(()=> 'accepted', e=>e.message)`); chk('truncated backup rejected: '+bad, bad!=='accepted');
 // change PIN
-await ev(`window.prompt=(()=>{const a=['1234','5678','5678'];return ()=>a.shift()})(); ACT.chpin()`); await sleep(3000);
+await ev(`window.__dlgQueue=['1234','5678','5678']; ACT.chpin()`); await sleep(3000);
 await ev(`lockApp()`); await sleep(300); await ev(`$('#pin').value='5678';$('#unlock').click()`); await sleep(2000);
 chk('new PIN works', await ev(`!!D && D.photos.length>0`));
 chk('photo decrypts after PIN change', await ev(`photoURL(D.photos[0].id).then(u=>u.startsWith('blob:'))`));
 // delete visit & patient cascade
-await ev(`window.confirm=()=>true; ACT.delpt({dataset:{id:'${pid}'}})`); await sleep(800);
+await ev(`window.__dlgDefault=true; ACT.delpt({dataset:{id:'${pid}'}})`); await sleep(800);
 chk('cascade delete', await ev(`!D.patients.some(p=>p.id==='${pid}') && !D.photos.some(x=>x.pid==='${pid}') && !D.scores.length`));
 chk('photo blobs gone', await ev(`IDB.keys('photos').then(k=>k.length===0)`));
 

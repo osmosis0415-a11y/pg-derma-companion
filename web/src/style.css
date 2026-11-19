@@ -225,3 +225,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc);box
 .chatbar textarea{flex:1;margin:0;min-height:44px;max-height:140px;resize:none;border-radius:12px;line-height:1.35}
 .chatsend{width:46px;min-width:46px;padding:0;border-radius:12px}.chatsend svg.ic{width:20px;height:20px}
 @media (min-width:900px){.chatlist{height:calc(100vh - 290px)}}
+/* in-app dialog */
+.dlg{position:fixed;inset:0;z-index:90;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:20px;animation:dlgin .12s ease-out}
+.dlg-box{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;width:100%;max-width:380px;padding:18px;box-shadow:0 10px 30px rgba(15,23,42,.18)}
+.dlg-box p{margin:0 0 12px;font-size:14.5px;line-height:1.45}
+.dlg-in{margin:0 0 12px}
+.dlg-btns{display:flex;gap:8px;justify-content:flex-end}.dlg-btns .btn{min-width:96px}
+@keyframes dlgin{from{opacity:0}to{opacity:1}}

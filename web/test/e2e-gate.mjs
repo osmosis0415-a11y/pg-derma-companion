@@ -1,10 +1,12 @@
+import { readFileSync as __rf } from 'fs';
+const __DLG = __rf(new URL('./dlg-auto.js', import.meta.url), 'utf8');
 const mk = async port => {
   const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
   const ws = new WebSocket(list.find(t=>t.type==='page').webSocketDebuggerUrl); await new Promise(r=>ws.onopen=r);
   let id=0; const pend={}, errs=[]; ws.onmessage=m=>{const d=JSON.parse(m.data); if(d.id&&pend[d.id]){pend[d.id](d);delete pend[d.id]} if(d.method==='Runtime.exceptionThrown') errs.push(d.params.exceptionDetails.exception?.description);};
   const send=(method,params={})=>new Promise(r=>{const i=++id;pend[i]=r;ws.send(JSON.stringify({id:i,method,params}))});
   const ev=async e=>{const r=(await send('Runtime.evaluate',{expression:e,returnByValue:true,awaitPromise:true})).result; if(r.exceptionDetails) errs.push('EVAL: '+(r.exceptionDetails.exception?.description||'').slice(0,300)); return r.result?.value};
-  await send('Runtime.enable'); await send('Page.enable'); return {send,ev,errs};
+  await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:__DLG}); return {send,ev,errs};
 };
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)); const chk=(n,c)=>console.log((c?'PASS ':'FAIL ')+n);
 const MOCK = email => `(()=>{ const st = window.__fs = window.__fs || new Map(); const subs=[]; const key=p=>p.join('/');
@@ -61,6 +63,6 @@ await Ad.ev(`$('[data-act=adminset][data-s=approved]').click()`); await sleep(50
 chk('approve updates status + decidedBy', await Ad.ev(`__fs.get('approvals/U-a').status==='approved' && __fs.get('approvals/U-a').decidedBy==='sriramdeverashetty@gmail.com'`));
 await Ad.ev(`location.hash='#/admin?t=approved'`); await sleep(500);
 chk('approved list shows both', await Ad.ev(`$('#alist').textContent.includes('a@gmail.com') && $('#alist').textContent.includes('b@gmail.com')`));
-await Ad.ev(`window.confirm=()=>true; [...document.querySelectorAll('[data-act=adminset]')].find(b=>b.textContent==='Revoke').click()`); await sleep(400);
+await Ad.ev(`window.__dlgDefault=true; [...document.querySelectorAll('[data-act=adminset]')].find(b=>b.textContent==='Revoke').click()`); await sleep(400);
 chk('revoke works', await Ad.ev(`[...__fs.values()].filter(x=>x.status==='rejected').length===1`));
 console.log('ERRORS R', JSON.stringify(R.errs)); console.log('ERRORS A', JSON.stringify(Ad.errs)); process.exit(0);

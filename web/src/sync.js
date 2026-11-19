@@ -286,7 +286,7 @@ ACT.driveconnect = async () => {
     if (!(D.sync && D.sync.on)) {
       const m = await Drive.manifest(), auth = await IDB.get('meta', 'auth');
       if (m && m.salt !== b64(auth.salt)) {
-        const pin = prompt('This Google Drive already has a PG Derma backup (from another device). Enter the PIN you use there — this device will switch to that PIN and both devices will be merged.');
+        const pin = await uiPrompt('This Google Drive already has a PG Derma backup (from another device). Enter the PIN you use there — this device will switch to that PIN and both devices will be merged.', '', { type: 'password', ok: 'Link' });
         if (!pin) return;
         toast('Linking… re-encrypting this device', 8000);
         if (!(await Sync.link(pin, m))) return toast('That PIN does not match the Drive backup');
@@ -296,11 +296,11 @@ ACT.driveconnect = async () => {
     await Store.flush(); toast('Google Drive connected'); Sync.start(); render();
   } catch (e) { toast(e.message || 'Could not connect Google Drive', 4000); }
 };
-ACT.syncoff = async () => { if (!confirm('Stop syncing this device? Your Drive backup stays.')) return; D.sync.on = false; Sync.stop(); await Drive.forget(); Store.save(); Sync.set('off'); render(); };
+ACT.syncoff = async () => { if (!(await uiConfirm('Stop syncing this device? Your Drive backup stays.'))) return; D.sync.on = false; Sync.stop(); await Drive.forget(); Store.save(); Sync.set('off'); render(); };
 ACT.syncnow = () => Sync.run();
 ACT.syncphotos = el => { D.sync.photos = el.checked; Store.save(); Sync.schedule(500); };
 ACT.drivewipe = async () => {
-  if (prompt('Delete the PG Derma backup from your Google Drive? Data on this phone stays. Type DELETE to confirm.') !== 'DELETE') return;
+  if (!(await uiType('Delete the PG Derma backup from your Google Drive? Data on this phone stays.', 'DELETE'))) return;
   try {
     if (!Drive.valid()) await Drive.connect(D.sync && D.sync.email);
     Sync.stop(); const files = await Drive.list();

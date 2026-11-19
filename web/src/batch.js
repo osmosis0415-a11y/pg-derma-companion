@@ -183,11 +183,11 @@ ACT.bevsave = async () => {
     closeSheet(); toast(reps > 1 ? reps + ' events added' : 'Event added');
   } catch (e) { toast('Could not save: ' + (e.code || e.message)); }
 };
-ACT.bevdel = async el => { if (!confirm('Delete this event for everyone?')) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'batches', B().id, 'events', el.dataset.id)); } catch (e) { toast(e.code || e.message); } };
+ACT.bevdel = async el => { if (!(await uiConfirm('Delete this event for everyone?'))) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'batches', B().id, 'events', el.dataset.id)); } catch (e) { toast(e.code || e.message); } };
 ACT.bevics = () => { const ev = (B().events || []).filter(e => e.date >= today()).map(e => ({ id: 'b' + e.id, date: e.date, time: e.time, title: e.type + ': ' + e.title, desc: [e.presenter, e.venue, e.notes].filter(Boolean).join(' · ') })); if (!ev.length) return toast('No upcoming events'); download(makeICS(ev), 'batch-calendar.ics'); };
 ACT.bevwa = () => { const ev = (B().events || []).filter(e => e.date >= today() && e.date <= addDays(today(), 7)).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))); if (!ev.length) return toast('Nothing in the next 7 days'); const msg = `📅 ${B().name} — this week\n\n` + ev.map(e => `• ${fmt(e.date)}${e.time ? ' ' + e.time : ''} — ${e.type}: ${e.title}${e.presenter ? ' (' + e.presenter + ')' : ''}${e.venue ? ' @ ' + e.venue : ''}`).join('\n'); window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };
-ACT.bleave = async () => { if (!confirm('Leave this batch? Your shared counts will be removed.')) return; const f = Cloud.f, id = B().id, uid = Cloud.user.uid; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'logstats', uid)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'members', uid)); } catch (e) {} Cloud.stop(); D.batch = null; Store.save(); render(); };
-ACT.bkick = async el => { if (!confirm('Remove this member?')) return; const f = Cloud.f; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', B().id, 'logstats', el.dataset.id)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', B().id, 'members', el.dataset.id)); } catch (e) { toast(e.code || e.message); } };
+ACT.bleave = async () => { if (!(await uiConfirm('Leave this batch? Your shared counts will be removed.'))) return; const f = Cloud.f, id = B().id, uid = Cloud.user.uid; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'logstats', uid)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'members', uid)); } catch (e) {} Cloud.stop(); D.batch = null; Store.save(); render(); };
+ACT.bkick = async el => { if (!(await uiConfirm('Remove this member?'))) return; const f = Cloud.f; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', B().id, 'logstats', el.dataset.id)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', B().id, 'members', el.dataset.id)); } catch (e) { toast(e.code || e.message); } };
 ACT.fbcfgclear = () => { delete D.settings.fbConfig; Store.save(); Cloud.ready = null; toast('Removed'); render(); };
 
 const bAdmin = () => !!(B() && (B().admin || amAdmin()));
@@ -212,12 +212,12 @@ async function clearBatchChat(id) {
 }
 ACT.bdelete = async () => {
   const b = B(); if (!b || !bAdmin()) return;
-  if (prompt(`This permanently deletes "${b.name}" for everyone: chat, calendar, shared counts and members.\n\nType DELETE to confirm.`) !== 'DELETE') return toast('Not deleted');
+  if (!(await uiType(`This permanently deletes "${b.name}" for everyone: chat, calendar, shared counts and members.`, 'DELETE'))) return;
   try { Cloud.stop(); toast('Deleting…'); const n = await deleteBatchAll(b.id); D.batch = null; Store.save(); toast(`Batch deleted (${n} items)`); render(); }
   catch (e) { toast('Could not delete: ' + (e.code || e.message)); subscribeBatch(); }
 };
 ACT.bclearchat = async () => {
-  if (!bAdmin() || !confirm('Delete ALL chat messages in this batch for everyone?')) return;
+  if (!bAdmin() || !(await uiConfirm('Delete ALL chat messages in this batch for everyone?'))) return;
   try { const n = await clearBatchChat(B().id); toast(n + ' messages deleted'); } catch (e) { toast('Could not clear: ' + (e.code || e.message)); }
 };
 
@@ -257,10 +257,10 @@ function paintChatList(force) {
 }
 async function sendChat() {
   const ta = $('#chatin'), text = ta.value.trim(); if (!text) return;
-  if (PHI_RE.test(text) && !confirm('This message may contain patient identifiers (UHID / phone / OPD number). Everyone in the batch will see it. Send anyway?')) return;
+  if (PHI_RE.test(text) && !(await uiConfirm('This message may contain patient identifiers (UHID / phone / OPD number). Everyone in the batch will see it. Send anyway?'))) return;
   const f = Cloud.f, me = (B().members || []).find(m => m.id === Cloud.user.uid);
   ta.value = ''; ta.style.height = 'auto';
   try { await f.addDoc(f.collection(Cloud.db, 'batches', B().id, 'messages'), { uid: Cloud.user.uid, name: (me && me.name) || D.settings.name || Cloud.user.displayName || 'Member', text, at: f.serverTimestamp() }); }
   catch (e) { ta.value = text; toast(e.code === 'permission-denied' ? 'You are not a member of this batch' : 'Could not send — check your internet'); }
 }
-ACT.chatdel = async el => { if (!confirm('Delete this message for everyone?')) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'batches', B().id, 'messages', el.dataset.id)); } catch (e) { toast('Could not delete'); } };
+ACT.chatdel = async el => { if (!(await uiConfirm('Delete this message for everyone?'))) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'batches', B().id, 'messages', el.dataset.id)); } catch (e) { toast('Could not delete'); } };

@@ -113,7 +113,7 @@ const Gate = {
     $('#gretry').onclick = () => location.reload();
   },
   async signOut() {
-    if (!confirm('Sign out of PG Derma Companion on this device? Your encrypted data stays on this device; you will need Google sign-in (and your PIN) to open it again.')) return;
+    if (!(await uiConfirm('Sign out of PG Derma Companion on this device? Your encrypted data stays on this device; you will need Google sign-in (and your PIN) to open it again.'))) return;
     try { await Cloud.f.signOut(Cloud.auth); } catch (e) {}
     await IDB.del('meta', 'gate'); await Drive.forget().catch(() => {}); location.reload();
   }
@@ -146,7 +146,7 @@ function vAdmin() {
 }
 ACT.adminset = async el => {
   const s = el.dataset.s;
-  if (s === 'rejected' && !confirm(el.textContent === 'Revoke' ? 'Revoke access? They will be locked out of the app the next time it goes online.' : 'Reject this request?')) return;
+  if (s === 'rejected' && !(await uiConfirm(el.textContent === 'Revoke' ? 'Revoke access? They will be locked out of the app the next time it goes online.' : 'Reject this request?'))) return;
   const f = Cloud.f;
   try { await f.updateDoc(f.doc(Cloud.db, 'approvals', el.dataset.id), { status: s, decidedAt: f.serverTimestamp(), decidedBy: Cloud.user.email }); toast(s === 'approved' ? 'Approved ✓' : 'Done'); }
   catch (e) { toast('Could not update: ' + (e.code || e.message)); }
@@ -155,7 +155,7 @@ ACT.adminshare = () => { const url = location.origin + location.pathname; const 
 ACT.appsignout = () => Gate.signOut();
 const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['batches', 'Batches'], ['errors', 'Errors']];
 ACT.admindel = async el => {
-  if (!confirm('Remove this record? If they sign in again they will appear as a new request.')) return;
+  if (!(await uiConfirm('Remove this record? If they sign in again they will appear as a new request.'))) return;
   try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'approvals', el.dataset.id)); toast('Removed'); } catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
 };
 function vAdminBatches() {
@@ -175,14 +175,14 @@ function vAdminBatches() {
   }).catch(e => { const el = $('#blist'); if (el) el.innerHTML = `<p class="err">${esc(e.code || e.message)}</p>`; });
 }
 ACT.abdel = async el => {
-  if (prompt(`Delete "${el.dataset.n}" for everyone (chat, calendar, counts, members)?\n\nType DELETE to confirm.`) !== 'DELETE') return toast('Not deleted');
+  if (!(await uiType(`Delete "${el.dataset.n}" for everyone? This removes its chat, calendar, shared counts and members.`, 'DELETE'))) return;
   el.disabled = true; el.textContent = 'Deleting…';
   try { const n = await deleteBatchAll(el.dataset.b); if (D.batch && D.batch.id === el.dataset.b) { D.batch = null; Store.save(); } toast(`Deleted (${n} items)`); render(); }
   catch (e) { toast('Could not delete: ' + (e.code || e.message)); render(); }
 };
-ACT.abclear = async el => { if (!confirm('Delete ALL chat messages in this batch?')) return; try { const n = await clearBatchChat(el.dataset.b); toast(n + ' messages deleted'); render(); } catch (e) { toast('Could not clear: ' + (e.code || e.message)); } };
+ACT.abclear = async el => { if (!(await uiConfirm('Delete ALL chat messages in this batch?'))) return; try { const n = await clearBatchChat(el.dataset.b); toast(n + ' messages deleted'); render(); } catch (e) { toast('Could not clear: ' + (e.code || e.message)); } };
 ACT.abkick = async el => {
-  if (!confirm('Remove this member from the batch? Their shared counts are removed too.')) return;
+  if (!(await uiConfirm('Remove this member from the batch? Their shared counts are removed too.'))) return;
   const f = Cloud.f, db = Cloud.db;
   try { await f.deleteDoc(f.doc(db, 'batches', el.dataset.b, 'logstats', el.dataset.id)).catch(() => {}); await f.deleteDoc(f.doc(db, 'batches', el.dataset.b, 'members', el.dataset.id)); toast('Removed'); render(); }
   catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
@@ -198,4 +198,4 @@ function vAdminErrors() {
     el.innerHTML = s.docs.map(d => { const x = d.data(); return `<details class="err-item"><summary><b>${esc(x.msg)}</b><br><small class="muted">${esc(x.type)} · ${esc(x.route)} · v${esc(x.version)} · ${esc((x.at || '').replace('T', ' ').slice(0, 16))}</small></summary><pre class="small">${esc(x.stack)}</pre><small class="muted">${esc(x.ua)}</small></details>`; }).join('') || '<p class="muted small">No errors reported 🎉</p>';
   }).catch(e => { const el = $('#elist'); if (el) el.innerHTML = `<p class="err">${esc(e.code || e.message)}</p>`; });
 }
-ACT.errclear = async () => { if (!confirm('Delete all error reports?')) return; const f = Cloud.f; for (const id of window.__errDocs || []) await f.deleteDoc(f.doc(Cloud.db, 'errors', id)).catch(() => {}); render(); };
+ACT.errclear = async () => { if (!(await uiConfirm('Delete all error reports?'))) return; const f = Cloud.f; for (const id of window.__errDocs || []) await f.deleteDoc(f.doc(Cloud.db, 'errors', id)).catch(() => {}); render(); };

@@ -82,9 +82,9 @@ async function shareBlob(blob, name) {
   if (navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f] }); return; } catch (e) { if (e.name === 'AbortError') return; } }
   download(blob, name);
 }
-ACT.phshare = async () => { const x = D.photos.find(p => p.id === ROUTE.id); if (!x.deid && !confirm('This photo is NOT de-identified. Share anyway?')) return; shareBlob(await photoBlob(x.id), (x.deid ? 'case-' : 'photo-') + x.id.slice(0, 6) + '.jpg'); };
+ACT.phshare = async () => { const x = D.photos.find(p => p.id === ROUTE.id); if (!x.deid && !(await uiConfirm('This photo is NOT de-identified. Share anyway?'))) return; shareBlob(await photoBlob(x.id), (x.deid ? 'case-' : 'photo-') + x.id.slice(0, 6) + '.jpg'); };
 ACT.phdl = async () => { const x = D.photos.find(p => p.id === ROUTE.id); download(await photoBlob(x.id), 'photo-' + x.id.slice(0, 6) + '.jpg'); };
-ACT.phdel = async () => { if (!confirm('Delete this photo permanently?')) return; const x = D.photos.find(p => p.id === ROUTE.id); await deletePhoto(x.id); history.back(); };
+ACT.phdel = async () => { if (!(await uiConfirm('Delete this photo permanently?'))) return; const x = D.photos.find(p => p.id === ROUTE.id); await deletePhoto(x.id); history.back(); };
 
 /* ---------- DE-IDENTIFICATION (Conference mode) ---------- */
 let deid = null;
@@ -129,7 +129,7 @@ ACT.dauto = async () => {
 };
 async function saveDeid() {
   const x = D.photos.find(p => p.id === ROUTE.id);
-  if (!deid.rects.length && !confirm('No masks added. Save a metadata-stripped copy anyway?')) return null;
+  if (!deid.rects.length && !(await uiConfirm('No masks added. Save a metadata-stripped copy anyway?'))) return null;
   drawDeid();
   const rec = await savePhoto(deid.c, { pid: x.pid, vid: x.vid, cat: x.cat, site: x.site, deid: true, src: x.id, note: 'De-identified copy' });
   return rec;
@@ -198,7 +198,7 @@ ACT.invsave = el => {
   if (el.dataset.id) Object.assign(D.inv.find(x => x.id === el.dataset.id), data); else D.inv.push(Object.assign({ id: uid(), status: 'sent' }, data));
   Store.save(); closeSheet(); render();
 };
-ACT.invnext = el => { const i = D.inv.find(x => x.id === el.dataset.id); if (i.status === 'sent') { i.status = 'traced'; i.traced = today(); } else { if (!i.result) { const r = prompt('Final report / correlation summary'); if (r) i.result = r; } i.status = 'done'; i.done = today(); const v = i.vid && V(i.vid); if (v && i.type === 'Skin biopsy (HPE)' && !v.finalDx && i.result) v.finalDx = i.result; } Store.save(); render(); };
+ACT.invnext = async el => { const i = D.inv.find(x => x.id === el.dataset.id); if (i.status === 'sent') { i.status = 'traced'; i.traced = today(); } else { if (!i.result) { const r = await uiPrompt('Final report / correlation summary'); if (r) i.result = r; } i.status = 'done'; i.done = today(); const v = i.vid && V(i.vid); if (v && i.type === 'Skin biopsy (HPE)' && !v.finalDx && i.result) v.finalDx = i.result; } Store.save(); render(); };
 ACT.invdel = el => { D.inv = D.inv.filter(x => x.id !== el.dataset.id); Store.save(); closeSheet(); render(); };
 
 /* ---------- CALENDAR / REMINDERS ---------- */
@@ -275,7 +275,7 @@ ACT.logsave = el => {
   if (el.dataset.id) Object.assign(D.logbook.find(l => l.id === el.dataset.id), data); else D.logbook.push(Object.assign({ id: uid() }, data));
   Store.save(); toast('Logged'); history.back();
 };
-ACT.logdel = el => { if (!confirm('Delete entry?')) return; D.logbook = D.logbook.filter(l => l.id !== el.dataset.id); Store.save(); history.back(); };
+ACT.logdel = async el => { if (!(await uiConfirm('Delete entry?'))) return; D.logbook = D.logbook.filter(l => l.id !== el.dataset.id); Store.save(); history.back(); };
 function vTargets() {
   setTitle('Logbook targets');
   main().innerHTML = `<p class="small muted">Defaults are placeholders. Set these to your department's / university's minimum requirements for the full residency.</p>
@@ -492,9 +492,9 @@ function vSettings() {
   <p class="small muted center">PG Derma Companion · version ${esc(APP_VERSION)} · <a class="link" href="https://github.com/osmosis0415-a11y/pg-derma-companion/blob/main/CHANGELOG.md" target="_blank" rel="noopener">What's new</a> · storage ${D.photos.length} photos · ${D.patients.length} patients</p>`;
   Drive.loadGis().catch(() => {}); showQuota();
   if (Cloud.cfg() && !Cloud.ready && navigator.onLine) Cloud.init().then(() => { const c = $('#synccard'); if (c && ROUTE.path === 'settings') c.innerHTML = syncCardHTML(); }).catch(() => {});
-  $('#restore').onchange = async e => { const f = e.target.files[0]; if (!f || !confirm('Restore will REPLACE all data on this device with the backup. Continue?')) return; try { await importBackup(f); toast('Restored — unlock with the backup PIN'); lockApp(true); } catch (er) { alert('Restore failed: ' + er.message); } };
+  $('#restore').onchange = async e => { const f = e.target.files[0]; if (!f || !(await uiConfirm('Restore will REPLACE all data on this device with the backup. Continue?'))) return; try { await importBackup(f); toast('Restored — unlock with the backup PIN'); lockApp(true); } catch (er) { alert('Restore failed: ' + er.message); } };
 }
 ACT.ssave = () => { Object.assign(D.settings, { name: val('s_name'), inst: val('s_inst'), unit: val('s_unit'), residencyStart: val('s_start'), lang: getChips('s_lang'), lockMin: Math.max(1, +val('s_lock') || 15) }); Store.save(); Session.save(); toast('Saved'); };
 ACT.backup = () => exportBackup().then(() => toast('Backup downloaded'));
-ACT.chpin = async () => { const o = prompt('Current PIN'); if (!o) return; const n1 = prompt('New PIN (min 4 characters)'); if (!n1 || n1.length < 4) return toast('PIN too short'); if (prompt('Confirm new PIN') !== n1) return toast('PINs do not match'); toast('Re-encrypting…', 6000); const ok = await Vault.changePin(o, n1); toast(ok ? 'PIN changed' : 'Current PIN incorrect'); if (ok) { await Session.save(); if (Sync.on()) { await IDB.put('kv', 'psynced', []); Sync.forcePush = true; Sync.run(); toast('PIN changed — re-uploading your encrypted cloud copy. Use the new PIN on your other devices.', 5000); } } };
-ACT.wipe = async () => { if (prompt('Type ERASE to delete all data on this device') !== 'ERASE') return; await IDB.clear('photos'); await IDB.clear('kv'); await IDB.clear('meta'); location.reload(); };
+ACT.chpin = async () => { const o = await uiPrompt('Current PIN', '', { type: 'password', ok: 'Next' }); if (!o) return; const n1 = await uiPrompt('New PIN (min 4 characters)', '', { type: 'password', ok: 'Next' }); if (!n1 || n1.length < 4) return toast('PIN too short'); if ((await uiPrompt('Confirm new PIN', '', { type: 'password', ok: 'Change PIN' })) !== n1) return toast('PINs do not match'); toast('Re-encrypting…', 6000); const ok = await Vault.changePin(o, n1); toast(ok ? 'PIN changed' : 'Current PIN incorrect'); if (ok) { await Session.save(); if (Sync.on()) { await IDB.put('kv', 'psynced', []); Sync.forcePush = true; Sync.run(); toast('PIN changed — re-uploading your encrypted cloud copy. Use the new PIN on your other devices.', 5000); } } };
+ACT.wipe = async () => { if (!(await uiType('Delete ALL patient data and photos on this device? This cannot be undone.', 'ERASE'))) return; await IDB.clear('photos'); await IDB.clear('kv'); await IDB.clear('meta'); location.reload(); };

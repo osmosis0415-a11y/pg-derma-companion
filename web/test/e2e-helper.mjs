@@ -1,10 +1,12 @@
+import { readFileSync as __rf } from 'fs';
+const __DLG = __rf(new URL('./dlg-auto.js', import.meta.url), 'utf8');
 const mk = async port => {
   const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
   const ws = new WebSocket(list.find(t=>t.type==='page').webSocketDebuggerUrl); await new Promise(r=>ws.onopen=r);
   let id=0; const pend={}, errs=[]; ws.onmessage=m=>{const d=JSON.parse(m.data); if(d.id&&pend[d.id]){pend[d.id](d);delete pend[d.id]} if(d.method==='Runtime.exceptionThrown') errs.push(d.params.exceptionDetails.exception?.description);};
   const send=(method,params={})=>new Promise(r=>{const i=++id;pend[i]=r;ws.send(JSON.stringify({id:i,method,params}))});
   const ev=async e=>{const r=(await send('Runtime.evaluate',{expression:e,returnByValue:true,awaitPromise:true})).result; if(r.exceptionDetails) errs.push('EVAL: '+(r.exceptionDetails.exception?.description||'').slice(0,300)); return r.result?.value};
-  await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"}); return {send,ev,errs};
+  await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"+';'+__DLG}); return {send,ev,errs};
 };
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)); const chk=(n,c)=>console.log((c?'PASS ':'FAIL ')+n);
 const A = await mk(9333);
@@ -53,6 +55,6 @@ await A.ev(`(async()=>{ Drive.token=null; Drive.exp=0; await IDB.del('meta','dto
 chk('after refresh of page: renews silently', await A.ev(`__rf>=1 && Sync.state==='ok'`));
 await A.ev(`(async()=>{ await IDB.put('kv','drt', await Vault.encJSON('RT-bad')); Drive.token=null; Drive.exp=0; await IDB.del('meta','dtoken'); await Sync.run(); })()`); await sleep(1500);
 chk('revoked refresh token -> falls back to reconnect bar', await A.ev(`Sync.state==='reconnect' && !$('#drivebar').hidden`));
-await A.ev(`(async()=>{ await IDB.put('kv','drt', await Vault.encJSON('RT-secret-123')); window.confirm=()=>true; await ACT.syncoff(); })()`); await sleep(800);
+await A.ev(`(async()=>{ await IDB.put('kv','drt', await Vault.encJSON('RT-secret-123')); window.__dlgDefault=true; await ACT.syncoff(); })()`); await sleep(800);
 chk('turning off revokes & deletes refresh token', await A.ev(`window.__revoked===1 && IDB.get('kv','drt').then(x=>!x)`));
 console.log('ERRORS', JSON.stringify(A.errs)); process.exit(0);

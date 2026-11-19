@@ -9,6 +9,26 @@ const getChips = (name, root = document) => { const g = $(`[data-group="${name}"
 const mic = id => SR ? `<button type="button" class="mic" data-act="mic" data-for="${id}" aria-label="Dictate">🎤</button>` : '';
 const val = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
 const empty = (t, sub = '') => `<div class="empty"><div>${t}</div>${sub ? `<small>${sub}</small>` : ''}</div>`;
+/* In-app dialogs. window.confirm/prompt are blocked in some installed apps and embedded browsers
+   ("prompt() is not supported"), so every question goes through this instead. */
+function askDialog({ msg, input = false, value = '', placeholder = '', type = 'text', ok = 'OK', danger = false, word = '' }) {
+  return new Promise(res => {
+    const d = document.createElement('div'); d.className = 'dlg';
+    const field = input || word ? `<input class="dlg-in" type="${type}" ${type === 'password' ? 'inputmode="numeric" autocomplete="off"' : 'autocomplete="off"'} placeholder="${esc(word ? 'Type ' + word : placeholder)}" value="${esc(value)}">` : '';
+    d.innerHTML = `<div class="dlg-box" role="dialog" aria-modal="true"><p>${esc(msg).replace(/\n/g, '<br>')}</p>${field}<div class="dlg-btns"><button type="button" class="btn ghost" data-r="0">Cancel</button><button type="button" class="btn${danger ? ' danger' : ''}" data-r="1">${esc(ok)}</button></div></div>`;
+    document.body.appendChild(d);
+    const inp = d.querySelector('.dlg-in'), okb = d.querySelector('[data-r="1"]');
+    if (word) { okb.disabled = true; inp.addEventListener('input', () => { okb.disabled = inp.value.trim().toUpperCase() !== word; }); }
+    let settled = false; const done = r => { if (settled) return; settled = true; d.remove(); res(r); };
+    d.addEventListener('click', e => { e.stopPropagation(); if (e.target === d) return done(null); const b = e.target.closest('[data-r]'); if (!b || b.disabled) return; done(b.dataset.r === '1' ? (inp && !word ? inp.value : true) : null); });
+    d.addEventListener('keydown', e => { if (e.key === 'Escape') done(null); else if (e.key === 'Enter' && !okb.disabled) { e.preventDefault(); okb.click(); } });
+    setTimeout(() => (inp || okb).focus(), 30);
+  });
+}
+const DANGER_RE = /^(Sign out|Delete|Remove|Revoke|Reject|Leave|Restore|Stop)\b/;
+const uiConfirm = (msg, o = {}) => { const m = msg.match(DANGER_RE); return askDialog(Object.assign({ msg, danger: !!m, ok: m ? m[1] : 'OK' }, o)).then(r => r === true); };
+const uiPrompt = (msg, value = '', o = {}) => askDialog(Object.assign({ msg, input: true, value }, o)).then(r => r === null ? null : String(r));
+const uiType = (msg, word, o = {}) => askDialog(Object.assign({ msg, word, danger: true, ok: word === 'DELETE' ? 'Delete' : word.charAt(0) + word.slice(1).toLowerCase() }, o)).then(r => r === true);
 function openSheet(html) { $('#sheet .sheet-body').innerHTML = html; $('#sheet').classList.add('open'); }
 function closeSheet() { $('#sheet').classList.remove('open'); }
 const ACT = {};
@@ -185,7 +205,7 @@ function vPatient() {
   hydrateImgs();
 }
 ACT.dropout = el => { const p = P(el.dataset.id); p.dropout = el.checked; Store.save(); toast(el.checked ? 'Marked dropout' : 'Dropout cleared'); };
-ACT.delpt = async el => { if (!confirm('Delete this patient with all visits, scores and photos? This cannot be undone.')) return; const id = el.dataset.id; const vids = D.visits.filter(v => v.pid === id).map(v => v.id); for (const ph of D.photos.filter(x => x.pid === id)) await deletePhoto(ph.id); D.patients = D.patients.filter(p => p.id !== id); D.visits = D.visits.filter(v => v.pid !== id); D.scores = D.scores.filter(s => !vids.includes(s.vid)); D.pins = D.pins.filter(s => !vids.includes(s.vid)); D.inv = D.inv.filter(i => i.pid !== id); D.reminders = D.reminders.filter(r => r.pid !== id); D.logbook.forEach(l => { if (l.pid === id) l.pid = null; }); Store.save(); go('#/patients'); };
+ACT.delpt = async el => { if (!(await uiConfirm('Delete this patient with all visits, scores and photos? This cannot be undone.'))) return; const id = el.dataset.id; const vids = D.visits.filter(v => v.pid === id).map(v => v.id); for (const ph of D.photos.filter(x => x.pid === id)) await deletePhoto(ph.id); D.patients = D.patients.filter(p => p.id !== id); D.visits = D.visits.filter(v => v.pid !== id); D.scores = D.scores.filter(s => !vids.includes(s.vid)); D.pins = D.pins.filter(s => !vids.includes(s.vid)); D.inv = D.inv.filter(i => i.pid !== id); D.reminders = D.reminders.filter(r => r.pid !== id); D.logbook.forEach(l => { if (l.pid === id) l.pid = null; }); Store.save(); go('#/patients'); };
 ACT.editpt = el => {
   const p = P(el.dataset.id);
   openSheet(`<h3>Edit patient</h3><div class="form">
@@ -249,7 +269,7 @@ function crfInput(x, cur) {
 }
 ACT.savevisit = el => { const v = V(el.dataset.id); Object.assign(v, { date: val('v_date') || v.date, label: val('v_label') || v.label, dx: val('v_dx').split(',').map(s => s.trim()).filter(Boolean), notes: val('v_notes'), finalDx: val('v_final') }); const p = P(v.pid); p.dx = [...new Set([...(p.dx || []), ...v.dx])]; Store.save(); toast('Visit saved'); };
 ACT.savecrf = el => { const v = V(el.dataset.id); v.crf = v.crf || {}; for (const x of D.thesis.vars) { const id = 'crf_' + x.name; if (x.type === 'yesno' || x.type === 'select') { const c = getChips(id); if (c !== null) v.crf[x.name] = c; } else { const e = document.getElementById(id); if (e) v.crf[x.name] = e.value.trim(); } } Store.save(); toast('CRF saved'); };
-ACT.delvisit = async el => { if (!confirm('Delete this visit and its scores, pins and photos?')) return; const id = el.dataset.id, v = V(id); for (const ph of D.photos.filter(x => x.vid === id)) await deletePhoto(ph.id); D.visits = D.visits.filter(x => x.id !== id); D.scores = D.scores.filter(s => s.vid !== id); D.pins = D.pins.filter(s => s.vid !== id); Store.save(); go('#/patient/' + v.pid); };
+ACT.delvisit = async el => { if (!(await uiConfirm('Delete this visit and its scores, pins and photos?'))) return; const id = el.dataset.id, v = V(id); for (const ph of D.photos.filter(x => x.vid === id)) await deletePhoto(ph.id); D.visits = D.visits.filter(x => x.id !== id); D.scores = D.scores.filter(s => s.vid !== id); D.pins = D.pins.filter(s => s.vid !== id); Store.save(); go('#/patient/' + v.pid); };
 ACT.aeadd = el => openSheet(`<h3>Adverse event</h3><div class="form"><label>Event<input id="ae_ev" placeholder="e.g. Burning, erythema, raised ALT"></label><label>Severity${chips('ae_sev', ['Mild', 'Moderate', 'Severe'], 'Mild')}</label><label>Causality (WHO-UMC)${chips('ae_c', ['Certain', 'Probable', 'Possible', 'Unlikely', 'Unrelated'], 'Possible')}</label><label>Action taken<input id="ae_act" placeholder="Continued / dose reduced / stopped"></label><div class="actions"><button class="btn ghost" data-act="closesheet">Cancel</button><button class="btn" data-act="aesave" data-id="${el.dataset.id}">Save</button></div></div>`);
 ACT.aesave = el => { const v = V(el.dataset.id); const ev = val('ae_ev'); if (!ev) return toast('Describe the event'); (v.ae = v.ae || []).push({ event: ev, sev: getChips('ae_sev', $('#sheet')), cause: getChips('ae_c', $('#sheet')), action: val('ae_act'), date: today() }); Store.save(); closeSheet(); render(); };
 ACT.aedel = el => { const v = V(el.dataset.id); v.ae.splice(+el.dataset.i, 1); Store.save(); render(); };
@@ -312,17 +332,17 @@ function vMap() {
   <div class="mapwrap"><svg id="map" viewBox="0 0 300 400" class="anat">${MAPS[chart].svg}${pins.map(x => `<g class="pin" data-act="pinsel" data-id="${x.id}"><circle cx="${x.x}" cy="${x.y}" r="7" fill="${pinColor(x.type)}"/><text x="${x.x}" y="${x.y + 3}" class="pn">${pins.indexOf(x) + 1}</text></g>`).join('')}</svg></div>
   <p class="small muted center">Tap the chart to drop a <b>${PIN_TYPES.find(p => p[0] === ptype)[1]}</b> pin. Tap a pin to edit.</p>
   <div class="card">${pins.map((x, i) => `<div class="li"><div><b>${i + 1}. ${esc(PIN_TYPES.find(p => p[0] === x.type)?.[1])}</b><small>${esc(x.note || '')}</small></div><button class="icon" data-act="pindel" data-id="${x.id}">✕</button></div>`).join('') || '<p class="muted small">No pins on this chart.</p>'}</div>`;
-  $('#map').addEventListener('click', e => {
+  $('#map').addEventListener('click', async e => {
     if (e.target.closest('.pin')) return;
     const svg = $('#map'), pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
     const q = pt.matrixTransform(svg.getScreenCTM().inverse());
-    const note = prompt('Pin note (optional) — e.g. "4mm punch, active border" or "loss of temperature"', '') ?? null;
+    const note = await uiPrompt('Pin note (optional) — e.g. "4mm punch, active border" or "loss of temperature"', '');
     if (note === null) return;
     D.pins.push({ id: uid(), vid: v.id, chart, x: Math.round(q.x), y: Math.round(q.y), type: ptype, note }); Store.save(); render();
   });
 }
 ACT.pindel = el => { D.pins = D.pins.filter(x => x.id !== el.dataset.id); Store.save(); render(); };
-ACT.pinsel = el => { const x = D.pins.find(p => p.id === el.dataset.id); const n2 = prompt('Edit note', x.note || ''); if (n2 !== null) { x.note = n2; Store.save(); render(); } };
+ACT.pinsel = async el => { const x = D.pins.find(p => p.id === el.dataset.id); const n2 = await uiPrompt('Edit note', x.note || ''); if (n2 !== null) { x.note = n2; Store.save(); render(); } };
 
 /* ---------- WHATSAPP CARE CARDS ---------- */
 let WA_SUBS = {};

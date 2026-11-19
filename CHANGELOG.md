@@ -2,6 +2,9 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 19 Nov 2026 (fix)
+- **Fixed: "Delete batch" did nothing** in some browsers and installed apps. The browser's pop-up box was blocked. All confirmations (delete, clear chat, PIN change, erase, remove member…) now use the app's own dialog, which works everywhere.
+
 ## 19 Nov 2026 (admin tools)
 - **Admin → Access requests → Batches:** see every batch with its members and message count. Remove members, clear a batch's chat, or delete the whole batch (chat, calendar, shared counts and members). You must type DELETE to confirm.
 - **Batch creators** can clear the chat or delete their batch from Batch hub → Members.

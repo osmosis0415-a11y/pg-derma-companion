@@ -1,3 +1,5 @@
+import { readFileSync as __rf } from 'fs';
+const __DLG = __rf(new URL('./dlg-auto.js', import.meta.url), 'utf8');
 import fs from 'fs';
 const list = await (await fetch('http://127.0.0.1:9333/json')).json();
 const ws = new WebSocket(list.find(t=>t.type==='page').webSocketDebuggerUrl); await new Promise(r=>ws.onopen=r);
@@ -6,7 +8,7 @@ const send=(method,params={})=>new Promise(r=>{const i=++id;pend[i]=r;ws.send(JS
 const ev=async e=>{const r=(await send('Runtime.evaluate',{expression:e,returnByValue:true,awaitPromise:true})).result; if(r.exceptionDetails) errs.push('EVAL: '+r.exceptionDetails.exception?.description); return r.result?.value};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)); const chk=(n,c)=>console.log((c?'PASS ':'FAIL ')+n);
 const shot=async n=>{const r=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync('/tmp/'+n+'.png',Buffer.from(r.result.data,'base64'))};
-await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"});
+await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"+';'+__DLG});
 await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
 await send('Page.navigate',{url:'http://localhost:8765/'}); await sleep(1200);
 await ev(`$('#pin').value='1234';$('#pin2').value='1234';$('#unlock').click()`); await sleep(2000);
@@ -48,7 +50,7 @@ await ev(`location.hash='#/batch?t=log&y=JR1&r=P'`); await sleep(500); await sho
 const txt = await ev(`$('#bpane').textContent`); chk('comparison avg 4 top 6', /you\s*2\s*· avg 4 · median 4 · top 6/.test(txt.replace(/\s+/g,' ')));
 await ev(`location.hash='#/batch?t=mem'`); await sleep(400); chk('members listed', (await ev(`$('#bpane').textContent`)).includes('Batchmate'));
 // join flow for another user with invite code
-await ev(`ACT.bleave=ACT.bleave; window.confirm=()=>true; ACT.bleave()`); await sleep(400); chk('left batch', await ev(`D.batch===null && !__store.has('batches/${code}/members/u1')`));
+await ev(`ACT.bleave=ACT.bleave; window.__dlgDefault=true; ACT.bleave()`); await sleep(400); chk('left batch', await ev(`D.batch===null && !__store.has('batches/${code}/members/u1')`));
 await ev(`location.hash='#/batch?join=${code}'`); await sleep(400); chk('code prefilled', (await ev(`$('#b_code').value`))===code);
 await ev(`ACT.bjoin()`); await sleep(400); chk('rejoined', await ev(`D.batch && D.batch.id==='${code}'`));
 await ev(`$('#b_code')||1`);

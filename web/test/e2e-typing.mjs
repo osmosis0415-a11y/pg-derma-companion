@@ -1,3 +1,5 @@
+import { readFileSync as __rf } from 'fs';
+const __DLG = __rf(new URL('./dlg-auto.js', import.meta.url), 'utf8');
 const list = await (await fetch('http://127.0.0.1:9333/json')).json();
 const ws = new WebSocket(list.find(t=>t.type==='page').webSocketDebuggerUrl); await new Promise(r=>ws.onopen=r);
 let id=0; const pend={}; ws.onmessage=m=>{const d=JSON.parse(m.data); if(d.id&&pend[d.id]){pend[d.id](d);delete pend[d.id]}};
@@ -7,7 +9,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
 await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:5});
 await send('Emulation.setUserAgentOverride',{userAgent:'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36'});
-await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"}); await send('Page.navigate',{url:'http://localhost:8765/'}); await sleep(1500);
+await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"+';'+__DLG}); await send('Page.navigate',{url:'http://localhost:8765/'}); await sleep(1500);
 console.log('lock html present:', await ev(`!!document.getElementById('pin')`), 'active:', await ev(`document.activeElement && document.activeElement.id`));
 const r = await ev(`(()=>{const b=document.getElementById('pin').getBoundingClientRect();const el=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return {x:b.x+b.width/2,y:b.y+b.height/2,hit:el&&(el.id||el.tagName)}})()`); console.log(r);
 await send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:r.x,y:r.y}]}); await send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]}); await sleep(300);

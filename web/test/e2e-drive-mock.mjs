@@ -1,10 +1,12 @@
+import { readFileSync as __rf } from 'fs';
+const __DLG = __rf(new URL('./dlg-auto.js', import.meta.url), 'utf8');
 const mk = async port => {
   const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
   const ws = new WebSocket(list.find(t=>t.type==='page').webSocketDebuggerUrl); await new Promise(r=>ws.onopen=r);
   let id=0; const pend={}, errs=[]; ws.onmessage=m=>{const d=JSON.parse(m.data); if(d.id&&pend[d.id]){pend[d.id](d);delete pend[d.id]} if(d.method==='Runtime.exceptionThrown') errs.push(d.params.exceptionDetails.exception?.description); if(d.method==='Runtime.consoleAPICalled'&&d.params.type==='error') errs.push('console: '+d.params.args.map(a=>a.value||a.description).join(' ').slice(0,200));};
   const send=(method,params={})=>new Promise(r=>{const i=++id;pend[i]=r;ws.send(JSON.stringify({id:i,method,params}))});
   const ev=async e=>{const r=(await send('Runtime.evaluate',{expression:e,returnByValue:true,awaitPromise:true})).result; if(r.exceptionDetails) errs.push('EVAL: '+(r.exceptionDetails.exception?.description||'').slice(0,300)); return r.result?.value};
-  await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}});Object.defineProperty(window,'DRIVE_TOKEN_HELPER',{get(){return ''},set(){}})"}); return {send,ev,errs};
+  await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}});Object.defineProperty(window,'DRIVE_TOKEN_HELPER',{get(){return ''},set(){}})"+';'+__DLG}); return {send,ev,errs};
 };
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)); const chk=(n,c)=>console.log((c?'PASS ':'FAIL ')+n);
 const A = await mk(9333), B = await mk(9334);
@@ -77,9 +79,9 @@ chk('merge: logbook from B', await A.ev(`D.logbook.some(l=>l.id==='lB')`));
 await A.ev(`(async()=>{ await deletePhoto(D.photos[0].id); Sync.quiet=true; await Store.flush(); Sync.quiet=false; await Sync.run(); })()`); await sleep(2500);
 chk('photo files removed from Drive', await A.ev(`![...__files.values()].some(f=>/^[pt]_/.test(f.name))`));
 // PIN change
-await A.ev(`window.prompt=(()=>{const a=['1234','4321','4321'];return ()=>a.shift()})(); ACT.chpin()`); await sleep(6000);
+await A.ev(`window.__dlgQueue=['1234','4321','4321']; ACT.chpin()`); await sleep(6000);
 chk('Drive manifest has new salt', await A.ev(`(async()=>JSON.parse(new TextDecoder().decode([...__files.values()].find(f=>f.name==='manifest.json').b)).salt===b64((await IDB.get('meta','auth')).salt))()`));
 // wipe
-await A.ev(`window.prompt=()=> 'DELETE'; ACT.drivewipe()`); await sleep(2000);
+await A.ev(`window.__dlgDefault='DELETE'; ACT.drivewipe()`); await sleep(2000);
 chk('Drive backup deleted, sync off', await A.ev(`__files.size===0 && D.sync.on===false`));
 console.log('ERRORS A', JSON.stringify(A.errs)); console.log('ERRORS B', JSON.stringify(B.errs)); process.exit(0);

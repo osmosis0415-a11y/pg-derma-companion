@@ -1,3 +1,5 @@
+import { readFileSync as __rf } from 'fs';
+const __DLG = __rf(new URL('./dlg-auto.js', import.meta.url), 'utf8');
 import fs from 'fs';
 const list = await (await fetch('http://127.0.0.1:9333/json')).json();
 const ws = new WebSocket(list.find(t=>t.type==='page').webSocketDebuggerUrl); await new Promise(r=>ws.onopen=r);
@@ -6,7 +8,7 @@ const send=(method,params={})=>new Promise(r=>{const i=++id;pend[i]=r;ws.send(JS
 const ev=async e=>{const r=(await send('Runtime.evaluate',{expression:e,returnByValue:true,awaitPromise:true})).result; if(r.exceptionDetails) errs.push('EVAL: '+r.exceptionDetails.exception?.description); return r.result?.value};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)); const chk=(n,c)=>console.log((c?'PASS ':'FAIL ')+n);
 const shot=async n=>{const r=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync('/tmp/'+n+'.png',Buffer.from(r.result.data,'base64'))};
-await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"});
+await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"+';'+__DLG});
 await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
 await send('Page.navigate',{url:'http://localhost:8765/'}); await sleep(1200);
 await ev(`$('#pin').value='1234';$('#pin2').value='1234';$('#unlock').click()`); await sleep(2000);
@@ -53,13 +55,13 @@ chk('unread badge = 1', await ev(`Chat.unread()===1 && $('#chatbadge') && $('#ch
 await ev(`location.hash='#/batch?t=chat'`); await sleep(400);
 chk('badge clears on open', await ev(`Chat.unread()===0`));
 // PHI warning: cancel keeps text
-await ev(`window.confirm=()=>false; $('#chatin').value='Pt UHID 2024-01421 call 9876543210'; $('#chatform').requestSubmit()`); await sleep(300);
+await ev(`window.__dlgDefault=false; $('#chatin').value='Pt UHID 2024-01421 call 9876543210'; $('#chatform').requestSubmit()`); await sleep(300);
 chk('PHI prompt blocks on cancel', await ev(`$('#chatin').value.includes('9876543210') && ![...__store.values()].some(v=>v.text&&v.text.includes('9876543210'))`));
-await ev(`window.confirm=()=>true; $('#chatform').requestSubmit()`); await sleep(300);
+await ev(`window.__dlgDefault=true; $('#chatform').requestSubmit()`); await sleep(300);
 chk('PHI sent after confirm', await ev(`[...__store.values()].some(v=>v.text&&v.text.includes('9876543210'))`));
 // delete own message
 const own = await ev(`$('.msg.me [data-act=chatdel]').dataset.id`);
-await ev(`window.confirm=()=>true; $('.msg.me [data-act=chatdel]').click()`); await sleep(300);
+await ev(`window.__dlgDefault=true; $('.msg.me [data-act=chatdel]').click()`); await sleep(300);
 chk('own message deleted', await ev(`![...__store.keys()].some(k=>k.endsWith('/messages/${own}'))`));
 chk('hash unchanged after delete click', await ev(`location.hash==='#/batch?t=chat'`));
 chk('others messages have no delete for non-admin', await ev(`(()=>{D.batch.admin=false;paintChatList(true);return !document.querySelector('.msg:not(.me) [data-act=chatdel]')})()`));
@@ -68,20 +70,20 @@ chk('send bar visible above nav', await ev(`(()=>{const b=$('#chatform').getBoun
 // ---- admin tools ----
 await ev(`location.hash='#/batch?t=mem'`); await sleep(400);
 chk('creator sees admin card', await ev(`(()=>{D.batch.admin=true;paintBatch();return !!$('[data-act=bdelete]') && !!$('[data-act=bclearchat]')})()`));
-await ev(`window.confirm=()=>true; ACT.bclearchat()`); await sleep(400);
+await ev(`window.__dlgDefault=true; ACT.bclearchat()`); await sleep(400);
 chk('clear chat removes all messages', await ev(`![...__store.keys()].some(k=>k.startsWith('batches/${code}/messages/'))`));
 await ev(`__store.set('batches/${code}/messages/m9',{uid:'u2',name:'Priya',text:'x',at:1});__store.set('batches/${code}/events/e9',{title:'t',date:'2026-12-01'})`);
-await ev(`window.prompt=()=>'nope'; ACT.bdelete()`); await sleep(300);
+await ev(`window.__dlgDefault='nope'; ACT.bdelete()`); await sleep(300);
 chk('wrong confirm word keeps batch', await ev(`__store.has('batches/${code}') && D.batch!==null`));
-await ev(`window.prompt=()=>'DELETE'; ACT.bdelete()`); await sleep(600);
+await ev(`window.__dlgDefault='DELETE'; ACT.bdelete()`); await sleep(600);
 chk('batch + all contents deleted', await ev(`![...__store.keys()].some(k=>k.startsWith('batches/${code}')) && D.batch===null`));
 // app admin page: Batches tab
 await ev(`__store.set('batches/DVL-AAAA-BBBB',{name:'Other batch',createdBy:'u9',admins:['u9'],createdAt:{seconds:1700000000}});__store.set('batches/DVL-AAAA-BBBB/members/u9',{name:'Rahul',year:'JR2'});__store.set('batches/DVL-AAAA-BBBB/members/u8',{name:'Kiran',year:'JR1'});__store.set('batches/DVL-AAAA-BBBB/messages/q1',{uid:'u9',text:'hey',at:1})`);
 await ev(`Cloud.user.email='sriramdeverashetty@gmail.com'; location.hash='#/admin?t=batches'`); await sleep(700);
 chk('admin sees all batches', await ev(`$('#blist').textContent.includes('Other batch') && $('#blist').textContent.includes('2 members') && $('#blist').textContent.includes('1 message')`));
-await ev(`window.confirm=()=>true; $('[data-act=abkick][data-id=u8]').click()`); await sleep(500);
+await ev(`window.__dlgDefault=true; $('[data-act=abkick][data-id=u8]').click()`); await sleep(500);
 chk('admin removed a member', await ev(`!__store.has('batches/DVL-AAAA-BBBB/members/u8') && __store.has('batches/DVL-AAAA-BBBB/members/u9')`));
-await ev(`window.prompt=()=>'DELETE'; $('[data-act=abdel][data-b="DVL-AAAA-BBBB"]').click()`); await sleep(700);
+await ev(`window.__dlgDefault='DELETE'; $('[data-act=abdel][data-b="DVL-AAAA-BBBB"]').click()`); await sleep(700);
 chk('admin deleted other batch', await ev(`![...__store.keys()].some(k=>k.startsWith('batches/DVL-AAAA-BBBB'))`));
 chk('batches tab shows empty', await ev(`$('#blist').textContent.includes('No batches yet')`));
 await shot('admin-batches');
