@@ -2,6 +2,15 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 2026-11-20 — Follow, messages, notifications, profile photos, story polls & quizzes
+- **Profile photos:** tap your avatar on your profile to add one. It shows on posts, comments, stories, messages and the leaderboard.
+- **Follow / followers:** follow anyone from their profile, see follower and following counts, and use the new **Following** feed filter.
+- **Messages (DMs):** private 1:1 chats from any profile (Message button), with unread counts. Inbox is the paper-plane icon on Community.
+- **Notifications page** (heart icon on Community): likes, comments, new followers, messages, missed calls and story answers, with a red badge.
+- **Your story:** share a photo, text, **poll** or **quiz** for 24 hours from "Your story" (the + circle). Batchmates vote and see live results; quizzes show right or wrong.
+- **Admin: app style switch.** Admin → App style lets you choose **Instagram style** or **Twitter / X style** (compact text timeline) for everyone. It's also in the admin console.
+- **Push notifications:** built in, switching on once the web push key is added.
+
 ## 2026-11-20 — Community, new brand, admin console, admin calls
 - **New look:** a teal-to-coral brand, a new logo (a dermoscope lens over skin layers), new app icons, gradient story rings and gold streak flames.
 - **Community tab** (bottom bar) for every approved resident, no batch needed:

@@ -11,7 +11,7 @@ window.__installFsMock = (uid, email, name) => {
   const resolve = (cur, v) => { if (v && typeof v === 'object' && '__inc' in v) return (typeof cur === 'number' ? cur : 0) + v.__inc; return v; };
   // Tabs are separate processes: serialise read-modify-write with a cross-tab Web Lock so bursts (e.g. ICE candidates) aren't lost.
   const locked = fn => navigator.locks ? navigator.locks.request('fsmock', () => fn()) : Promise.resolve(fn());
-  const writeNow = (p, data, merge) => { const o = load(), k = p.join('/'), prev = merge ? (o[k] || {}) : {}; const nx = Object.assign({}, prev); for (const [a, b] of Object.entries(data)) nx[a] = resolve(prev[a], b); o[k] = JSON.parse(JSON.stringify(nx)); save(o); changed(); };
+  const writeNow = (p, data, merge) => { const o = load(), k = p.join('/'), prev = merge ? (o[k] || {}) : {}; const nx = JSON.parse(JSON.stringify(prev)); for (const [a, b] of Object.entries(data)) { if (merge && a.includes('.')) { const ks = a.split('.'); let o = nx; for (const k of ks.slice(0, -1)) o = o[k] = (o[k] && typeof o[k] === 'object') ? o[k] : {}; const last = ks[ks.length - 1]; o[last] = resolve(o[last], b); } else nx[a] = (b && typeof b === 'object' && b.__au) ? [...new Set([...(prev[a] || []), ...b.__au])] : resolve(prev[a], b); } o[k] = JSON.parse(JSON.stringify(nx)); save(o); changed(); };
   const write = (p, data, merge) => locked(() => writeNow(p, data, merge));
   const snapDoc = (k, v) => ({ id: k.split('/').pop(), ref: docRef(k.split('/')), exists: () => v !== undefined, data: () => v });
   const listDocs = q => { const pre = q.p.join('/') + '/', o = load(); let docs = Object.keys(o).filter(k => k.startsWith(pre) && !k.slice(pre.length).includes('/')).map(k => snapDoc(k, o[k]));
@@ -19,7 +19,7 @@ window.__installFsMock = (uid, email, name) => {
       if (m.ob) { const v = d => m.ob.split('.').reduce((o, k) => o == null ? undefined : o[k], d.data()); docs = docs.filter(d => v(d) !== undefined); docs.sort((a, b) => (v(a) > v(b) ? 1 : v(a) < v(b) ? -1 : 0) * (m.dir === 'desc' ? -1 : 1)); } if (m.lim) docs = docs.slice(0, m.lim); }
     return docs; };
   const f = {
-    serverTimestamp: () => Date.now(), increment: n => ({ __inc: n }),
+    serverTimestamp: () => Date.now(), increment: n => ({ __inc: n }), arrayUnion: (...v) => ({ __au: v }),
     doc: (base, ...parts) => { if (base && base.c && !parts.length) return docRef(base.p.concat('auto' + Date.now().toString(36) + (autoId++) + Math.random().toString(36).slice(2, 6))); return docRef(pathOf(base, parts)); },
     collection: (base, ...parts) => ({ p: pathOf(base, parts), c: true }),
     where: (fld, op, v) => ({ fld, op, v }), orderBy: (fld, dir) => ({ ob: fld, dir }), limit: n => ({ lim: n }), query: (c, ...m) => ({ p: c.p, m, c: true }),

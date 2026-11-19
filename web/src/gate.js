@@ -131,6 +131,7 @@ function vAdmin() {
   if (tab === 'reports') return vAdminReports();
   main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === tab ? ' on' : ''}" href="#/admin?t=${k}">${l} <span id="cnt_${k}"></span></a>`).join('')}</div>
   <div id="alist" class="card"><p class="muted small">Loading…</p></div>
+  <div class="card laycard"><h3>App style</h3><p class="small muted">How the Community feed looks for everyone.</p><div class="btnrow"><button class="btn sm${AppCfg.layout !== 'twitter' ? ' on' : ' ghost'}" data-act="setlayout" data-l="insta">Instagram style</button><button class="btn sm${AppCfg.layout === 'twitter' ? ' on' : ' ghost'}" data-act="setlayout" data-l="twitter">Twitter / X style</button></div></div>
   <div class="card"><h3>Invite people</h3><p class="small muted">Share the app link. They sign in with Google and appear here for your approval.</p><button class="btn sm ghost" data-act="adminshare">Share app link</button></div>`;
   Cloud.init().then(() => {
     if (ROUTE.q.dial && amAdmin()) { const id = ROUTE.q.dial, v = ROUTE.q.v === '1'; history.replaceState(null, '', '#/admin?t=approved'); Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'approvals', id)).then(d => { const x = d.data() || {}; Calls.call(id, x.name || x.email || 'Resident', v, true); }); }

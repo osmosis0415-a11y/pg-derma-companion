@@ -72,6 +72,7 @@ function checkNew() {
     var seen = JSON.parse(props_().getProperty('NOTIFIED') || '[]');
     var pending = listByStatus_('pending');
     var fresh = pending.filter(function (p) { return seen.indexOf(p.uid) < 0; });
+    try { pushOut(); } catch (e) { Logger.log('push: ' + e); }
     if (!fresh.length) return;
     notifyEmail_(fresh, pending.length);
     notifyTelegram_(fresh);
@@ -370,4 +371,35 @@ function setupStudy() {
   ScriptApp.newTrigger('nudge').timeBased().everyHours(1).create();
   Logger.log('Study triggers set: makeContent daily ~6 am IST, nudge hourly.');
   if (props_().getProperty('GEMINI_KEY')) Logger.log('Drafted now: ' + makeContent()); else Logger.log('Add GEMINI_KEY in Script properties, then run makeContent() to test.');
+}
+
+
+/* =====================================================================================
+ * PUSH NOTIFICATIONS — runs inside checkNew() every minute.
+ * Residents' apps write notifs/{id} (like, comment, follow, dm, call, vote). This sends each unread one to the
+ * person's phones through Firebase Cloud Messaging (free), using the tokens their app saved in pushTokens/{uid}.
+ * ===================================================================================== */
+var PUSH_TXT = { like: 'liked your post', comment: 'commented on your post', follow: 'started following you', dm: 'sent you a message', call: 'is calling you — open PG Derma', vote: 'answered your story' };
+function pushUrl_(n) { return n.type === 'dm' ? '#/dm/' + n.ref : n.type === 'follow' || n.type === 'call' ? '#/u/' + n.from : n.type === 'vote' ? '#/community' : '#/post/' + n.ref; }
+function fcmSend_(token, data) {
+  var r = UrlFetchApp.fetch('https://fcm.googleapis.com/v1/projects/' + PROJECT + '/messages:send', { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    payload: JSON.stringify({ message: { token: token, data: data, webpush: { headers: { Urgency: 'high', TTL: '86400' } } } }) });
+  return r.getResponseCode() === 200 ? 'ok' : (/UNREGISTERED|NOT_FOUND|INVALID_ARGUMENT/.test(r.getContentText()) ? 'gone' : 'err:' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 160));
+}
+function pushOut() {
+  var list = query_('notifs', 'pushed', 'EQUAL', false, 100); if (!list.length) return 0;
+  var tokCache = {}, sent = 0;
+  list.forEach(function (n) {
+    var mark = function () { fs_('patch', '/notifs/' + encodeURIComponent(n.id) + '?updateMask.fieldPaths=pushed&currentDocument.exists=true', { fields: { pushed: { booleanValue: true } } }); };
+    var age = Date.now() - Date.parse(n.at || 0);
+    if (n.read || !n.to || !(age < 864e5)) { try { mark(); } catch (e) {} return; }
+    if (!(n.to in tokCache)) { try { tokCache[n.to] = (docObj_(fs_('get', '/pushTokens/' + encodeURIComponent(n.to))).tokens || []); } catch (e) { tokCache[n.to] = []; } }
+    var toks = tokCache[n.to], keep = [];
+    var data = { title: String(n.fromName || 'PG Derma'), body: (PUSH_TXT[n.type] || '') + (n.text ? (n.type === 'call' ? '' : ': ' + n.text) : ''), url: APP_URL + pushUrl_(n), tag: n.type + ':' + (n.ref || n.from) };
+    toks.forEach(function (t) { var res = fcmSend_(t, data); if (res !== 'gone') keep.push(t); if (res === 'ok') sent++; else if (res !== 'gone') Logger.log('FCM ' + res); });
+    if (keep.length !== toks.length) { tokCache[n.to] = keep; try { fs_('patch', '/pushTokens/' + encodeURIComponent(n.to) + '?updateMask.fieldPaths=tokens', { fields: { tokens: toFs_(keep) } }); } catch (e) {} }
+    try { mark(); } catch (e) {}
+  });
+  return sent;
 }

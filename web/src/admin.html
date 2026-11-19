@@ -56,7 +56,7 @@ const ms = x => !x ? 0 : x.toMillis ? x.toMillis() : x.seconds ? x.seconds * 100
 const when = x => { const t = ms(x); if (!t) return ''; const s = (Date.now() - t) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + ' min ago' : s < 86400 ? Math.floor(s / 3600) + ' h ago' : new Date(t).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
 const ini = n => String(n || '?').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase();
 const TYPES = { mcq: 'MCQ', card: 'Flashcard', spot: 'Spot diagnosis', pearl: 'One-liner' };
-let F = {}, auth, db, user, view = location.hash.slice(1) || 'overview';
+let LAYOUT = 'insta', F = {}, auth, db, user, view = location.hash.slice(1) || 'overview';
 const confirmBox = m => new Promise(res => { const d = document.createElement('div'); d.className = 'dlg'; d.innerHTML = `<div class="dlgb"><p>${esc(m)}</p><div class="row" style="justify-content:flex-end"><button class="b g" data-r="0">Cancel</button><button class="b rr" data-r="1">OK</button></div></div>`; document.body.appendChild(d); d.onclick = e => { const b = e.target.closest('[data-r]'); if (!b && e.target !== d) return; d.remove(); res(!!b && b.dataset.r === '1'); }; });
 
 async function boot() {
@@ -86,6 +86,7 @@ function shell() {
   window.onhashchange = () => { view = location.hash.slice(1) || 'overview'; $('#side').classList.remove('open'); render(); };
   refreshCounts(); render();
 }
+document.addEventListener('click', async e => { const b = e.target.closest('[data-lay]'); if (!b) return; await F.setDoc(F.doc(db, 'config', 'app'), { layout: b.dataset.lay, updatedAt: F.serverTimestamp() }, { merge: true }); LAYOUT = b.dataset.lay; toast(LAYOUT === 'twitter' ? 'Twitter / X style is on for everyone' : 'Instagram style is on for everyone'); render(); });
 function setCount(k, n) { counts[k] = n; const e = $('#n_' + k); if (e) { e.hidden = !n; e.textContent = n; } }
 async function q(coll, ...m) { return (await F.getDocs(m.length ? F.query(F.collection(db, coll), ...m) : F.collection(db, coll))).docs.map(d => Object.assign({ id: d.id, _ref: d.ref }, d.data())); }
 async function refreshCounts() {
@@ -103,11 +104,13 @@ function render() {
 /* ---------- Overview ---------- */
 async function vOverview(m) {
   const [ap, ct, rp, ps, bt, st, pr] = await Promise.all([q('approvals'), q('content'), q('reports'), q('posts', F.orderBy('createdAt', 'desc'), F.limit(200)).catch(() => []), q('batches'), q('study').catch(() => []), q('profiles').catch(() => [])]);
+  try { const cf = await F.getDoc(F.doc(db, 'config', 'app')); LAYOUT = (cf.exists() && cf.data().layout) || 'insta'; } catch (e) {}
   const day = Date.now() - 864e5, week = Date.now() - 7 * 864e5, today = new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
   const S = (n, l, hot, href) => `<a class="stat${hot ? ' hot' : ''}" href="${href ? '#' + href : 'javascript:void 0'}" style="text-decoration:none;color:inherit"><b>${n}</b><small>${l}</small></a>`;
   m.innerHTML = `<h2>Overview</h2><p class="sub">Everything that needs your attention, at a glance.</p>
     <div class="stats">${S(ap.filter(x => x.status === 'pending').length, 'sign-ups waiting', ap.some(x => x.status === 'pending'), 'users')}${S(ct.filter(x => x.status === 'draft').length, 'study drafts to review', ct.some(x => x.status === 'draft'), 'content')}${S(rp.length, 'reported posts', rp.length, 'reports')}${S(ap.filter(x => x.status === 'approved').length, 'approved users', 0, 'users')}</div>
     <div class="stats">${S(ps.filter(p => ms(p.createdAt) > day).length, 'posts today', 0, 'posts')}${S(ps.filter(p => ms(p.createdAt) > week).length, 'posts this week', 0, 'posts')}${S(st.filter(s => s.last === today).length, 'studied today', 0, 'reminders')}${S(ct.filter(x => x.status === 'live').length, 'published bot items', 0, 'content')}${S(bt.length, 'batches', 0, 'batches')}${S(pr.length, 'community profiles', 0)}</div>
+    <div class="card"><h3 style="margin-top:0">App style</h3><p class="muted">Choose how the Community feed looks for every resident.</p><div class="row"><button class="b ${LAYOUT !== 'twitter' ? '' : 'g'}" data-lay="insta">📸 Instagram style</button><button class="b ${LAYOUT === 'twitter' ? '' : 'g'}" data-lay="twitter">𝕏 Twitter / X style</button></div></div>
     <div class="card"><h3 style="margin-top:0">Recent sign-ups</h3>${ap.sort((a, b) => ms(b.requestedAt) - ms(a.requestedAt)).slice(0, 6).map(x => `<div class="row between" style="padding:6px 0;border-top:1px solid var(--line)"><span><b>${esc(x.name || x.email)}</b> <small class="muted">${esc(x.email)}</small></span><span class="tag ${x.status === 'pending' ? 'c' : ''}">${esc(x.status)}</span></div>`).join('') || '<p class="muted">None yet.</p>'}</div>`;
 }
 /* ---------- Users ---------- */

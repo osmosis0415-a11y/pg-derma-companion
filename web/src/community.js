@@ -22,7 +22,8 @@ const Comm = {
     if (!this.ok()) return; const c = this.st(), f = Cloud.f, s = typeof Study !== 'undefined' ? Study.st() : {};
     const xp = {}; Object.keys(c.xp).sort().slice(-4).forEach(k => { xp[k] = c.xp[k]; });
     if (c.board === false) { f.deleteDoc(f.doc(Cloud.db, 'profiles', Cloud.user.uid)).catch(() => {}); return; }
-    f.setDoc(f.doc(Cloud.db, 'profiles', Cloud.user.uid), { name: (D.settings.name || Cloud.user.displayName || 'Resident').slice(0, 80), year: residencyYear(new Date()), college: (c.college || '').slice(0, 80), bio: (c.bio || '').slice(0, 200),
+    const ph = c.photo ? { photo: c.photo } : {};
+    f.setDoc(f.doc(Cloud.db, 'profiles', Cloud.user.uid), { ...ph, name: (D.settings.name || Cloud.user.displayName || 'Resident').slice(0, 80), year: residencyYear(new Date()), college: (c.college || '').slice(0, 80), bio: (c.bio || '').slice(0, 200),
       streak: typeof Study !== 'undefined' ? Study.streakNow() : 0, best: s.best || 0, total: c.total || 0, xp, posts: c.posts || 0, updatedAt: f.serverTimestamp() }).catch(() => {});
   },
   /* ---------- posts ---------- */
@@ -43,7 +44,7 @@ const Comm = {
     const on = !this.liked[id]; this.liked[id] = on; p.likes = Math.max(0, (p.likes || 0) + (on ? 1 : -1)); paintPostLike(id);
     try {
       const lr = f.doc(Cloud.db, 'posts', id, 'likes', me);
-      if (on) await f.setDoc(lr, { at: f.serverTimestamp() }); else await f.deleteDoc(lr);
+      if (on) { await f.setDoc(lr, { at: f.serverTimestamp() }); Notif.send(p.uid, 'like', id, (p.text || '').slice(0, 60)); } else await f.deleteDoc(lr);
       await f.updateDoc(f.doc(Cloud.db, 'posts', id), { likes: f.increment(on ? 1 : -1) });
     } catch (e) { this.liked[id] = !on; p.likes += on ? -1 : 1; paintPostLike(id); toast('Could not update like'); }
   },
@@ -58,7 +59,7 @@ function commBadge() { const n = Comm.newOnMine(), el = document.querySelector('
 /* ---------- Community hub ---------- */
 function vCommunity() {
   const t = ROUTE.q.t || 'posts';
-  setTitle('Community', false, `<a class="icon" href="#/compose" aria-label="New post">${ic('plussq')}</a>`);
+  setTitle('Community', false, `<a class="icon" href="#/compose" aria-label="New post">${ic('plussq')}</a><a class="icon topic" href="#/notifs" aria-label="Notifications">${ic('heart')}<i class="nb" data-nbadge hidden></i></a><a class="icon topic" href="#/dms" aria-label="Messages">${ic('send')}</a>`); setTimeout(() => Notif.badge());
   const tabs = [['posts', 'For you'], ['explore', 'Explore'], ['top', 'Leaderboard'], ['batch', 'Batch']];
   main().innerHTML = `<div class="seg">${tabs.map(([k, l]) => `<a class="${k === t ? 'on' : ''}" href="${k === 'batch' ? '#/batch' : '#/community?t=' + k}">${l}</a>`).join('')}</div><div id="cpane"></div>`;
   if (!Cloud.cfg()) { $('#cpane').innerHTML = `<div class="card"><p>Sign in with Google (Batch hub) to join the community.</p><a class="btn" href="#/batch">Sign in</a></div>`; return; }
@@ -66,17 +67,18 @@ function vCommunity() {
     if (!Cloud.user) { $('#cpane').innerHTML = `<div class="card"><p>Sign in with Google to join the community.</p><a class="btn" href="#/batch">Sign in</a></div>`; return; }
     if (t === 'top') return vBoard();
     if (t === 'explore') { Comm.listen(); $('#cpane').innerHTML = '<p class="muted small">Loading…</p>'; setTimeout(vExplore, Comm.posts.length ? 0 : 900); return; }
-    $('#cpane').innerHTML = `<div id="stories"></div><a class="card composer" href="#/compose"><span class="pav">${esc(initials(D.settings.name || 'PG'))}</span><span class="muted">Share a case, ask a doubt, post a pearl…</span>${ic('image')}</a>
-      <div class="chips scroll" id="pfilt">${[['', 'All'], ...Object.entries(POST_KINDS)].map(([k, l]) => `<a class="chip${(ROUTE.q.k || '') === k ? ' on' : ''}" href="#/community?k=${k}">${l}${k ? 's' : ''}</a>`).join('')}<a class="chip${ROUTE.q.k === 'mine' ? ' on' : ''}" href="#/community?k=mine">Mine</a><a class="chip${ROUTE.q.k === 'new' ? ' on' : ''}" href="#/community?k=new">Latest</a></div>
+    $('#cpane').innerHTML = `${pushPromptHTML()}<div id="stories"></div><a class="card composer" href="#/compose"><span class="pav" data-av="${esc(Cloud.user.uid)}">${av(Cloud.user.uid, D.settings.name || 'PG')}</span><span class="muted">Share a case, ask a doubt, post a pearl…</span>${ic('image')}</a>
+      <div class="chips scroll" id="pfilt">${[['', 'All'], ...Object.entries(POST_KINDS)].map(([k, l]) => `<a class="chip${(ROUTE.q.k || '') === k ? ' on' : ''}" href="#/community?k=${k}">${l}${k ? 's' : ''}</a>`).join('')}<a class="chip${ROUTE.q.k === 'following' ? ' on' : ''}" href="#/community?k=following">Following</a><a class="chip${ROUTE.q.k === 'mine' ? ' on' : ''}" href="#/community?k=mine">Mine</a><a class="chip${ROUTE.q.k === 'new' ? ' on' : ''}" href="#/community?k=new">Latest</a></div>
       <div id="plist" class="feed"><p class="muted small">Loading posts…</p></div>`;
-    Comm.listen(); paintPosts(); Comm.pushProfile();
+    Comm.listen(); paintPosts(); Comm.pushProfile(); Social.start(); Prof.load(); Follow.load().then(() => { if (ROUTE.q.k === 'following') paintPosts(); });
   }).catch(() => { $('#cpane').innerHTML = '<p class="err">Could not reach the community. Check your connection.</p>'; });
 }
 function postHTML(p, full) {
+  if (typeof AppCfg !== 'undefined' && AppCfg.layout === 'twitter') return tweetHTML(p, full);
   const me = Cloud.user?.uid, mine = p.uid === me, n = mine ? Math.max(0, (p.comments || 0) - (Comm.st().seen[p.id] || 0)) : 0;
   const txt = p.text || '', cut = !full && txt.length > 280;
   return `<article class="post cpost" data-pid="${p.id}">
-    <header><a class="pav" href="#/u/${esc(p.uid)}">${esc(initials(p.name))}</a><a class="pwho" href="#/u/${esc(p.uid)}"><b>${esc(p.name || 'Resident')}</b><small>${esc(p.year || '')} · ${agoTxt(tsMs(p.createdAt))}</small></a><span class="ptag k-${esc(p.kind)}">${POST_KINDS[p.kind] || 'Post'}</span><button class="icon" data-act="pmenu" data-id="${p.id}" aria-label="More">${ic('more')}</button></header>
+    <header>${avA(p.uid, p.name)}<a class="pwho" href="#/u/${esc(p.uid)}"><b>${esc(p.name || 'Resident')}</b><small>${esc(p.year || '')} · ${agoTxt(tsMs(p.createdAt))}</small></a><span class="ptag k-${esc(p.kind)}">${POST_KINDS[p.kind] || 'Post'}</span><button class="icon" data-act="pmenu" data-id="${p.id}" aria-label="More">${ic('more')}</button></header>
     <a class="pbody" href="#/post/${p.id}"><p class="pre">${esc(cut ? txt.slice(0, 280) + '…' : txt)}</p>${cut ? '<span class="muted small">more</span>' : ''}</a>
     ${p.img ? `<a class="pmedia" href="#/post/${p.id}"><img src="${esc(p.img)}" alt="Case photo" loading="lazy"></a>` : ''}
     ${(p.tags || []).length ? `<div class="ptags">${p.tags.map(t => `<span>#${esc(t)}</span>`).join('')}</div>` : ''}
@@ -84,12 +86,21 @@ function postHTML(p, full) {
       <a class="icon" href="#/post/${p.id}" aria-label="Comments">${ic('chat')}<b>${p.comments || 0}</b>${n ? `<i class="nb">${n}</i>` : ''}</a>
       <button class="icon" data-act="pshare" data-id="${p.id}" aria-label="Share">${ic('send')}</button></div><i class="fburst">${ic('heartfill')}</i></article>`;
 }
+function tweetHTML(p, full) {
+  const txt = p.text || '', cut = !full && txt.length > 420;
+  return `<article class="tweet cpost" data-pid="${p.id}">${avA(p.uid, p.name)}<div class="tw">
+    <div class="twh"><a href="#/u/${esc(p.uid)}"><b>${esc(p.name || 'Resident')}</b></a><small>${esc(p.year || '')} · ${agoTxt(tsMs(p.createdAt))}</small><span class="ptag k-${esc(p.kind)}">${POST_KINDS[p.kind] || 'Post'}</span><button class="icon" data-act="pmenu" data-id="${p.id}" aria-label="More">${ic('more')}</button></div>
+    <a class="pbody" href="#/post/${p.id}"><p class="pre">${esc(cut ? txt.slice(0, 420) + '…' : txt)}</p></a>
+    ${p.img ? `<a class="pmedia" href="#/post/${p.id}"><img src="${esc(p.img)}" alt="Case photo" loading="lazy"></a>` : ''}
+    ${(p.tags || []).length ? `<div class="ptags">${p.tags.map(t => `<span>#${esc(t)}</span>`).join('')}</div>` : ''}
+    <div class="pact"><a class="icon" href="#/post/${p.id}" aria-label="Reply">${ic('chat')}<b>${p.comments || 0}</b></a><button class="icon plike${Comm.liked[p.id] ? ' on' : ''}" data-act="plike" data-plike="${p.id}" aria-label="Like">${ic(Comm.liked[p.id] ? 'heartfill' : 'heart')}<b>${p.likes || 0}</b></button><button class="icon" data-act="pshare" data-id="${p.id}" aria-label="Share">${ic('send')}</button></div></div><i class="fburst">${ic('heartfill')}</i></article>`;
+}
 function paintPosts() {
   const el = $('#plist'); if (!el) return; const k = ROUTE.q.k || '', me = Cloud.user?.uid;
-  const filt = Comm.posts.filter(p => !k || k === 'new' || (k === 'mine' ? p.uid === me : p.kind === k));
+  const filt = Comm.posts.filter(p => !k || k === 'new' || (k === 'mine' ? p.uid === me : k === 'following' ? Follow.has(p.uid) || p.uid === me : p.kind === k));
   const list = k === 'new' || k === 'mine' ? filt : Rank.rankPosts(filt);
   const st = $('#stories'); if (st) st.innerHTML = storiesHTML();
-  el.innerHTML = list.map(p => postHTML(p)).join('') || `<div class="card empty-feed"><h3>${k === 'mine' ? 'You haven\'t posted yet' : 'Start the conversation'}</h3><p class="muted small">Share an interesting case (de-identified), a doubt from rounds, or a pearl from today's OPD.</p><a class="btn" href="#/compose">Create a post</a></div>`;
+  el.innerHTML = list.map(p => postHTML(p)).join('') || `<div class="card empty-feed"><h3>${k === 'mine' ? 'You haven\'t posted yet' : k === 'following' ? 'Follow residents to fill this feed' : 'Start the conversation'}</h3><p class="muted small">Share an interesting case (de-identified), a doubt from rounds, or a pearl from today's OPD.</p><a class="btn" href="#/compose">Create a post</a></div>`;
   Comm.loadLikes(); watchPostViews();
 }
 let postIO = null, postSeenT = {};
@@ -193,7 +204,7 @@ function openThread(tid, el, postId) {
     <div class="cbox"><textarea id="tc_text" rows="2" maxlength="1000" placeholder="Add to the discussion…"></textarea><button class="btn sm" data-act="tcsend" data-tid="${esc(tid)}" ${postId ? `data-post="${esc(postId)}"` : ''}>${ic('send')}</button></div>`;
   threadUnsub = f.onSnapshot(f.query(f.collection(Cloud.db, 'threads', tid, 'c'), f.orderBy('at', 'asc'), f.limit(200)), s => {
     const tl = $('#tl'); if (!tl) return;
-    tl.innerHTML = s.docs.map(d => { const c = d.data(), mine = c.uid === me; return `<div class="cm"><a class="pav sm" href="#/u/${esc(c.uid)}">${esc(initials(c.name))}</a><div><b>${esc(c.name)}</b> <small class="muted">${agoTxt(tsMs(c.at))}</small><p class="pre">${esc(c.text)}</p></div>${mine || amAdmin() ? `<button class="icon xs" data-act="tcdel" data-tid="${esc(tid)}" data-id="${d.id}" ${postId ? `data-post="${esc(postId)}"` : ''} aria-label="Delete comment">✕</button>` : ''}</div>`; }).join('') || '<p class="muted small">No comments yet — be the first.</p>';
+    tl.innerHTML = s.docs.map(d => { const c = d.data(), mine = c.uid === me; return `<div class="cm">${avA(c.uid, c.name, 'pav sm')}<div><b>${esc(c.name)}</b> <small class="muted">${agoTxt(tsMs(c.at))}</small><p class="pre">${esc(c.text)}</p></div>${mine || amAdmin() ? `<button class="icon xs" data-act="tcdel" data-tid="${esc(tid)}" data-id="${d.id}" ${postId ? `data-post="${esc(postId)}"` : ''} aria-label="Delete comment">✕</button>` : ''}</div>`; }).join('') || '<p class="muted small">No comments yet — be the first.</p>';
   }, () => { const tl = $('#tl'); if (tl) tl.innerHTML = '<p class="err small">Could not load comments.</p>'; });
 }
 ACT.tcsend = async el => {
@@ -202,7 +213,7 @@ ACT.tcsend = async el => {
   const f = Cloud.f; el.disabled = true;
   try {
     await f.addDoc(f.collection(Cloud.db, 'threads', el.dataset.tid, 'c'), { uid: Cloud.user.uid, name: (D.settings.name || Cloud.user.displayName || 'Resident').slice(0, 80), text: text.slice(0, 1000), at: f.serverTimestamp() });
-    if (el.dataset.post) await f.updateDoc(f.doc(Cloud.db, 'posts', el.dataset.post), { comments: f.increment(1) }).catch(() => {});
+    if (el.dataset.post) { await f.updateDoc(f.doc(Cloud.db, 'posts', el.dataset.post), { comments: f.increment(1) }).catch(() => {}); const pp = Comm.posts.find(x => x.id === el.dataset.post) || Comm.cur; if (pp) Notif.send(pp.uid, 'comment', el.dataset.post, text.slice(0, 80)); }
     ta.value = ''; Comm.addXP(1); const cp = el.dataset.post && (Comm.posts.find(x => x.id === el.dataset.post) || Comm.cur); if (cp) Rank.commented(cp);
   } catch (e) { toast('Could not send: ' + (e.code || e.message)); }
   el.disabled = false;
@@ -228,7 +239,7 @@ function vBoard() {
   f.getDocs(f.query(f.collection(Cloud.db, 'profiles'), f.orderBy(field, 'desc'), f.limit(50))).then(s => {
     const me = Cloud.user.uid, val = x => mode === 'week' ? (x.xp || {})[w] || 0 : mode === 'all' ? x.total || 0 : x.streak || 0;
     const rows = s.docs.map(d => Object.assign({ id: d.id }, d.data())).filter(x => val(x) > 0);
-    $('#blist2').innerHTML = rows.map((x, i) => `<a class="li rank${x.id === me ? ' me' : ''}" href="#/u/${esc(x.id)}"><span class="rk">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span><span class="pav sm">${esc(initials(x.name))}</span><span class="rn"><b>${esc(x.name)}</b><small>${esc([x.year, x.college].filter(Boolean).join(' · '))}</small></span><b class="rv">${val(x)}${mode === 'streak' ? ' 🔥' : ' XP'}</b></a>`).join('') || '<p class="muted small">No one on the board yet this week. Study a few cards to get on it.</p>';
+    $('#blist2').innerHTML = rows.map((x, i) => `<a class="li rank${x.id === me ? ' me' : ''}" href="#/u/${esc(x.id)}"><span class="rk">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span><span class="pav sm" data-av="${esc(x.id)}">${av(x.id, x.name)}</span><span class="rn"><b>${esc(x.name)}</b><small>${esc([x.year, x.college].filter(Boolean).join(' · '))}</small></span><b class="rv">${val(x)}${mode === 'streak' ? ' 🔥' : ' XP'}</b></a>`).join('') || '<p class="muted small">No one on the board yet this week. Study a few cards to get on it.</p>';
   }).catch(e => { $('#blist2').innerHTML = `<p class="err small">${esc(e.code || 'Could not load')}</p>`; });
 }
 
@@ -242,10 +253,13 @@ function vUser() {
     let posts = []; try { const s = await f.getDocs(f.query(f.collection(Cloud.db, 'posts'), f.where('uid', '==', uid), f.limit(30))); posts = s.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => tsMs(b.createdAt) - tsMs(a.createdAt)); } catch (e) {}
     const name = pr.name || (posts[0] && posts[0].name) || 'Resident', w = weekKey();
     const badges = [[pr.best >= 7, 'flame', '7-day streak'], [pr.best >= 30, 'flame', '30-day streak'], [(pr.total || 0) >= 100, 'bolt', '100 XP'], [(pr.total || 0) >= 1000, 'bolt', '1000 XP'], [(pr.posts || 0) >= 1, 'chat', 'First post'], [(pr.posts || 0) >= 10, 'chat', '10 posts']].filter(b => b[0]);
-    main().innerHTML = `<section class="card uprof"><div class="phead"><span class="pbig">${esc(initials(name))}</span><div class="pstats"><div><b>${pr.streak || 0}</b><small>streak</small></div><div><b>${(pr.xp || {})[w] || 0}</b><small>XP this week</small></div><div><b>${posts.length}</b><small>posts</small></div></div></div>
+    if (pr.photo) Prof.map[uid] = pr; await Follow.load(); const fc = await Follow.counts(uid);
+    main().innerHTML = `<section class="card uprof"><div class="phead"><span class="pbig${me ? ' edit' : ''}" ${me ? 'data-act="avpick" role="button" aria-label="Change profile photo"' : ''}>${pr.photo ? `<img src="${esc(pr.photo)}" alt="">` : esc(initials(name))}${me ? `<i class="avplus">+</i>` : ''}</span><div class="pstats"><div><b>${posts.length}</b><small>posts</small></div><div><b>${fc.followers}</b><small>followers</small></div><div><b>${fc.following}</b><small>following</small></div></div></div>
       <h2>${esc(name)}</h2><p class="small muted">${esc([pr.year, pr.college].filter(Boolean).join(' · '))}</p>${pr.bio ? `<p class="pre">${esc(pr.bio)}</p>` : ''}
       ${badges.length ? `<div class="badges">${badges.map(b => `<span>${ic(b[1])}${b[2]}</span>`).join('')}</div>` : ''}
-      ${me ? `<a class="btn sm ghost" href="#/settings">Edit community profile</a>` : (Calls.allowed ? `<div class="btnrow"><button class="btn sm" data-act="ucall" data-id="${esc(uid)}" data-n="${esc(name)}" data-v="0">${ic('phone')} Call</button><button class="btn sm ghost" data-act="ucall" data-id="${esc(uid)}" data-n="${esc(name)}" data-v="1">${ic('video')} Video</button></div>` : '')}</section>
+      <p class="small muted">🔥 ${pr.streak || 0}-day streak · ${(pr.xp || {})[w] || 0} XP this week</p>
+      ${me ? `<div class="btnrow"><a class="btn sm ghost" href="#/settings">Edit profile</a><button class="btn sm ghost" data-act="avpick">${pr.photo ? 'Change' : 'Add'} photo</button><a class="btn sm ghost" href="#/story-new">Add story</a></div>` : `<div class="btnrow"><button class="btn sm${Follow.has(uid) ? ' ghost' : ''}" data-act="follow" data-id="${esc(uid)}" data-n="${esc(name)}">${Follow.has(uid) ? 'Following' : 'Follow'}</button><button class="btn sm ghost" data-act="dmopen" data-id="${esc(uid)}" data-n="${esc(name)}">Message</button></div>`}
+      ${me ? '' : (Calls.allowed ? `<div class="btnrow"><button class="btn sm" data-act="ucall" data-id="${esc(uid)}" data-n="${esc(name)}" data-v="0">${ic('phone')} Call</button><button class="btn sm ghost" data-act="ucall" data-id="${esc(uid)}" data-n="${esc(name)}" data-v="1">${ic('video')} Video</button></div>` : '')}</section>
       ${posts.length ? `<div class="xgrid">${posts.map(x => `<a class="xt${x.img ? '' : ' txt k-' + esc(x.kind)}" href="#/post/${x.id}">${x.img ? `<img src="${esc(x.img)}" alt="" loading="lazy">` : `<span>${esc((x.text || '').slice(0, 90))}</span>`}</a>`).join('')}</div>` : '<p class="muted small center">No posts yet.</p>'}`;
   }).catch(() => { main().innerHTML = '<p class="err">Could not load the profile.</p>'; });
 }
@@ -296,34 +310,54 @@ const Rank = {
   itemScore(x, weak, now) { const a = this.aff(), s = Study.st(); let sc = 1 + (weak[x.top] || 0.3) * 2 + Math.max(-0.5, (a.top[x.top] || 0) / 12); if (!s.seen[x.id]) sc += 1.2; if (x.src === 'bot') sc += 0.5; if (x.t === 'mcq' && s.ans[x.id] === 0) sc += 1; return sc * (0.75 + Math.random() * 0.5); }
 };
 
-/* ---------- Stories: residents who posted in the last 48 h ---------- */
-function storiesHTML() {
-  const cut = Date.now() - 48 * 36e5, by = {};
-  for (const p of Comm.posts) if (tsMs(p.createdAt) > cut) (by[p.uid] = by[p.uid] || []).push(p);
-  const seen = Rank.aff().seenP, users = Object.entries(by).map(([uid, ps]) => ({ uid, name: ps[0].name, ps, unseen: ps.some(p => !seen[p.id]) })).sort((a, b) => b.unseen - a.unseen);
-  if (!users.length) return '';
-  return `<div class="stories cstories">${users.map(u => `<a class="story${u.unseen ? ' hot' : ''}" data-act="story" data-uid="${esc(u.uid)}"><span class="sav">${esc(initials(u.name))}</span><small>${esc((u.uid === Cloud.user?.uid ? 'You' : (u.name || '').split(' ')[0]))}</small></a>`).join('')}</div>`;
+/* ---------- Stories: created stories (24 h: photo/text/poll/quiz) + posts from the last 48 h ---------- */
+function storyItems(uid) {
+  const cut = Date.now() - 48 * 36e5, cut24 = Date.now() - 24 * 36e5;
+  const a = (typeof Stories !== 'undefined' ? Stories.list : []).filter(x => x.uid === uid && tsMs(x.createdAt) > cut24).map(x => Object.assign({ _s: 1 }, x));
+  const b = Comm.posts.filter(p => p.uid === uid && tsMs(p.createdAt) > cut);
+  return a.concat(b).sort((x, y) => tsMs(x.createdAt) - tsMs(y.createdAt));
 }
+function storiesHTML() {
+  if (typeof AppCfg !== 'undefined' && AppCfg.layout === 'twitter') return '';
+  const me = Cloud.user?.uid, uids = new Set(), seen = Rank.aff().seenP;
+  (typeof Stories !== 'undefined' ? Stories.list : []).forEach(x => uids.add(x.uid));
+  Comm.posts.filter(p => tsMs(p.createdAt) > Date.now() - 48 * 36e5).forEach(p => uids.add(p.uid));
+  const users = [...uids].map(uid => { const it = storyItems(uid); return { uid, name: (it[0] || {}).name || 'Resident', unseen: it.some(x => !seen[(x._s ? 's:' : '') + x.id]), n: it.length }; }).filter(u => u.n && u.uid !== me)
+    .sort((a, b) => (b.unseen - a.unseen) || (Follow.has(b.uid) - Follow.has(a.uid)));
+  const mine = storyItems(me).length;
+  return `<div class="stories cstories"><a class="story mine${mine ? ' hot' : ''}" ${mine ? `data-act="story" data-uid="${esc(me)}"` : 'href="#/story-new"'}><span class="sav" data-av="${esc(me)}">${av(me, D.settings.name || 'You')}</span><i class="splus" data-act="storynew">+</i><small>Your story</small></a>${users.map(u => `<a class="story${u.unseen ? ' hot' : ''}" data-act="story" data-uid="${esc(u.uid)}"><span class="sav" data-av="${esc(u.uid)}">${av(u.uid, u.name)}</span><small>${esc((u.name || '').split(' ')[0])}</small></a>`).join('')}</div>`;
+}
+ACT.storynew = (el, e) => { if (e) e.stopPropagation(); go('#/story-new'); };
 const Story = {
   open(uid) {
-    const cut = Date.now() - 48 * 36e5, ps = Comm.posts.filter(p => p.uid === uid && tsMs(p.createdAt) > cut).sort((a, b) => tsMs(a.createdAt) - tsMs(b.createdAt));
-    if (!ps.length) return; this.ps = ps; this.i = Math.max(0, ps.findIndex(p => !Rank.aff().seenP[p.id])); 
+    const ps = storyItems(uid); if (!ps.length) return; this.ps = ps; this.uid = uid;
+    const seen = Rank.aff().seenP; this.i = Math.max(0, ps.findIndex(p => !seen[(p._s ? 's:' : '') + p.id]));
     $('#storyui')?.remove(); const ui = document.createElement('div'); ui.id = 'storyui'; document.body.appendChild(ui);
-    ui.addEventListener('click', e => { if (e.target.closest('[data-sclose]')) return this.close(); if (e.target.closest('a,button')) return; const x = e.clientX / innerWidth; x < 0.3 ? this.go(-1) : this.go(1); });
+    ui.addEventListener('click', e => { if (e.target.closest('[data-sclose]')) return this.close(); if (e.target.closest('a,button,input')) return; const x = e.clientX / innerWidth; x < 0.3 ? this.go(-1) : this.go(1); });
     this.paint();
   },
-  paint() {
+  async paint(keep) {
     const p = this.ps[this.i], ui = $('#storyui'); if (!p || !ui) return this.close();
-    Rank.seenPost(p.id); Store.save(); clearTimeout(this.t);
+    Rank.seenPost((p._s ? 's:' : '') + p.id); Store.save(); clearTimeout(this.t);
+    const me = Cloud.user?.uid, isQ = p._s && (p.kind === 'poll' || p.kind === 'quiz');
+    let opts = '';
+    if (isQ) {
+      let T = { t: {}, n: 0, mine: null }; try { T = await Stories.tally(p.id); } catch (e) {}
+      const done = T.mine !== null || p.uid === me;
+      opts = `<div class="sopts">${p.opts.map((o, k) => { const pc = T.n ? Math.round((T.t[k] || 0) / T.n * 100) : 0, cls = !done ? '' : p.kind === 'quiz' ? (k === p.ans ? ' right' : k === T.mine ? ' wrong' : '') : (k === T.mine ? ' mine' : '');
+        return done ? `<div class="sopt res${cls}"><i style="width:${pc}%"></i><span>${esc(o)}</span><b>${pc}%</b></div>` : `<button class="sopt" data-act="stvote" data-sid="${esc(p.id)}" data-o="${k}">${esc(o)}</button>`; }).join('')}</div>
+        <small class="svotes">${T.n} ${p.kind === 'quiz' ? 'answers' : 'votes'}${done && p.kind === 'quiz' && T.mine !== null ? (T.mine === p.ans ? ' · You got it ✓' : ' · Correct: ' + esc(p.opts[p.ans])) : ''}</small>`;
+    }
     ui.innerHTML = `<div class="sbars">${this.ps.map((_, j) => `<i class="${j < this.i ? 'done' : j === this.i ? 'run' : ''}"></i>`).join('')}</div>
-      <div class="shead"><span class="pav">${esc(initials(p.name))}</span><b>${esc(p.name)}</b><small>${agoTxt(tsMs(p.createdAt))}</small><button data-sclose="1" aria-label="Close">✕</button></div>
-      <div class="sbody">${p.img ? `<img src="${esc(p.img)}" alt="">` : ''}<p class="${p.img ? 'cap' : 'big'}">${esc((p.text || '').slice(0, p.img ? 220 : 500))}</p></div>
-      <a class="sopen" href="#/post/${p.id}">${ic('chat')} Open discussion</a>`;
-    this.t = setTimeout(() => this.go(1), p.img ? 6000 : 8000);
+      <div class="shead"><span class="pav" data-av="${esc(p.uid)}">${av(p.uid, p.name)}</span><b>${esc(p.name)}</b><small>${agoTxt(tsMs(p.createdAt))}</small>${p._s && p.uid === me ? `<button data-act="stdel" data-sid="${esc(p.id)}" aria-label="Delete story">${ic('more')}</button>` : ''}<button data-sclose="1" aria-label="Close">✕</button></div>
+      <div class="sbody">${p.img ? `<img src="${esc(p.img)}" alt="">` : ''}${p._s && p.kind !== 'photo' && !p.img ? `<p class="big">${esc(p.text || '')}</p>` : `<p class="${p.img ? 'cap' : 'big'}">${esc((p.text || '').slice(0, p.img ? 220 : 500))}</p>`}${opts}</div>
+      ${p._s ? (p.uid !== me ? `<button class="sopen" data-act="dmopen" data-id="${esc(p.uid)}" data-n="${esc(p.name)}">${ic('send')} Reply</button>` : '<span class="sopen">Your story · 24 h</span>') : `<a class="sopen" href="#/post/${p.id}">${ic('chat')} Open discussion</a>`}`;
+    if (!keep) this.t = setTimeout(() => this.go(1), isQ ? 15000 : p.img ? 6000 : 8000);
   },
   go(d) { this.i += d; if (this.i < 0) this.i = 0; if (this.i >= this.ps.length) return this.close(); this.paint(); },
   close() { clearTimeout(this.t); $('#storyui')?.remove(); if (ROUTE.path === 'community') paintPosts(); }
 };
+ACT.stdel = async el => { if (!(await uiConfirm('Delete this story?', { ok: 'Delete' }))) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'stories', el.dataset.sid)); Stories.list = Stories.list.filter(x => x.id !== el.dataset.sid); Story.close(); toast('Story deleted'); } catch (e) { toast('Could not delete'); } };
 ACT.story = el => Story.open(el.dataset.uid);
 window.addEventListener('hashchange', () => { if ($('#storyui')) Story.close(); });
 

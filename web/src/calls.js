@@ -88,7 +88,7 @@ const Calls = {
       const pc = await this.peer(c);
       const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
       await f.setDoc(ref, { caller: me, callerName: this.myName(), callee: uid, calleeName: name, video: !!video, status: 'ringing', offer: { type: offer.type, sdp: offer.sdp }, createdAt: f.serverTimestamp() });
-      c.flush();
+      c.flush(); if (typeof Notif !== 'undefined') Notif.send(uid, 'call', '', video ? 'video call' : 'voice call');
       c.unsubs.push(f.onSnapshot(ref, s => {
         const x = s.data(); if (!x || this.cur !== c) return;
         if (x.answer && !pc.currentRemoteDescription && !c.settingAnswer) { c.settingAnswer = true; pc.setRemoteDescription(x.answer).then(() => this.flushHeld(c)).catch(e => this.diag('answer', e)); }

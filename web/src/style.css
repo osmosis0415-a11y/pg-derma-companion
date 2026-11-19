@@ -447,3 +447,28 @@ a.ftap{display:inline-flex;align-items:center;gap:6px;text-decoration:none}
 .sbody{flex:1;display:flex;flex-direction:column;justify-content:center;padding:12px;gap:12px;min-height:0}.sbody img{max-height:62vh;object-fit:contain;border-radius:12px}.sbody .cap{font-size:15px;line-height:1.5}
 .sbody .big{font-size:22px;line-height:1.45;font-weight:600;background:var(--grad);border-radius:18px;padding:22px}
 .sopen{align-self:center;margin:0 0 calc(24px + env(safe-area-inset-bottom,0px));color:#fff;background:rgba(255,255,255,.16);padding:10px 18px;border-radius:999px;text-decoration:none;display:flex;gap:6px;align-items:center}
+
+/* Social: avatars, notifications, DMs, story polls, Twitter layout */
+.pav,.sav,.pbig{overflow:hidden}.pav img,.sav img,.pbig img{width:100%;height:100%;object-fit:cover;border-radius:50%;display:block}
+.pbig{position:relative;width:86px;height:86px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--grad);color:#fff;font-weight:800;font-size:28px;flex:none}.pbig.edit{cursor:pointer}
+.avplus{position:absolute;right:0;bottom:0;width:26px;height:26px;border-radius:50%;background:var(--acc);color:#fff;font-style:normal;display:flex;align-items:center;justify-content:center;font-weight:800;border:3px solid var(--card)}
+.story.mine{position:relative}.story .splus{position:absolute;top:44px;right:6px;width:22px;height:22px;border-radius:50%;background:var(--acc);color:#fff;font-style:normal;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg);z-index:2;cursor:pointer}
+.topic{position:relative}.topic .nb{top:-2px;right:-4px}
+.nh{margin:14px 2px 6px;font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.nrow,.dmrow{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none}.nrow .nt,.dmrow .nt{flex:1;min-width:0;display:flex;flex-direction:column}.nrow .nt small,.dmrow .nt small{color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nrow.unread,.dmrow.unread{background:var(--accs);border-radius:12px}.nrow .pav,.dmrow .pav{width:44px;height:44px}
+.dmlist{display:flex;flex-direction:column;gap:6px;padding-bottom:90px}.dmm{max-width:78%;align-self:flex-start;background:var(--card);border:1px solid var(--line);border-radius:18px 18px 18px 4px;padding:8px 12px}.dmm p{margin:0}.dmm small{font-size:10.5px;color:var(--mut)}
+.dmm.mine{align-self:flex-end;background:var(--acc);color:#fff;border:0;border-radius:18px 18px 4px 18px}.dmm.mine small{color:rgba(255,255,255,.75)}
+.dmbar{position:fixed;left:0;right:0;bottom:calc(64px + var(--safeb));display:flex;gap:8px;padding:8px 12px;background:var(--bg);border-top:1px solid var(--line);z-index:5}.dmbar textarea{flex:1;margin:0;resize:none;border-radius:22px;padding:10px 14px}
+.pushhint{display:flex;align-items:center;gap:10px}.pushhint span{flex:1}.pushhint svg{color:var(--acc)}
+.sopts{display:flex;flex-direction:column;gap:8px;margin-top:6px}.sopt{position:relative;overflow:hidden;background:rgba(255,255,255,.95);color:#0F1B2D;border:0;border-radius:14px;padding:13px 14px;font-weight:700;font-size:15px;text-align:left;display:flex;justify-content:space-between}
+.sopt.res i{position:absolute;inset:0 auto 0 0;background:rgba(20,163,160,.28)}.sopt.res span,.sopt.res b{position:relative}.sopt.right i{background:rgba(34,197,94,.45)}.sopt.wrong i{background:rgba(239,68,68,.4)}.sopt.mine{outline:3px solid #14A3A0}
+.svotes{opacity:.8;margin-top:4px}.shead button{background:none;border:0;color:#fff}
+/* Twitter / X style timeline (admin setting) */
+body.lay-twitter .cstories{display:none}
+.tweet{display:flex;gap:10px;padding:12px;background:var(--card);border-bottom:1px solid var(--line);position:relative}.tweet>.pav{width:42px;height:42px;flex:none}
+.tw{flex:1;min-width:0}.twh{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.twh a{color:var(--ink);text-decoration:none}.twh small{color:var(--mut)}.twh .ptag{margin-left:auto}.twh .icon{padding:2px}
+.tweet .pbody{padding:0}.tweet .pbody p{margin:2px 0 6px}.tweet .pmedia img{border-radius:16px;border:1px solid var(--line);max-height:360px;width:100%;object-fit:cover}
+.tweet .pact{justify-content:space-between;max-width:320px;padding:4px 0 0}.tweet .ptags{padding:4px 0 0}
+body.lay-twitter #plist{gap:0;background:var(--card);border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+.laycard .btnrow .btn.on{outline:3px solid var(--acc2)}

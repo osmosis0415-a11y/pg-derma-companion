@@ -1,6 +1,6 @@
 // Unit test for the study content bot + reminders in tools/admin-bot.gs (Apps Script APIs mocked).
 const crypto = require('crypto'), fs = require('fs');
-const P = { GEMINI_KEY: 'k' }, sent = [], store = {}; let n = 0, geminiCalls = [], modelList = null;
+const P = { GEMINI_KEY: 'k' }, sent = [], store = {}; let n = 0, fcm = [], geminiCalls = [], modelList = null;
 const val = v => v === null ? { nullValue: null } : Array.isArray(v) ? { arrayValue: { values: v.map(val) } } : typeof v === 'boolean' ? { booleanValue: v } : typeof v === 'number' ? { integerValue: String(v) } : { stringValue: String(v) };
 const plain = x => 'stringValue' in x ? x.stringValue : 'integerValue' in x ? +x.integerValue : 'booleanValue' in x ? x.booleanValue : 'timestampValue' in x ? x.timestampValue : 'arrayValue' in x ? (x.arrayValue.values || []).map(plain) : null;
 const docOf = (coll, id) => { const f = {}; for (const [k, v] of Object.entries(store[coll + '/' + id])) f[k] = val(v); return { name: 'projects/p/databases/(default)/documents/' + coll + '/' + id, fields: f }; };
@@ -22,6 +22,7 @@ const g = {
   MailApp: { sendEmail: o => sent.push(o), getRemainingDailyQuota: () => 90 }, Logger: { log: () => {} },
   HtmlService: { createHtmlOutput: h => ({ h, setTitle() { return this; }, setXFrameOptionsMode() { return this; } }), XFrameOptionsMode: { DEFAULT: 1 } },
   UrlFetchApp: { fetch: (url, o = {}) => {
+    if (url.includes('fcm.googleapis.com')) { const m = JSON.parse(o.payload).message; fcm.push(m); return m.token === 'dead' ? resp(404, '{"error":{"status":"NOT_FOUND","message":"UNREGISTERED"}}') : resp(200, {}); }
     if (url.includes('generativelanguage')) {
       if (url.includes('/models?')) return resp(200, { models: modelList });
       geminiCalls.push(url); if (url.includes('gemini-2.5-flash:') && modelList) return resp(404, 'gone'); if (url.includes('gemini-omni-9.5-flash:')) return resp(429, 'quota 0');
@@ -40,7 +41,7 @@ const g = {
   } }
 };
 const src = fs.readFileSync(require('path').join(__dirname, '../../tools/admin-bot.gs'), 'utf8');
-const B = new Function(...Object.keys(g), src + ';return {makeContent,doGet,cdecide,nudge,link_,setupStudy};')(...Object.values(g));
+const B = new Function(...Object.keys(g), src + ';return {makeContent,doGet,cdecide,nudge,link_,setupStudy,pushOut};')(...Object.values(g));
 const ok = (name, c) => console.log((c ? 'PASS ' : 'FAIL ') + name);
 const made = B.makeContent('Pemphigus group');
 const items = Object.entries(store).filter(([k]) => k.startsWith('content/'));
@@ -75,3 +76,16 @@ sent.length = 0; B.nudge();
 ok('nudges only due, not-yet-studied, opted-in', sent.length === 1 && sent[0].to === 'a@x.com' && sent[0].subject.includes('6-day streak'));
 B.nudge(); ok('no duplicate nudge same day', sent.length === 1);
 ok('links use public /exec address', B.link_('x', 'capprove').startsWith('https://w/exec'));
+
+// push notifications
+const nowIso = new Date().toISOString();
+store['pushTokens/uB'] = { tokens: ['tokB', 'dead'] };
+store['notifs/n1'] = { to: 'uB', from: 'uA', fromName: 'Sriram', type: 'comment', ref: 'p1', text: 'Nice case', at: nowIso, read: false, pushed: false };
+store['notifs/n2'] = { to: 'uB', from: 'uA', fromName: 'Sriram', type: 'like', ref: 'p1', text: '', at: nowIso, read: true, pushed: false };
+store['notifs/n3'] = { to: 'uC', from: 'uA', fromName: 'Sriram', type: 'follow', ref: '', text: '', at: nowIso, read: false, pushed: false };
+const sentN = B.pushOut();
+ok('push sent to live token only', sentN === 1 && fcm.filter(m => m.token === 'tokB').length === 1 && fcm[0].data.title === 'Sriram' && fcm[0].data.body.includes('commented'));
+ok('push deep-links to the post', fcm[0].data.url.endsWith('#/post/p1'));
+ok('dead token removed', JSON.stringify(store['pushTokens/uB'].tokens) === '["tokB"]');
+ok('all notifs marked pushed (read/no-token skipped)', ['n1', 'n2', 'n3'].every(k => store['notifs/' + k].pushed === true) && fcm.length === 2);
+ok('no duplicate pushes', B.pushOut() === 0 && fcm.length === 2);
