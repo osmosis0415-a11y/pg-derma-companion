@@ -3,7 +3,7 @@
      batches/{b}/presence/{uid}            = { name, at }                 heartbeat while the app is open
      batches/{b}/calls/{id}                = { caller, callerName, callee, calleeName, video, status, offer, answer, createdAt, endedAt }
      batches/{b}/calls/{id}/cands/{x}      = { from: 'caller'|'callee', c: <ICE candidate JSON> }
-   When a direct connection is blocked, the call relays through Cloudflare TURN (free tier) using a
+   When a direct connection is blocked, the call relays through a free TURN relay (ExpressTURN) using a
    short-lived pass from the Apps Script helper. Nothing is recorded or stored. */
 /* Calls are off by default; the admin enables them per person in Access requests → Approved. */
 const CALL_RING_MS = 40000, PRESENCE_MS = 60000, ONLINE_WINDOW = 150000;
