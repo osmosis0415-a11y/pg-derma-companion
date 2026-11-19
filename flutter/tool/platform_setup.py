@@ -28,6 +28,15 @@ for gradle in [root / 'android/app/build.gradle.kts', root / 'android/app/build.
         g = re.sub(r'minSdkVersion\s+flutter\.minSdkVersion', 'minSdkVersion 24', g)
         gradle.write_text(g)
 
+# R8: ML Kit text recognition references optional script packs (Chinese/Devanagari/Japanese/Korean)
+# that we don't bundle. Flutter's Gradle plugin applies android/app/proguard-rules.pro to release builds.
+(root / 'android/app/proguard-rules.pro').write_text("""-dontwarn com.google.mlkit.vision.text.chinese.**
+-dontwarn com.google.mlkit.vision.text.devanagari.**
+-dontwarn com.google.mlkit.vision.text.japanese.**
+-dontwarn com.google.mlkit.vision.text.korean.**
+-keep class com.google.mlkit.** { *; }
+""")
+
 # local_auth needs FlutterFragmentActivity
 for act in root.glob('android/app/src/main/kotlin/**/MainActivity.kt'):
     a = act.read_text()
