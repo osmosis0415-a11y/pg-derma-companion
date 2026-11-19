@@ -2,6 +2,16 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 2026-11-19 — Study: daily streak, swipe feed and content bot
+- **New Study tab** (bottom bar). It comes with 154 dermatology PG items written from standard texts: 42 MCQs with explanations, 42 flashcards, 20 spot-diagnosis vignettes and 50 high-yield one-liners, across 20 topics.
+- **Feed**: an endless full-screen swipe-up feed, like Reels but all dermatology. Answer MCQs inline, tap to reveal flashcards and diagnoses, double-tap to save, share to WhatsApp, and see a checkpoint every 15 cards.
+- **Streak and daily goal** (5/10/20/30 a day): a flame counter, a 7-day row and a celebration when you hit the goal. It shows on the Today screen too.
+- **Flashcards use spaced repetition**: Again, Hard, Good or Easy decides when a card comes back.
+- **Mistakes** and **Saved** lists for revision; topic-wise progress.
+- **Daily reminder**: an optional email at your chosen time, sent only on days you haven't studied, plus a one-tap Google Calendar reminder.
+- **Content bot**: every morning it drafts new items with free Gemini AI on a rotating topic and emails the admin to Publish or Discard each one. The admin can also edit them in Admin → Content. Nothing reaches residents until approved.
+- Bottom bar: Today · Patients · Study · Batch · Profile. New case stays first in Today's quick actions.
+
 ## 2026-11-19 — Today dashboard and group calls
 - **New home: Today.** Opens with what's due today (follow-ups, thesis visits, reports to trace, overdue in red), your logbook and thesis progress bars, six quick actions, your batch (who's online, new messages) and your four latest cases.
 - Bottom bar is now Today · Patients · Add case · Batch · Profile. Photos moved to quick actions and Profile.

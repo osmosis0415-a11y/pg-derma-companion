@@ -9,7 +9,10 @@ window.__installFsMock = (uid, email, name) => {
   const pathOf = (base, parts) => (base && base.p ? base.p : []).concat(parts.flatMap(x => String(x).split('/')).filter(Boolean));
   const docRef = p => ({ p, id: p[p.length - 1], path: p.join('/') });
   const resolve = (cur, v) => { if (v && typeof v === 'object' && '__inc' in v) return (typeof cur === 'number' ? cur : 0) + v.__inc; return v; };
-  const write = (p, data, merge) => { const o = load(), k = p.join('/'), prev = merge ? (o[k] || {}) : {}; const nx = Object.assign({}, prev); for (const [a, b] of Object.entries(data)) nx[a] = resolve(prev[a], b); o[k] = JSON.parse(JSON.stringify(nx)); save(o); changed(); };
+  // Tabs are separate processes: serialise read-modify-write with a cross-tab Web Lock so bursts (e.g. ICE candidates) aren't lost.
+  const locked = fn => navigator.locks ? navigator.locks.request('fsmock', () => fn()) : Promise.resolve(fn());
+  const writeNow = (p, data, merge) => { const o = load(), k = p.join('/'), prev = merge ? (o[k] || {}) : {}; const nx = Object.assign({}, prev); for (const [a, b] of Object.entries(data)) nx[a] = resolve(prev[a], b); o[k] = JSON.parse(JSON.stringify(nx)); save(o); changed(); };
+  const write = (p, data, merge) => locked(() => writeNow(p, data, merge));
   const snapDoc = (k, v) => ({ id: k.split('/').pop(), ref: docRef(k.split('/')), exists: () => v !== undefined, data: () => v });
   const listDocs = q => { const pre = q.p.join('/') + '/', o = load(); let docs = Object.keys(o).filter(k => k.startsWith(pre) && !k.slice(pre.length).includes('/')).map(k => snapDoc(k, o[k]));
     for (const m of q.m || []) { if (m.op === '==') docs = docs.filter(d => d.data()[m.fld] === m.v); if (m.op === 'array-contains') docs = docs.filter(d => (d.data()[m.fld] || []).includes(m.v)); if (m.op === '>=') docs = docs.filter(d => d.data()[m.fld] >= m.v);
@@ -21,11 +24,11 @@ window.__installFsMock = (uid, email, name) => {
     collection: (base, ...parts) => ({ p: pathOf(base, parts), c: true }),
     where: (fld, op, v) => ({ fld, op, v }), orderBy: (fld, dir) => ({ ob: fld, dir }), limit: n => ({ lim: n }), query: (c, ...m) => ({ p: c.p, m, c: true }),
     setDoc: async (r, v, o) => write(r.p, v, o && o.merge), updateDoc: async (r, v) => write(r.p, v, true),
-    addDoc: async (c, v) => { const r = f.doc(c); write(r.p, v); return r; },
+    addDoc: async (c, v) => { const r = f.doc(c); await write(r.p, v); return r; },
     getDoc: async r => { const o = load(), k = r.p.join('/'); return snapDoc(k, o[k]); },
     getDocs: async q => { const docs = listDocs(q); return { docs, size: docs.length }; },
-    deleteDoc: async r => { const o = load(); delete o[r.p.join('/')]; save(o); changed(); },
-    writeBatch: () => { const ops = []; return { delete: r => ops.push(r), commit: async () => { const o = load(); ops.forEach(r => delete o[r.p.join('/')]); save(o); changed(); } }; },
+    deleteDoc: async r => locked(() => { const o = load(); delete o[r.p.join('/')]; save(o); changed(); }),
+    writeBatch: () => { const ops = []; return { delete: r => ops.push(r), commit: async () => locked(() => { const o = load(); ops.forEach(r => delete o[r.p.join('/')]); save(o); changed(); }) }; },
     onSnapshot: (q, cb) => {
       let prevIds = new Set(), last = '';
       const run = () => {

@@ -38,7 +38,7 @@ await A.ev(`location.hash='#/batch?t=mem'`); await sleep(1200);
 chk('no group call card without permission', await A.ev(`!document.querySelector('[data-act=gcall]')`));
 await A.ev(`Group.startRoom(['uB','uC'], true)`); await sleep(300);
 chk('group call blocked without permission', await A.ev(`!Group.room`));
-const grant = uid => `(()=>{const o=JSON.parse(localStorage.fsmock||'{}');o['approvals/'+'${uid}']={email:'x',status:'approved',calls:true};localStorage.fsmock=JSON.stringify(o);new BroadcastChannel('fsmock').postMessage(1)})()`;
+const grant = uid => `navigator.locks.request('fsmock',()=>{const o=JSON.parse(localStorage.fsmock||'{}');o['approvals/'+'${uid}']={email:'x',status:'approved',calls:true};localStorage.fsmock=JSON.stringify(o);new BroadcastChannel('fsmock').postMessage(1)})`;
 for (const u of ['uA', 'uB', 'uC']) await A.ev(grant(u));
 await sleep(3000);
 chk('all allowed', (await A.ev(`Calls.allowed`)) && (await B.ev(`Calls.allowed`)) && (await C.ev(`Calls.allowed`)));

@@ -8,11 +8,11 @@ const ROUTES = [
   [/^deid\/([\w-]+)$/, vDeid, 'vault', ['id']], [/^compare\/([\w-]+)$/, vCompare, 'vault', ['id']],
   [/^inv$/, vInv, 'more'], [/^cal$/, vCal, 'more'], [/^logbook$/, vLogbook, 'more'], [/^logadd$/, vLogAdd, 'more'], [/^targets$/, vTargets, 'more'],
   [/^thesis$/, vThesis, 'more'], [/^thesis-setup$/, vThesisSetup, 'more'], [/^analytics$/, vAnalytics, 'more'],
-  [/^formulary$/, vFormulary, 'more'], [/^checklists$/, vChecklists, 'more'], [/^more$/, vMore, 'more'], [/^settings$/, vSettings, 'more'], [/^batch$/, vBatch, 'batch'], [/^admin$/, vAdmin, 'more']
+  [/^formulary$/, vFormulary, 'more'], [/^checklists$/, vChecklists, 'more'], [/^more$/, vMore, 'more'], [/^settings$/, vSettings, 'more'], [/^batch$/, vBatch, 'batch'], [/^admin$/, vAdmin, 'more'], [/^study$/, vStudy, 'study'], [/^feed$/, vFeed, 'study'], [/^study-run$/, vStudyRun, 'study'], [/^study-set$/, vStudySet, 'study']
 ];
 function render() {
   if (!D) return;
-  stopCam(); if (scanStream) ACT.scanstop(); closeSheet();
+  stopCam(); if (scanStream) ACT.scanstop(); closeSheet(); if (typeof Feed !== 'undefined' && $('#feedui')) Feed.close();
   const h = location.hash.replace(/^#\/?/, '') || 'home';
   const [path, qs] = h.split('?');
   ROUTE = { path: path.split('/')[0], q: Object.fromEntries(new URLSearchParams(qs || '')) };
@@ -48,7 +48,7 @@ async function showLock() {
       else if (!(await Vault.unlock(v))) throw new Error('Incorrect PIN');
       await Store.load(); await Store.flush(); await Session.save();
       $('#lock').hidden = true; $('#app').hidden = false; pin.value = '';
-      lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); Calls.start();
+      lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); Calls.start(); Cloud.cfg() && Cloud.init().then(() => Study.pull()).catch(() => {});
     } catch (e) { $('#lerr').textContent = e.message; $('#unlock').disabled = false; $('#unlock').textContent = auth ? 'Unlock' : 'Create vault'; pin.select(); }
   };
   $('#unlock').onclick = go2; pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); if (auth) go2(); else $('#pin2').focus(); } });
@@ -99,7 +99,7 @@ let lastW = innerWidth; addEventListener('resize', () => { if ((lastW >= 900) !=
   await IDB.open();
   await Gate.ensure();
   if (await Session.resume()) {
-    try { await Store.load(); $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); Calls.start(); }
+    try { await Store.load(); $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); Calls.start(); Cloud.cfg() && Cloud.init().then(() => Study.pull()).catch(() => {}); }
     catch (e) { Vault.key = null; D = null; await Session.clear(); showLock(); }
   } else showLock();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

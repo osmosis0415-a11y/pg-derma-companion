@@ -48,6 +48,25 @@ service cloud.firestore {
     }
 
     // Monthly call-relay estimate for the admin page.
+    // Study content: the bot drafts (status "draft"); only the admin sees drafts and publishes them ("live").
+    match /content/{c} {
+      allow get, list: if isAdminUser() || (approved() && resource.data.status == 'live');
+      allow update: if isAdminUser()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedAt', 'q', 'o', 'a', 'x', 'r', 'f', 'b', 'v', 'dx', 'p', 'top'])
+        && request.resource.data.status in ['draft', 'live'];
+      allow delete: if isAdminUser();
+    }
+    // Study streak summary, so the reminder bot knows whom to nudge. No study answers or patient data.
+    match /study/{u} {
+      allow get: if signedIn() && (u == request.auth.uid || isAdminUser());
+      allow list: if isAdminUser();
+      allow create, update: if approved() && u == request.auth.uid
+        && request.resource.data.keys().hasOnly(['name', 'email', 'streak', 'last', 'goal', 'remind', 'hour', 'tz', 'updatedAt'])
+        && request.resource.data.email == request.auth.token.email
+        && shortStr(request.resource.data.name, 80) && request.resource.data.remind is bool
+        && request.resource.data.hour is int && request.resource.data.hour >= 0 && request.resource.data.hour <= 23;
+      allow delete: if signedIn() && (u == request.auth.uid || isAdminUser());
+    }
     match /usage/{m} {
       allow read: if isAdminUser();
       allow create, update: if approved() && request.resource.data.keys().hasOnly(['relayMB', 'relayCalls', 'updatedAt'])

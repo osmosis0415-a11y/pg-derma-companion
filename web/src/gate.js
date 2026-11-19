@@ -127,6 +127,7 @@ function vAdmin() {
   const tab = ROUTE.q.t || 'pending';
   if (tab === 'errors') return vAdminErrors();
   if (tab === 'batches') return vAdminBatches();
+  if (tab === 'content') return vAdminContent();
   main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === tab ? ' on' : ''}" href="#/admin?t=${k}">${l} <span id="cnt_${k}"></span></a>`).join('')}</div>
   <div id="alist" class="card"><p class="muted small">Loading…</p></div>
   <div class="card"><h3>Invite people</h3><p class="small muted">Share the app link. They sign in with Google and appear here for your approval.</p><button class="btn sm ghost" data-act="adminshare">Share app link</button></div>`;
@@ -153,7 +154,7 @@ ACT.adminset = async el => {
 };
 ACT.adminshare = () => { const url = location.origin + location.pathname; const msg = `PG Derma Companion — app for DVL residents 🩺\n${url}\nOpen it, tap “Continue with Google”, and I'll approve you.`; if (navigator.share) navigator.share({ text: msg }).catch(() => {}); else window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };
 ACT.appsignout = () => Gate.signOut();
-const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['batches', 'Batches'], ['errors', 'Errors']];
+const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['batches', 'Batches'], ['content', 'Content'], ['errors', 'Errors']];
 ACT.admincalls = async el => {
   const on = el.dataset.on !== '1';
   if (on && !(await uiConfirm('Allow this person to make and receive voice/video calls with batchmates?', { ok: 'Allow calls' }))) return;
@@ -163,6 +164,47 @@ ACT.admincalls = async el => {
 ACT.admindel = async el => {
   if (!(await uiConfirm('Remove this record? If they sign in again they will appear as a new request.'))) return;
   try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'approvals', el.dataset.id)); toast('Removed'); } catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
+};
+/* ---------- Admin → Content: review study items drafted by the bot ---------- */
+function contentPreview(x) {
+  if (x.t === 'mcq') return `<b>${esc(x.q)}</b><ol type="A" class="small">${(x.o || []).map((o, i) => `<li${i === +x.a ? ' class="okc"' : ''}>${esc(o)}</li>`).join('')}</ol><p class="small muted">${esc(x.x || '')}</p>${x.r ? `<small class="muted">${esc(x.r)}</small>` : ''}`;
+  if (x.t === 'card') return `<b>${esc(x.f)}</b><p class="small pre">${esc(x.b)}</p>`;
+  if (x.t === 'spot') return `<p class="small">${esc(x.v)}</p><b>→ ${esc(x.dx)}</b><p class="small muted">${esc(x.x || '')}</p>`;
+  return `<p>${esc(x.p)}</p>`;
+}
+let contentDrafts = [];
+function vAdminContent() {
+  main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === 'content' ? ' on' : ''}" href="#/admin?t=${k}">${l}</a>`).join('')}</div>
+  <p class="small muted">The content bot drafts study items every morning with free Gemini AI. Check each one — AI can be wrong. Nothing reaches residents until you publish it.</p>
+  <div id="clist"><p class="muted small">Loading…</p></div>`;
+  Cloud.init().then(async () => {
+    const f = Cloud.f, db = Cloud.db;
+    const dr = await f.getDocs(f.query(f.collection(db, 'content'), f.where('status', '==', 'draft')));
+    const lv = await f.getDocs(f.query(f.collection(db, 'content'), f.where('status', '==', 'live')));
+    contentDrafts = dr.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    const el = $('#clist'); if (!el) return;
+    el.innerHTML = `<div class="info small" style="margin-bottom:10px">${contentDrafts.length} waiting for review · ${lv.size} published · plus ${STUDY_BANK.length} built-in items</div>
+      ${contentDrafts.length ? `<button class="btn sm" data-act="cpuball">Publish all ${contentDrafts.length}</button>` : ''}
+      ${contentDrafts.map(x => `<div class="card citem"><div class="qtag"><span>${STUDY_TYPES[x.t] || x.t}</span><span>${esc(x.top || '')}</span></div>${contentPreview(x)}
+        <div class="btnrow"><button class="btn xs" data-act="cpub" data-id="${x.id}">Publish</button><button class="btn xs ghost" data-act="cedit" data-id="${x.id}">Edit</button><button class="btn xs ghost danger" data-act="cdel" data-id="${x.id}">Discard</button></div></div>`).join('') || '<p class="muted small">No drafts waiting. New ones arrive each morning by email too.</p>'}`;
+  }).catch(e => { const el = $('#clist'); if (el) el.innerHTML = `<p class="err">${esc(e.code || e.message || 'Could not load')}</p>`; });
+}
+const C_FIELDS = { mcq: [['q', 'Question'], ['o', 'Options (one per line)'], ['a', 'Correct option (A–E)'], ['x', 'Explanation'], ['r', 'Reference']], card: [['f', 'Front'], ['b', 'Back']], spot: [['v', 'Vignette'], ['dx', 'Diagnosis'], ['x', 'Explanation']], pearl: [['p', 'One-liner']] };
+ACT.cpub = async el => { const f = Cloud.f; try { await f.updateDoc(f.doc(Cloud.db, 'content', el.dataset.id), { status: 'live', approvedAt: f.serverTimestamp() }); toast('Published'); vAdminContent(); } catch (e) { toast('Could not publish: ' + (e.code || e.message)); } };
+ACT.cpuball = async () => { if (!(await uiConfirm(`Publish all ${contentDrafts.length} drafts to every resident? Make sure you have checked them.`, { ok: 'Publish all' }))) return; const f = Cloud.f; let n = 0; for (const x of contentDrafts) { try { await f.updateDoc(f.doc(Cloud.db, 'content', x.id), { status: 'live', approvedAt: f.serverTimestamp() }); n++; } catch (e) {} } toast('Published ' + n); vAdminContent(); };
+ACT.cdel = async el => { if (!(await uiConfirm('Discard this draft?', { ok: 'Discard' }))) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'content', el.dataset.id)); toast('Discarded'); vAdminContent(); } catch (e) { toast('Could not discard'); } };
+ACT.cedit = el => {
+  const x = contentDrafts.find(y => y.id === el.dataset.id); if (!x) return;
+  openSheet(`<h3>Edit ${STUDY_TYPES[x.t] || ''}</h3><div class="form">${(C_FIELDS[x.t] || []).map(([k, l]) => `<label>${l}<textarea id="ce_${k}" rows="${k === 'a' || k === 'dx' || k === 'r' ? 1 : 3}">${esc(k === 'o' ? (x.o || []).join('\n') : k === 'a' ? 'ABCDE'[+x.a] : (x[k] || ''))}</textarea></label>`).join('')}
+    <div class="btnrow"><button class="btn" data-act="csave" data-id="${x.id}" data-pub="1">Save and publish</button><button class="btn ghost" data-act="csave" data-id="${x.id}">Save draft</button></div></div>`);
+};
+ACT.csave = async el => {
+  const x = contentDrafts.find(y => y.id === el.dataset.id); if (!x) return;
+  const up = {};
+  for (const [k] of C_FIELDS[x.t] || []) { const v = ($('#ce_' + k).value || '').trim(); up[k] = k === 'o' ? v.split('\n').map(s => s.trim()).filter(Boolean) : k === 'a' ? Math.max(0, 'ABCDE'.indexOf(v.toUpperCase().slice(0, 1))) : v; }
+  if (x.t === 'mcq' && (up.o.length < 2 || up.a >= up.o.length || !up.q)) return toast('Check the question, options and correct letter');
+  if (el.dataset.pub) { up.status = 'live'; up.approvedAt = Cloud.f.serverTimestamp(); }
+  try { await Cloud.f.updateDoc(Cloud.f.doc(Cloud.db, 'content', x.id), up); closeSheet(); toast(el.dataset.pub ? 'Saved and published' : 'Saved'); vAdminContent(); } catch (e) { toast('Could not save: ' + (e.code || e.message)); }
 };
 function vAdminBatches() {
   main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === 'batches' ? ' on' : ''}" href="#/admin?t=${k}">${l}</a>`).join('')}</div>

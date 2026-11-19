@@ -80,7 +80,7 @@ const EMPTY_DB = () => ({
   settings: { name: '', residencyStart: '', unit: '', lang: 'en', lockMin: 15, procTargets: {}, sampleCase: 30, sampleControl: 30 },
   patients: [], visits: [], scores: [], pins: [], photos: [], logbook: [], inv: [], reminders: [],
   formulary: [], templates: {}, checks: {},
-  thesis: null
+  thesis: null, study: null, studyCloud: []
 });
 const Store = {
   _t: null,
