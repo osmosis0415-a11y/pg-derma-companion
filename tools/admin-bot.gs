@@ -11,10 +11,10 @@
  * (there is none in Firestore).
  *
  * Setup (once):
- *   1. Run setup() from the editor and click Allow. It creates the 1-minute trigger and a secret link key.
- *   2. Deploy -> New deployment -> Web app -> Execute as: Me, Who has access: Anyone. Then run sendTest().
+ *   1. Run setup_() from the editor and click Allow. It creates the 1-minute trigger and a secret link key.
+ *   2. Deploy -> New deployment -> Web app -> Execute as: Me, Who has access: Anyone. Then run sendTest_().
  *   Optional Telegram: Script properties TG_TOKEN = <token from @BotFather>; send any message to your bot,
- *   then run telegramSetup() to capture your chat id.
+ *   then run telegramSetup_() to capture your chat id.
  */
 var PROJECT = 'pg-derma-companion';
 var FS = 'https://firestore.googleapis.com/v1/projects/' + PROJECT + '/databases/(default)/documents';
@@ -66,14 +66,14 @@ function setStatus_(uid, status) {
 }
 
 /* ---------- Notifications ---------- */
-function checkNew() {
+function checkNew_() {
   var lock = LockService.getScriptLock(); if (!lock.tryLock(20000)) return;
   try {
     var seen = JSON.parse(props_().getProperty('NOTIFIED') || '[]');
     var pending = listByStatus_('pending');
     var fresh = pending.filter(function (p) { return seen.indexOf(p.uid) < 0; });
-    try { pushOut(); } catch (e) { Logger.log('push: ' + e); }
-    try { digestTick(); } catch (e) { Logger.log('digest: ' + e); }
+    try { pushOut_(); } catch (e) { Logger.log('push: ' + e); }
+    try { digestTick_(); } catch (e) { Logger.log('digest: ' + e); }
     if (!fresh.length) return;
     notifyEmail_(fresh, pending.length);
     notifyTelegram_(fresh);
@@ -166,21 +166,21 @@ function contentPage_(u, a, s) {
 }
 
 /* ---------- Setup helpers (run from the editor) ---------- */
-function setup() {
+function setup_() {
   key_();
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'checkNew') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('checkNew').timeBased().everyMinutes(1).create();
   // Start fresh, so anyone already waiting gets one email now.
   props_().setProperty('NOTIFIED', '[]');
   Logger.log('Pending now: ' + listByStatus_('pending').length + '. Trigger set (every minute). Web app URL: ' + (webUrl_() || 'deploy the web app next'));
-  if (webUrl_()) sendTest();
+  if (webUrl_()) sendTest_();
 }
-function sendTest() {
+function sendTest_() {
   if (!webUrl_()) throw new Error('Deploy the web app first (Deploy -> New deployment -> Web app).');
   MailApp.sendEmail({ to: admin_(), subject: 'PG Derma bot is connected', htmlBody: '<p>The approval bot is set up. You will get an email like this whenever someone signs in and waits for approval.</p><p><a href="' + dashLink_() + '">See all pending sign-ups</a></p>', name: 'PG Derma bot' });
-  checkNew();
+  checkNew_();
 }
-function telegramSetup() {
+function telegramSetup_() {
   var r = tg_('getUpdates', {});
   if (!r || !r.ok) throw new Error('Set TG_TOKEN in Script properties first (from @BotFather), then message your bot.');
   var m = (r.result || []).map(function (u) { return u.message || u.channel_post; }).filter(Boolean).pop();
@@ -191,12 +191,12 @@ function telegramSetup() {
 
 /* =====================================================================================
  * STUDY CONTENT BOT + DAILY STUDY REMINDERS
- * makeContent()  — daily ~6 am IST: asks Gemini (free tier, key in Script property GEMINI_KEY) to draft
+ * makeContent_()  — daily ~6 am IST: asks Gemini (free tier, key in Script property GEMINI_KEY) to draft
  *                  dermatology PG items (MCQs, flashcards, spot cases, one-liners) on a rotating topic.
  *                  Drafts are saved to Firestore content/{id} with status "draft" — nobody sees them until
  *                  the admin approves (email buttons or the app's Admin → Content tab).
- * nudge()        — hourly: emails residents who switched on a reminder and haven't met today's goal.
- * Run setupStudy() once from the editor after adding GEMINI_KEY.
+ * nudge_()        — hourly: emails residents who switched on a reminder and haven't met today's goal.
+ * Run setupStudy_() once from the editor after adding GEMINI_KEY.
  * ===================================================================================== */
 var STUDY_TOPICS = [
   'Leprosy: classification, MDT, reactions', 'Psoriasis and psoriatic arthritis', 'Lichen planus and lichenoid disorders',
@@ -282,7 +282,7 @@ function cleanItem_(x, topic) {
   return o;
 }
 
-function makeContent(topicOverride) {
+function makeContent_(topicOverride) {
   var lock = LockService.getScriptLock(); if (!lock.tryLock(30000)) return;
   try {
     var day = Math.floor(Date.now() / 864e5), topic = (typeof topicOverride === 'string' && topicOverride) || STUDY_TOPICS[day % STUDY_TOPICS.length];
@@ -342,7 +342,7 @@ function cdecide(id, act, s) {
 }
 
 /* ---- Daily study reminder emails ---- */
-function nudge() {
+function nudge_() {
   var now = new Date(), hr = +Utilities.formatDate(now, 'Asia/Kolkata', 'H'), day = Utilities.formatDate(now, 'Asia/Kolkata', 'yyyy-MM-dd');
   var sent = JSON.parse(props_().getProperty('NUDGED') || '{}'); if (sent.day !== day) sent = { day: day, ids: [] };
   var people = query_('study', 'remind', 'EQUAL', true, 500);
@@ -361,23 +361,23 @@ function nudge() {
 }
 
 /* Re-send the review email for every draft still waiting (grouped by batch). */
-function resendDrafts() {
+function resendDrafts_() {
   var drafts = query_('content', 'status', 'EQUAL', 'draft', 500), groups = {};
   drafts.forEach(function (d) { (groups[d.tag] = groups[d.tag] || []).push(d); });
   Object.keys(groups).forEach(function (tag) { emailDrafts_(groups[tag], groups[tag][0].topic || groups[tag][0].top || 'Dermatology', tag); });
   return drafts.length;
 }
-function setupStudy() {
+function setupStudy_() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (['makeContent', 'nudge'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('makeContent').timeBased().everyDays(1).atHour(6).create();
   ScriptApp.newTrigger('nudge').timeBased().everyHours(1).create();
   Logger.log('Study triggers set: makeContent daily ~6 am IST, nudge hourly.');
-  if (props_().getProperty('GEMINI_KEY')) Logger.log('Drafted now: ' + makeContent()); else Logger.log('Add GEMINI_KEY in Script properties, then run makeContent() to test.');
+  if (props_().getProperty('GEMINI_KEY')) Logger.log('Drafted now: ' + makeContent_()); else Logger.log('Add GEMINI_KEY in Script properties, then run makeContent_() to test.');
 }
 
 
 /* =====================================================================================
- * PUSH NOTIFICATIONS — runs inside checkNew() every minute.
+ * PUSH NOTIFICATIONS — runs inside checkNew_() every minute.
  * Residents' apps write notifs/{id} (like, comment, follow, dm, call, vote). This sends each unread one to the
  * person's phones through Firebase Cloud Messaging (free), using the tokens their app saved in pushTokens/{uid}.
  * ===================================================================================== */
@@ -389,7 +389,7 @@ function fcmSend_(token, data) {
     payload: JSON.stringify({ message: { token: token, data: data, webpush: { headers: { Urgency: 'high', TTL: '86400' } } } }) });
   return r.getResponseCode() === 200 ? 'ok' : (/UNREGISTERED|NOT_FOUND|INVALID_ARGUMENT/.test(r.getContentText()) ? 'gone' : 'err:' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 160));
 }
-function pushOut() {
+function pushOut_() {
   var list = query_('notifs', 'pushed', 'EQUAL', false, 100); if (!list.length) return 0;
   var tokCache = {}, sent = 0;
   list.forEach(function (n) {
@@ -409,17 +409,17 @@ function pushOut() {
 
 /* =====================================================================================
  * JOURNAL DIGEST — new dermatology papers, summarised in our own words, with an openly licensed picture.
- * makeDigest()  — daily ~7 am IST: searches PubMed for new reviews, trials, meta-analyses and guidelines in
+ * makeDigest_()  — daily ~7 am IST: searches PubMed for new reviews, trials, meta-analyses and guidelines in
  *                 dermatology journals (Indian journals included), reads each abstract, asks Gemini for an
  *                 ORIGINAL summary (never the abstract copied), and saves it to Firestore digest/{id}.
  *                 Status "draft" (admin publishes in the admin page → Journal digest), or "live" straight away
  *                 if the admin switched on Auto-publish there (config/digest.auto).
- * digestTick()  — every minute (inside checkNew): writes posts the admin queued by PMID/DOI, and publishes
+ * digestTick_()  — every minute (inside checkNew): writes posts the admin queued by PMID/DOI, and publishes
  *                 scheduled posts whose time has come.
  * Pictures: a figure from the paper ONLY when the paper is open access under a Creative Commons licence
  *           (checked with Europe PMC), otherwise an openly licensed illustrative image from Wikimedia Commons,
  *           otherwise none. Every picture keeps its credit, licence and source link.
- * Run setupDigest() once from the editor.
+ * Run setupDigest_() once from the editor.
  * ===================================================================================== */
 var DIGEST_JOURNALS = ['J Am Acad Dermatol', 'Br J Dermatol', 'JAMA Dermatol', 'J Eur Acad Dermatol Venereol', 'J Invest Dermatol',
   'Am J Clin Dermatol', 'Clin Exp Dermatol', 'Indian J Dermatol Venereol Leprol', 'Indian Dermatol Online J', 'Indian J Dermatol',
@@ -522,7 +522,7 @@ function writeDigest_(a, by) {
 function digestFields_(o) { var f = {}; Object.keys(o).forEach(function (k) { if (DIGEST_KEYS.indexOf(k) >= 0 && o[k] !== undefined && o[k] !== '') f[k] = toFs_(o[k]); }); return f; }
 function digestCfg_() { try { return docObj_(fs_('get', '/config/digest')); } catch (e) { return {}; } }
 
-function makeDigest(maxOverride) {
+function makeDigest_(maxOverride) {
   var lock = LockService.getScriptLock(); if (!lock.tryLock(30000)) return 0;
   try {
     var cfg = digestCfg_(), want = Math.max(1, Math.min(6, +(maxOverride || cfg.perDay || props_().getProperty('DIGEST_PER_DAY') || 3)));
@@ -557,7 +557,7 @@ function emailDigest_(posts, auto) {
 }
 
 /* Posts queued from the admin page (PMID or DOI), and scheduled posts that are due. Runs every minute. */
-function digestTick() {
+function digestTick_() {
   var queued = query_('digest', 'status', 'EQUAL', 'queued', 3);
   queued.forEach(function (q) {
     var patch = function (o) { fs_('patch', '/digest/' + encodeURIComponent(q.id) + '?' + Object.keys(o).map(function (k) { return 'updateMask.fieldPaths=' + k; }).join('&') + '&currentDocument.exists=true', { fields: digestFields_(o) }); };
@@ -576,8 +576,36 @@ function digestTick() {
     if (d.pubAt && Date.parse(d.pubAt) <= now) fs_('patch', '/digest/' + encodeURIComponent(d.id) + '?updateMask.fieldPaths=status&updateMask.fieldPaths=approvedAt&currentDocument.exists=true', { fields: { status: { stringValue: 'live' }, approvedAt: { timestampValue: new Date().toISOString() } } });
   });
 }
-function setupDigest() {
+function setupDigest_() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'makeDigest') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('makeDigest').timeBased().everyDays(1).atHour(7).create();
-  Logger.log('Journal digest trigger set: daily ~7 am IST. Drafted now: ' + makeDigest());
+  Logger.log('Journal digest trigger set: daily ~7 am IST. Drafted now: ' + makeDigest_());
 }
+
+/* ---------- Owner-only guard ----------
+ * The web app runs as the admin for anonymous visitors, and HtmlService pages expose every
+ * global function without a trailing "_" to google.script.run. So each public entry point
+ * (editor buttons + time triggers) checks it is really the owner or a real project trigger.
+ * Only doGet, decide and cdecide are meant for visitors (decide/cdecide check an HMAC). */
+function owner_(e) {
+  var me = Session.getEffectiveUser().getEmail(), who = '';
+  try { who = Session.getActiveUser().getEmail(); } catch (x) {}
+  if (who && who === me) return;
+  if (e && typeof e === 'object' && e.triggerUid) {
+    var id = String(e.triggerUid);
+    if (ScriptApp.getProjectTriggers().some(function (t) { return t.getUniqueId() === id; })) return;
+  }
+  throw new Error('Not allowed');
+}
+function checkNew(e) { owner_(e); return checkNew_.apply(null, arguments); }
+function setup(e) { owner_(e); return setup_.apply(null, arguments); }
+function sendTest(e) { owner_(e); return sendTest_.apply(null, arguments); }
+function telegramSetup(e) { owner_(e); return telegramSetup_.apply(null, arguments); }
+function makeContent(e) { owner_(e); return makeContent_.apply(null, arguments); }
+function nudge(e) { owner_(e); return nudge_.apply(null, arguments); }
+function resendDrafts(e) { owner_(e); return resendDrafts_.apply(null, arguments); }
+function setupStudy(e) { owner_(e); return setupStudy_.apply(null, arguments); }
+function pushOut(e) { owner_(e); return pushOut_.apply(null, arguments); }
+function makeDigest(e) { owner_(e); return makeDigest_.apply(null, arguments); }
+function digestTick(e) { owner_(e); return digestTick_.apply(null, arguments); }
+function setupDigest(e) { owner_(e); return setupDigest_.apply(null, arguments); }
