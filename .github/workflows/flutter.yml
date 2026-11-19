@@ -39,7 +39,7 @@ jobs:
       - name: Name the APK
         run: cp build/app/outputs/flutter-apk/app-release.apk ../PG-Derma.apk
       - name: Publish APK release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: android-latest
           name: PG Derma Android (latest build)
