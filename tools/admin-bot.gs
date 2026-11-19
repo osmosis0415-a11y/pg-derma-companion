@@ -157,6 +157,7 @@ function setup() {
   // Start fresh, so anyone already waiting gets one email now.
   props_().setProperty('NOTIFIED', '[]');
   Logger.log('Pending now: ' + listByStatus_('pending').length + '. Trigger set (every minute). Web app URL: ' + (webUrl_() || 'deploy the web app next'));
+  if (webUrl_()) sendTest();
 }
 function sendTest() {
   if (!webUrl_()) throw new Error('Deploy the web app first (Deploy -> New deployment -> Web app).');
