@@ -32,10 +32,9 @@ async function showLock() {
   ${auth ? `<input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Enter PIN"><button class="btn" id="unlock">Unlock</button><p id="lerr" class="err"></p>`
     : `<p class="small">Create a PIN to encrypt all patient data and photos on this device (AES-256). There is no PIN recovery — keep backups.</p>
     <input id="pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="New PIN (min 4)"><input id="pin2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="Confirm PIN"><button class="btn" id="unlock">Create vault</button><p id="lerr" class="err"></p>`}
-  ${!auth && window.FIREBASE_CONFIG ? '<button class="btn ghost" id="restorebtn" style="width:100%;margin-top:10px">☁️ Restore from cloud (new phone)</button>' : ''}
+  ${!auth ? '<button class="btn ghost" id="restorebtn" style="width:100%;margin-top:10px">☁️ Restore from Google Drive (new phone)</button>' : ''}
   <p class="tiny muted">🔒 Works offline · encrypted on this device</p></div>`;
   $('#restorebtn')?.addEventListener('click', restoreFlow);
-  if (!auth && sessionStorage.getItem('pgRestore')) { restoreFlow(); return; }
   const pin = $('#pin'); pin.focus();
   const go2 = async () => {
     const v = pin.value; $('#lerr').textContent = '';

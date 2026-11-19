@@ -14,12 +14,10 @@ const Session = {
   }
 };
 
-/* ===== End-to-end encrypted cloud sync (Firebase Firestore) =====
-   Uploads only ciphertext produced with the PIN-derived AES-256-GCM key; Firebase never sees plaintext.
-   Layout:  users/{uid}                    { v, salt, iter, check, at, device }   (manifest)
-            users/{uid}/blobs/{key}        { iv, n }   + /c/{i} { d: base64 chunk }
-            keys: 'db', 'p_<photoId>', 't_<photoId>' */
-const CHUNK = 700000;
+/* ===== End-to-end encrypted cloud sync to the user's own Google Drive (hidden app folder) =====
+   Only ciphertext made with the PIN-derived AES-256-GCM key is uploaded.
+   Files in appDataFolder:  manifest.json { v, salt, iter, check, device }   (no patient data)
+                            db.bin, p_<photoId>.bin, t_<photoId>.bin        (iv[12] + ciphertext) */
 const SYNC_COLLS = ['patients', 'visits', 'scores', 'pins', 'photos', 'logbook', 'inv', 'reminders', 'formulary'];
 const SYNC_OBJS = ['settings', 'templates', 'checks'];
 const LOCAL_ONLY = ['sync', 'batch'];
@@ -51,51 +49,104 @@ function mergeDB(base, local, remote) {
 const syncPayload = () => { const o = {}; for (const k in D) if (!LOCAL_ONLY.includes(k)) o[k] = D[k]; return o; };
 async function sha(s) { return b64(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))); }
 
+
+const DRIVE_CLIENT_ID = '567044730190-4h86udqbbs8f2bbnd1ep26j2td2gj2u1.apps.googleusercontent.com';
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+const packBlob = o => { const iv = new Uint8Array(o.iv), d = new Uint8Array(o.data), u = new Uint8Array(12 + d.length); u.set(iv, 0); u.set(d, 12); return u; };
+const unpackBlob = buf => { const u = new Uint8Array(buf); return { iv: u.slice(0, 12), data: u.slice(12).buffer }; };
+const driveErr = (code, msg) => Object.assign(new Error(msg), { code });
+
+const Drive = {
+  token: null, exp: 0, client: null, files: null,
+  loadGis() {
+    if (window.google?.accounts?.oauth2) return Promise.resolve();
+    if (this._gis) return this._gis;
+    this._gis = new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true; sc.onload = res; sc.onerror = () => { this._gis = null; rej(driveErr('drive/offline', 'Could not load Google sign-in — check your internet')); }; document.head.appendChild(sc); });
+    return this._gis;
+  },
+  valid() { return !!this.token && Date.now() < this.exp; },
+  async restoreToken() { if (this.valid()) return true; const t = await IDB.get('meta', 'dtoken').catch(() => null); if (t && Date.now() < t.exp) { this.token = t.t; this.exp = t.exp; return true; } return false; },
+  /* Must be started from a tap (browsers block the Google popup otherwise). */
+  async connect(hint, prompt = '') {
+    await this.loadGis();
+    if (!this.client) this.client = google.accounts.oauth2.initTokenClient({ client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPE, callback: () => {} });
+    return new Promise((res, rej) => {
+      this.client.callback = async r => {
+        if (r.error) return rej(driveErr('drive/denied', r.error === 'access_denied' ? 'Google Drive access was not allowed' : r.error));
+        if (!google.accounts.oauth2.hasGrantedAllScopes(r, DRIVE_SCOPE)) return rej(driveErr('drive/denied', 'Please allow access to the app folder in Google Drive'));
+        this.token = r.access_token; this.exp = Date.now() + (Number(r.expires_in) - 120) * 1000; this.files = null;
+        await IDB.put('meta', 'dtoken', { t: this.token, exp: this.exp }); $('#drivebar').hidden = true; res();
+      };
+      this.client.error_callback = e => rej(driveErr('drive/popup', e && e.type === 'popup_closed' ? 'Google sign-in was closed' : 'Google sign-in popup was blocked — tap again'));
+      this.client.requestAccessToken({ prompt, login_hint: hint || undefined });
+    });
+  },
+  async forget() { const t = this.token; this.token = null; this.exp = 0; this.files = null; await IDB.del('meta', 'dtoken').catch(() => {}); if (t && window.google?.accounts?.oauth2) try { google.accounts.oauth2.revoke(t, () => {}); } catch (e) {} },
+  async api(path, opts = {}) {
+    if (!this.valid()) throw driveErr('drive/token', 'Google Drive needs reconnecting');
+    let r;
+    try { r = await fetch('https://www.googleapis.com/' + path, Object.assign({}, opts, { headers: Object.assign({}, opts.headers || {}, { Authorization: 'Bearer ' + this.token }) })); }
+    catch (e) { throw driveErr('drive/offline', 'No internet connection'); }
+    if (r.status === 401) { this.token = null; await IDB.del('meta', 'dtoken').catch(() => {}); throw driveErr('drive/token', 'Google Drive session expired'); }
+    if (r.status === 403 && /storageQuotaExceeded|quotaExceeded/.test(await r.clone().text())) throw driveErr('drive/full', 'Your Google Drive is full');
+    if (!r.ok) throw driveErr('drive/http', 'Google Drive error ' + r.status);
+    return r;
+  },
+  async list() {
+    const out = {}; let pt = '';
+    do { const j = await (await this.api('drive/v3/files?spaces=appDataFolder&pageSize=1000&fields=nextPageToken,files(id,name)' + (pt ? '&pageToken=' + encodeURIComponent(pt) : ''))).json(); for (const f of j.files || []) out[f.name] = f.id; pt = j.nextPageToken; } while (pt);
+    this.files = out; return out;
+  },
+  async put(name, bytes, mime = 'application/octet-stream') {
+    if (!this.files) await this.list();
+    const id = this.files[name];
+    if (id) { await this.api('upload/drive/v3/files/' + id + '?uploadType=media', { method: 'PATCH', headers: { 'Content-Type': mime }, body: bytes }); return; }
+    const fd = new FormData();
+    fd.append('metadata', new Blob([JSON.stringify({ name, parents: ['appDataFolder'] })], { type: 'application/json' }));
+    fd.append('file', new Blob([bytes], { type: mime }));
+    const j = await (await this.api('upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', body: fd })).json();
+    this.files[name] = j.id;
+  },
+  async get(name) { if (!this.files) await this.list(); const id = this.files[name]; if (!id) return null; return (await this.api('drive/v3/files/' + id + '?alt=media')).arrayBuffer(); },
+  async del(name) { if (!this.files) await this.list(); const id = this.files[name]; if (!id) return; try { await this.api('drive/v3/files/' + id, { method: 'DELETE' }); } catch (e) { if (e.code !== 'drive/http') throw e; } delete this.files[name]; },
+  async manifest() { const b = await this.get('manifest.json'); return b ? JSON.parse(new TextDecoder().decode(b)) : null; },
+  async about() { return (await this.api('drive/v3/about?fields=user(emailAddress),storageQuota(limit,usage)')).json(); }
+};
+
 const Sync = {
-  state: 'off', msg: '', busy: false, again: false, quiet: false, _t: null, unsub: null, forcePush: false, last: null,
+  state: 'off', msg: '', busy: false, again: false, quiet: false, _t: null, _poll: null, forcePush: false,
   on() { return !!(D && D.sync && D.sync.on); },
-  set(s, m) { this.state = s; this.msg = m || ''; const d = $('#syncdot'); if (d) { d.dataset.s = this.on() ? s : 'off'; d.title = syncLabel(); } const x = $('#syncstat'); if (x) x.textContent = syncLabel(); },
-  ref(...p) { return Cloud.f.doc(Cloud.db, 'users', Cloud.user.uid, ...p); },
-  async putBlob(key, o) {
-    const f = Cloud.f, s = b64(o.data), n = Math.max(1, Math.ceil(s.length / CHUNK));
-    for (let i = 0; i < n; i += 10) { const bt = f.writeBatch(Cloud.db); for (let j = i; j < Math.min(n, i + 10); j++) bt.set(this.ref('blobs', key, 'c', String(j)), { d: s.slice(j * CHUNK, (j + 1) * CHUNK) }); await bt.commit(); }
-    await f.setDoc(this.ref('blobs', key), { iv: b64(o.iv), n });
-  },
-  async getBlob(key) {
-    const f = Cloud.f, m = await f.getDoc(this.ref('blobs', key)); if (!m.exists()) return null;
-    const { iv, n } = m.data(); const parts = await Promise.all([...Array(n).keys()].map(i => f.getDoc(this.ref('blobs', key, 'c', String(i)))));
-    if (parts.some(p => !p.exists())) throw new Error('Cloud copy of ' + key + ' is incomplete');
-    return { iv: unb64(iv), data: unb64(parts.map(p => p.data().d).join('')).buffer };
-  },
-  async delBlob(key) { const f = Cloud.f, m = await f.getDoc(this.ref('blobs', key)); if (!m.exists()) return; const n = m.data().n || 1; for (let i = 0; i < n; i++) await f.deleteDoc(this.ref('blobs', key, 'c', String(i))); await f.deleteDoc(this.ref('blobs', key)); },
+  set(s, m) { this.state = s; this.msg = m || ''; const d = $('#syncdot'); if (d) { d.dataset.s = this.on() ? s : 'off'; d.title = syncLabel(); } const x = $('#syncstat'); if (x) x.textContent = syncLabel(); const bar = $('#drivebar'); if (bar) bar.hidden = !(this.on() && s === 'reconnect'); },
+  async getBlob(key) { const b = await Drive.get(key + '.bin'); return b ? unpackBlob(b) : null; },
+  putBlob(key, o) { return Drive.put(key + '.bin', packBlob(o)); },
+  delBlob(key) { return Drive.del(key + '.bin'); },
   schedule(ms = 3000) { if (!this.on() || this.quiet) return; clearTimeout(this._t); this._t = setTimeout(() => this.run(), ms); },
   async start() {
     if (!this.on()) { this.set('off'); return; }
-    if (!navigator.onLine) { this.set('offline', 'Offline — will sync when back online'); return; }
-    try { await Cloud.init(); } catch (e) { this.set('error', 'Could not reach Firebase'); return; }
-    if (!Cloud.user) { this.set('error', 'Signed out — sign in under Settings → Cloud sync'); return; }
-    if (needsVerify()) { this.set('error', 'Verify your email under Settings → Cloud sync'); return; }
     if (!DEVICE) { DEVICE = await IDB.get('meta', 'device'); if (!DEVICE) { DEVICE = uid(); await IDB.put('meta', 'device', DEVICE); } }
-    if (this.unsub) this.unsub();
-    this.unsub = Cloud.f.onSnapshot(Cloud.f.doc(Cloud.db, 'users', Cloud.user.uid), s => { const m = s.data(); if (m && m.device !== DEVICE) IDB.get('kv', 'syncbase').then(b => { if (!b || b.v !== m.v) this.run(); }); }, () => {});
+    Drive.loadGis().catch(() => {});
+    clearInterval(this._poll);
+    this._poll = setInterval(() => { if (!document.hidden && navigator.onLine && Drive.valid()) this.poll(); }, 60000);
     await this.run();
   },
-  stop() { clearTimeout(this._t); if (this.unsub) { this.unsub(); this.unsub = null; } },
+  stop() { clearTimeout(this._t); clearInterval(this._poll); this._poll = null; },
+  async poll() { try { const m = await Drive.manifest(); const b = await IDB.get('kv', 'syncbase'); if (m && (!b || b.v !== m.v)) this.run(); } catch (e) { if (e.code === 'drive/token') this.set('reconnect', 'Tap to reconnect Google Drive'); } },
   async run() {
     if (!this.on() || !D || !Vault.key) return;
     if (this.busy) { this.again = true; return; }
     if (!navigator.onLine) { this.set('offline', 'Offline — will sync when back online'); return; }
-    if (!Cloud.user) return this.start();
+    if (!(await Drive.restoreToken())) { this.set('reconnect', 'Tap to reconnect Google Drive'); return; }
     this.busy = true; this.set('busy', 'Syncing…');
     try {
-      const f = Cloud.f, uref = Cloud.f.doc(Cloud.db, 'users', Cloud.user.uid);
+      Drive.files = null;
       const auth = await IDB.get('meta', 'auth'), saltB = b64(auth.salt);
-      const m = (await f.getDoc(uref)).data();
-      if (m && m.salt !== saltB && !this.forcePush) { this.set('error', 'Your cloud vault uses a different PIN. Open Settings → Cloud sync → Link this device.'); return; }
+      const m = await Drive.manifest();
+      if (m && m.salt !== saltB && !this.forcePush) { this.set('error', 'Your Drive backup uses a different PIN. Open Settings → Cloud sync → Link this device.'); return; }
       const baseRec = await IDB.get('kv', 'syncbase');
       let pulled = false;
       if (m && m.v && !this.forcePush && (!baseRec || baseRec.v !== m.v)) {
-        const remote = await Vault.decJSON(await this.getBlob('db'));
+        const blob = await this.getBlob('db'); if (!blob) throw driveErr('drive/missing', 'Drive backup is incomplete');
+        const remote = await Vault.decJSON(blob);
         const base = baseRec && baseRec.enc ? await Vault.decJSON(baseRec.enc) : null;
         const merged = mergeDB(base, D, remote);
         const before = JSON.stringify(syncPayload());
@@ -107,18 +158,20 @@ const Sync = {
       if (!cur || cur.h !== h || this.forcePush) {
         const v = Date.now();
         await this.putBlob('db', await Vault.encJSON(payload));
-        await f.setDoc(uref, { v, salt: saltB, iter: auth.iter, check: { iv: b64(auth.check.iv), data: b64(auth.check.data) }, at: f.serverTimestamp(), device: DEVICE });
+        await Drive.put('manifest.json', new TextEncoder().encode(JSON.stringify({ app: 'pg-derma-companion', v, salt: saltB, iter: auth.iter, check: { iv: b64(auth.check.iv), data: b64(auth.check.data) }, device: DEVICE, at: new Date().toISOString() })), 'application/json');
         await IDB.put('kv', 'syncbase', { v, h, enc: await Vault.encJSON(payload) });
         this.forcePush = false;
       }
       this.quiet = true; await Store.flush(); this.quiet = false;
       await this.syncPhotos();
-      this.last = new Date(); D.sync.last = this.last.toISOString();
-      this.set('ok', 'Synced ' + this.last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      D.sync.last = new Date().toISOString();
+      this.set('ok', 'Synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       if (pulled) { toast('Synced changes from your other device'); if (!['add', 'score', 'logadd', 'thesis-setup', 'deid', 'cam'].includes(ROUTE.path) && !$('#sheet').classList.contains('open')) render(); }
     } catch (e) {
-      this.quiet = false; console.error('sync', e);
-      this.set('error', e.code === 'permission-denied' ? 'Cloud permission denied — check Firestore rules' : e.code === 'resource-exhausted' ? 'Firebase free quota reached for today' : 'Sync failed: ' + (e.message || e.code));
+      this.quiet = false; console.warn('sync', e);
+      if (e.code === 'drive/token') this.set('reconnect', 'Tap to reconnect Google Drive');
+      else if (e.code === 'drive/offline') this.set('offline', 'Offline — will sync when back online');
+      else this.set('error', e.code === 'drive/full' ? 'Your Google Drive is full — free up space or turn off photo sync' : 'Sync failed: ' + (e.message || e.code));
     } finally {
       this.busy = false;
       if (this.again) { this.again = false; this.schedule(1500); }
@@ -139,15 +192,13 @@ const Sync = {
     }
     if (down && ['vault', 'photo', 'patient', 'visit', 'compare'].includes(ROUTE.path)) hydrateImgs();
   },
-  /* Re-encrypt this device's vault with the cloud vault's key (used when linking a second device). */
-  async link(pin) {
-    await Cloud.init(); const f = Cloud.f, m = (await f.getDoc(Cloud.f.doc(Cloud.db, 'users', Cloud.user.uid))).data();
-    if (!m) return true;
-    const salt = unb64(m.salt), nk = await Vault.derive(pin, salt, m.iter);
-    try { if ((await Vault.decJSON({ iv: unb64(m.check.iv), data: unb64(m.check.data).buffer }, nk)) !== 'PGDERMA-OK') throw 0; } catch (e) { return false; }
+  /* Re-encrypt this device with the Drive backup's key (linking a second device that already had its own data). */
+  async link(pin, m) {
+    const salt = unb64(m.salt), nk = await Vault.derive(pin, salt, m.iter), check = { iv: unb64(m.check.iv), data: unb64(m.check.data).buffer };
+    try { if ((await Vault.decJSON(check, nk)) !== 'PGDERMA-OK') throw 0; } catch (e) { return false; }
     const ok = Vault.key;
     for (const k of await IDB.keys('photos')) { const o = await IDB.get('photos', k); await IDB.put('photos', k, await Vault.enc(await Vault.dec(o, ok), nk)); }
-    await IDB.put('meta', 'auth', { salt, iter: m.iter, check: { iv: unb64(m.check.iv), data: unb64(m.check.data).buffer } });
+    await IDB.put('meta', 'auth', { salt, iter: m.iter, check });
     Vault.key = nk; urlCache.clear();
     await IDB.del('kv', 'syncbase'); await IDB.put('kv', 'psynced', []);
     await Store.flush(); await Session.save();
@@ -156,117 +207,102 @@ const Sync = {
 };
 function syncLabel() {
   if (!D || !Sync.on()) return 'Cloud sync off';
-  return Sync.msg || ({ ok: 'Synced', busy: 'Syncing…', error: 'Sync error', offline: 'Offline' }[Sync.state] || 'Waiting to sync');
+  return Sync.msg || ({ ok: 'Synced', busy: 'Syncing…', error: 'Sync error', offline: 'Offline', reconnect: 'Tap to reconnect Google Drive' }[Sync.state] || 'Waiting to sync');
 }
 
 /* ---------- Settings card ---------- */
 function syncCardHTML() {
-  const s = D.sync || {}, signed = Cloud.user;
-  if (!Cloud.cfg()) return '';
-  if (signed && needsVerify()) return verifyHTML();
-  return `<div class="card"><h3>☁️ Cloud sync <small class="muted">end-to-end encrypted</small></h3>
-  <p class="small muted">Keeps your patients, visits, scores, logbook, thesis data${s.photos === false ? '' : ' and photos'} in sync across your phone, iPad and laptop, and lets you restore on a new phone. Everything is encrypted with your PIN <b>before</b> upload — Firebase only stores unreadable data.</p>
-  ${!signed ? `<div class="btnrow"><button class="btn sm" data-act="syncgoogle">Continue with Google</button></div>
-      <div class="form"><p class="small muted center">or use email</p>
-      <label>Email<input id="sy_email" type="email" autocomplete="email" inputmode="email"></label>
-      <label>Password<input id="sy_pw" type="password" autocomplete="current-password" placeholder="min 6 characters"></label>
-      <div class="actions"><button class="btn ghost" data-act="syncemail" data-mode="up">Create account</button><button class="btn" data-act="syncemail" data-mode="in">Sign in</button></div>
-      <button class="btn xs ghost" data-act="syncemail" data-mode="reset">Forgot password?</button></div>`
-    : s.on ? `<p class="small"><span class="sdot" data-s="${Sync.state}"></span> <b id="syncstat">${esc(syncLabel())}</b> · ${esc(Cloud.user.email || '')}</p>
-      <label class="row small"><input type="checkbox" data-act="syncphotos" ${s.photos === false ? '' : 'checked'}> Also sync photos (uses more of the free cloud space)</label>
-      <div class="btnrow"><button class="btn sm" data-act="syncnow">↻ Sync now</button><button class="btn sm ghost" data-act="syncoff">Turn off on this device</button></div>`
-    : `<p class="small">Signed in as <b>${esc(Cloud.user.email || '')}</b></p><button class="btn sm" data-act="syncon">Turn on cloud sync</button>`}
-  </div>${signed ? accountHTML() : ''}`;
+  const s = D.sync || {};
+  const drive = `<div class="card"><h3>☁️ Cloud sync — Google Drive <small class="muted">end-to-end encrypted</small></h3>
+  <p class="small muted">Saves your patients, visits, scores, logbook, thesis data${s.photos === false ? '' : ' and photos'} to a <b>hidden app folder in your own Google Drive</b> and keeps your phone, iPad and laptop in sync. Everything is encrypted with your PIN <b>before</b> upload — the files can't be opened from Drive, only by this app with your PIN.</p>
+  ${s.on ? `<p class="small"><span class="sdot" data-s="${Sync.state}"></span> <b id="syncstat">${esc(syncLabel())}</b>${s.email ? ' · ' + esc(s.email) : ''}</p>
+      <p class="small muted" id="drivequota"></p>
+      <label class="row small"><input type="checkbox" data-act="syncphotos" ${s.photos === false ? '' : 'checked'}> Also sync photos</label>
+      <div class="btnrow wrap"><button class="btn sm" data-act="syncnow">↻ Sync now</button>${Sync.state === 'reconnect' ? '<button class="btn sm" data-act="driveconnect">Reconnect Google Drive</button>' : ''}<button class="btn sm ghost" data-act="syncoff">Turn off on this device</button><button class="btn sm ghost danger" data-act="drivewipe">Delete Drive backup</button></div>`
+    : `<button class="btn" data-act="driveconnect">Connect Google Drive</button><p class="small muted">Google will ask to let PG Derma use its own app folder in your Drive. It can't see any of your other Drive files.</p>`}
+  </div>`;
+  return drive + (Cloud.user ? accountHTML() : '');
 }
+function showQuota() { if (!Drive.valid()) return; Drive.about().then(a => { const el = $('#drivequota'); if (!el || !a.storageQuota) return; const u = +a.storageQuota.usage || 0, l = +a.storageQuota.limit || 0; el.textContent = 'Google Drive used: ' + (u / 1073741824).toFixed(1) + ' GB' + (l ? ' of ' + (l / 1073741824).toFixed(0) + ' GB' : ''); }).catch(() => {}); }
 function accountHTML() {
   const u = Cloud.user, pw = (u.providerData || []).some(p => p.providerId === 'password'), g = (u.providerData || []).some(p => p.providerId === 'google.com');
-  return `<div class="card"><h3>👤 Account</h3>
+  return `<div class="card"><h3>👤 Batch hub account</h3>
   <p class="small"><b>${esc(u.email || '')}</b> ${u.emailVerified ? '<span class="badge green">verified</span>' : '<span class="badge amber">not verified</span>'}<br><span class="muted">Signed in with ${[pw && 'email & password', g && 'Google'].filter(Boolean).join(' + ') || 'Firebase'}</span></p>
-  <div class="btnrow wrap"><button class="btn sm ghost" data-act="acctsignout">Sign out</button>${pw ? '<button class="btn sm ghost" data-act="acctpw">Change password</button>' : ''}<button class="btn sm ghost danger" data-act="acctdel">Delete account & cloud data</button></div>
-  <p class="small muted">Signing out or deleting your account never touches the data on this phone — only the cloud copy.</p></div>`;
+  <div class="btnrow wrap"><button class="btn sm ghost" data-act="acctsignout">Sign out</button>${pw ? '<button class="btn sm ghost" data-act="acctpw">Change password</button>' : ''}<button class="btn sm ghost danger" data-act="acctdel">Delete Batch hub account</button></div>
+  <p class="small muted">Used only for the Batch hub (shared calendar & logbook comparison). Your records sync through Google Drive above.</p></div>`;
 }
-ACT.acctsignout = async () => { Sync.stop(); if (D.sync) D.sync.on = false; Cloud.stop(); try { await Cloud.f.signOut(Cloud.auth); } catch (e) {} Cloud.user = null; Store.save(); Sync.set('off'); toast('Signed out'); render(); };
+ACT.acctsignout = async () => { Cloud.stop(); try { await Cloud.f.signOut(Cloud.auth); } catch (e) {} Cloud.user = null; toast('Signed out of Batch hub'); render(); };
 ACT.acctpw = async () => { try { await Cloud.f.sendPasswordResetEmail(Cloud.auth, Cloud.user.email); toast('A link to set a new password was sent to ' + Cloud.user.email, 4500); } catch (e) { toast(authMsg(e)); } };
 ACT.acctdel = async () => {
-  if (prompt('This permanently deletes your online account, your encrypted cloud backup and your batch membership. Data on this phone stays. Type DELETE to confirm.') !== 'DELETE') return;
-  const f = Cloud.f, uidv = Cloud.user.uid; toast('Deleting cloud data…', 8000);
+  if (prompt('This permanently deletes your Batch hub login and removes you from your batch. Your Google Drive backup and the data on this phone are not touched. Type DELETE to confirm.') !== 'DELETE') return;
+  const f = Cloud.f, uidv = Cloud.user.uid;
   try {
-    Sync.stop();
-    const blobs = await f.getDocs(f.collection(Cloud.db, 'users', uidv, 'blobs'));
-    for (const b of blobs.docs) { const n = b.data().n || 1; for (let i = 0; i < n; i++) await f.deleteDoc(f.doc(Cloud.db, 'users', uidv, 'blobs', b.id, 'c', String(i))); await f.deleteDoc(b.ref); }
-    await f.deleteDoc(f.doc(Cloud.db, 'users', uidv));
     if (D.batch) { await f.deleteDoc(f.doc(Cloud.db, 'batches', D.batch.id, 'logstats', uidv)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', D.batch.id, 'members', uidv)).catch(() => {}); D.batch = null; }
     await f.deleteUser(Cloud.user);
-    if (D.sync) D.sync.on = false; Cloud.user = null; await IDB.del('kv', 'syncbase'); await IDB.put('kv', 'psynced', []); Store.save(); Sync.set('off');
-    toast('Account and cloud data deleted'); render();
-  } catch (e) {
-    if (e.code === 'auth/requires-recent-login') { toast('Cloud data deleted. For security, sign out, sign in again and tap Delete once more to remove the login itself.', 6000); render(); }
-    else toast('Could not finish: ' + (e.code || e.message), 4000);
-  }
+    Cloud.stop(); Cloud.user = null; Store.save(); toast('Batch hub account deleted'); render();
+  } catch (e) { toast(e.code === 'auth/requires-recent-login' ? 'For security, sign out, sign in again and tap Delete once more.' : 'Could not finish: ' + (e.code || e.message), 5000); }
 };
-ACT.syncgoogle = async () => { try { await Cloud.init(); } catch (e) { return toast('Could not reach Firebase'); } await ACT.gsign(); setTimeout(() => ROUTE.path === 'settings' && render(), 1500); };
-ACT.syncemail = async el => {
-  const email = val('sy_email'), pw = ($('#sy_pw') || {}).value || '', mode = el.dataset.mode;
-  if (!email) return toast('Enter your email');
-  if (mode !== 'reset' && pw.length < 6) return toast('Password must be at least 6 characters');
-  try { await Cloud.init(); } catch (e) { return toast('Could not reach Firebase — check your internet'); }
-  const f = Cloud.f;
+ACT.driveconnect = async () => {
   try {
-    if (mode === 'reset') { await f.sendPasswordResetEmail(Cloud.auth, email); return toast('Password reset link sent to ' + email, 4000); }
-    if (mode === 'up') { await f.createUserWithEmailAndPassword(Cloud.auth, email, pw); Cloud.user = Cloud.auth.currentUser; await sendVerify(); }
-    else { await f.signInWithEmailAndPassword(Cloud.auth, email, pw); Cloud.user = Cloud.auth.currentUser; toast('Signed in as ' + email); }
-    const c = $('#synccard'); if (c) c.innerHTML = syncCardHTML();
-  } catch (e) { toast(authMsg(e), 3500); }
+    await Drive.connect(D.sync && D.sync.email);
+    const about = await Drive.about().catch(() => ({}));
+    const email = about.user && about.user.emailAddress;
+    if (!(D.sync && D.sync.on)) {
+      const m = await Drive.manifest(), auth = await IDB.get('meta', 'auth');
+      if (m && m.salt !== b64(auth.salt)) {
+        const pin = prompt('This Google Drive already has a PG Derma backup (from another device). Enter the PIN you use there — this device will switch to that PIN and both devices will be merged.');
+        if (!pin) return;
+        toast('Linking… re-encrypting this device', 8000);
+        if (!(await Sync.link(pin, m))) return toast('That PIN does not match the Drive backup');
+      }
+      D.sync = { on: true, photos: true, email };
+    } else if (email) D.sync.email = email;
+    await Store.flush(); toast('Google Drive connected'); Sync.start(); render();
+  } catch (e) { toast(e.message || 'Could not connect Google Drive', 4000); }
 };
-ACT.syncon = async () => {
-  await Cloud.init();
-  if (needsVerify()) { toast('Verify your email first'); return render(); }
-  const m = (await Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'users', Cloud.user.uid))).data(), auth = await IDB.get('meta', 'auth');
-  if (m && m.salt !== b64(auth.salt)) {
-    const pin = prompt('This account already has a cloud vault (from another device). Enter the PIN you use there — this device will switch to that PIN and both devices will be merged.');
-    if (!pin) return;
-    toast('Linking… re-encrypting this device', 8000);
-    if (!(await Sync.link(pin))) return toast('That PIN does not match the cloud vault');
-  }
-  D.sync = { on: true, photos: true }; await Store.flush(); toast('Cloud sync on'); Sync.start(); render();
-};
-ACT.syncoff = () => { if (!confirm('Stop syncing this device? Data already in the cloud stays there.')) return; D.sync.on = false; Sync.stop(); Store.save(); Sync.set('off'); render(); };
+ACT.syncoff = async () => { if (!confirm('Stop syncing this device? Your Drive backup stays.')) return; D.sync.on = false; Sync.stop(); await Drive.forget(); Store.save(); Sync.set('off'); render(); };
 ACT.syncnow = () => Sync.run();
 ACT.syncphotos = el => { D.sync.photos = el.checked; Store.save(); Sync.schedule(500); };
+ACT.drivewipe = async () => {
+  if (prompt('Delete the PG Derma backup from your Google Drive? Data on this phone stays. Type DELETE to confirm.') !== 'DELETE') return;
+  try {
+    if (!Drive.valid()) await Drive.connect(D.sync && D.sync.email);
+    Sync.stop(); const files = await Drive.list();
+    for (const name of Object.keys(files)) await Drive.del(name);
+    D.sync.on = false; await IDB.del('kv', 'syncbase'); await IDB.put('kv', 'psynced', []); Store.save(); Sync.set('off');
+    toast('Drive backup deleted'); render();
+  } catch (e) { toast(e.message, 4000); }
+};
 
 /* ---------- Restore on a new device (from the lock screen, before a vault exists) ---------- */
 async function restoreFlow() {
   const box = $('.lockbox');
-  box.innerHTML = `<div class="logo">☁️</div><h1>Restore from cloud</h1><p class="small muted">Sign in with the account you used for Cloud sync.</p><div id="rbody"><p class="muted small">Connecting…</p></div><button class="btn ghost" id="rback">Back</button>`;
-  $('#rback').onclick = () => { sessionStorage.removeItem('pgRestore'); showLock(); };
-  sessionStorage.setItem('pgRestore', '1');
-  try { await Cloud.init(); } catch (e) { $('#rbody').innerHTML = '<p class="err">Could not reach Firebase — check your internet connection.</p>'; return; }
-  if (!Cloud.user) {
-    $('#rbody').innerHTML = `<button class="btn" id="rg">Continue with Google</button><input id="re" type="email" placeholder="Email"><input id="rp" type="password" placeholder="Password"><button class="btn ghost" id="rs">Sign in with email</button><p id="lerr" class="err"></p>`;
-    $('#rg').onclick = () => ACT.gsign().then(() => setTimeout(restoreFlow, 800));
-    $('#rs').onclick = async () => { try { await Cloud.f.signInWithEmailAndPassword(Cloud.auth, $('#re').value.trim(), $('#rp').value); Cloud.user = Cloud.auth.currentUser; restoreFlow(); } catch (e) { $('#lerr').textContent = authMsg(e); } };
-    return;
-  }
-  if (needsVerify()) { $('#rbody').innerHTML = '<p class="err">This email is not verified yet. Open the verification link we emailed you, then tap Back and try again.</p>'; return; }
-  const m = (await Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'users', Cloud.user.uid))).data();
-  if (!m) { $('#rbody').innerHTML = `<p class="err">No cloud vault found for ${esc(Cloud.user.email)}. Turn on Cloud sync on your other device first.</p>`; return; }
-  $('#rbody').innerHTML = `<p class="small">Signed in as <b>${esc(Cloud.user.email)}</b>. Enter the PIN you use on your other device.</p><input id="pin" type="password" inputmode="numeric" placeholder="PIN"><button class="btn" id="rgo">Restore</button><p id="lerr" class="err"></p>`;
-  const go2 = async () => {
-    const pin = $('#pin').value; $('#rgo').disabled = true; $('#rgo').textContent = 'Restoring…';
-    try {
-      const salt = unb64(m.salt), k = await Vault.derive(pin, salt, m.iter), check = { iv: unb64(m.check.iv), data: unb64(m.check.data).buffer };
-      try { if ((await Vault.decJSON(check, k)) !== 'PGDERMA-OK') throw 0; } catch (e) { throw new Error('Incorrect PIN'); }
-      Vault.key = k;
-      const blob = await Sync.getBlob('db'); const remote = await Vault.decJSON(blob);
-      await IDB.put('meta', 'auth', { salt, iter: m.iter, check });
-      await IDB.put('kv', 'db', blob);
-      await IDB.put('kv', 'syncbase', { v: m.v, h: await sha(JSON.stringify(remote)), enc: await Vault.encJSON(remote) });
-      await IDB.put('kv', 'psynced', []);
-      sessionStorage.removeItem('pgRestore');
-      await Store.load(); D.sync = { on: true, photos: true }; await Store.flush(); await Session.save();
-      $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); toast('Restored — downloading photos in the background', 4000); Sync.start();
-    } catch (e) { Vault.key = null; $('#lerr').textContent = e.message; $('#rgo').disabled = false; $('#rgo').textContent = 'Restore'; }
+  box.innerHTML = `<div class="logo">☁️</div><h1>Restore from Google Drive</h1><p class="small muted">Connect the Google account you used for Cloud sync.</p><div id="rbody"><button class="btn" id="rg" style="width:100%">Connect Google Drive</button><p id="lerr" class="err"></p></div><button class="btn ghost" id="rback" style="width:100%">Back</button>`;
+  $('#rback').onclick = () => showLock();
+  Drive.loadGis().catch(() => {});
+  $('#rg').onclick = async () => {
+    try { await Drive.connect('', 'select_account'); } catch (e) { $('#lerr').textContent = e.message; return; }
+    let m; try { m = await Drive.manifest(); } catch (e) { $('#lerr').textContent = e.message; return; }
+    if (!m) { $('#rbody').innerHTML = '<p class="err">No PG Derma backup found in this Google Drive. Turn on Cloud sync on your other device first, or tap Back and choose another account.</p>'; return; }
+    $('#rbody').innerHTML = `<p class="small">Backup found${m.at ? ' (last saved ' + esc(fmt(m.at)) + ')' : ''}. Enter the PIN you use on your other device.</p><input id="pin" type="password" inputmode="numeric" placeholder="PIN"><button class="btn" id="rgo" style="width:100%">Restore</button><p id="lerr" class="err"></p>`;
+    const go2 = async () => {
+      const pin = $('#pin').value; $('#rgo').disabled = true; $('#rgo').textContent = 'Restoring…';
+      try {
+        const salt = unb64(m.salt), k = await Vault.derive(pin, salt, m.iter), check = { iv: unb64(m.check.iv), data: unb64(m.check.data).buffer };
+        try { if ((await Vault.decJSON(check, k)) !== 'PGDERMA-OK') throw 0; } catch (e) { throw new Error('Incorrect PIN'); }
+        Vault.key = k;
+        const blob = await Sync.getBlob('db'); if (!blob) throw new Error('Backup is incomplete');
+        const remote = await Vault.decJSON(blob);
+        const about = await Drive.about().catch(() => ({}));
+        await IDB.put('meta', 'auth', { salt, iter: m.iter, check });
+        await IDB.put('kv', 'db', blob);
+        await IDB.put('kv', 'syncbase', { v: m.v, h: await sha(JSON.stringify(remote)), enc: await Vault.encJSON(remote) });
+        await IDB.put('kv', 'psynced', []);
+        await Store.load(); D.sync = { on: true, photos: true, email: about.user && about.user.emailAddress }; await Store.flush(); await Session.save();
+        $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); toast('Restored — downloading photos in the background', 4000); Sync.start();
+      } catch (e) { Vault.key = null; $('#lerr').textContent = e.message; $('#rgo').disabled = false; $('#rgo').textContent = 'Restore'; }
+    };
+    $('#rgo').onclick = go2; $('#pin').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go2(); } });
   };
-  $('#rgo').onclick = go2; $('#pin').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go2(); } });
 }
 addEventListener('online', () => Sync.on() && Sync.run());

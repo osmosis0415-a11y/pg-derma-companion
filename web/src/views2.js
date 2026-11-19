@@ -489,6 +489,7 @@ function vSettings() {
   <div class="card"><h3>Install on your phone</h3><p class="small">Android (Chrome): ⋮ menu → <b>Install app</b> / Add to Home screen.<br>iPhone / iPad (Safari): Share → <b>Add to Home Screen</b>.<br>Once installed, the app works fully offline.</p></div>
   <div class="card"><h3>Danger zone</h3><button class="btn sm danger" data-act="wipe">Erase all data on this device</button></div>
   <p class="small muted center">PG Derma Companion · version ${esc(APP_VERSION)} · <a class="link" href="https://github.com/osmosis0415-a11y/pg-derma-companion/blob/main/CHANGELOG.md" target="_blank" rel="noopener">What's new</a> · storage ${D.photos.length} photos · ${D.patients.length} patients</p>`;
+  Drive.loadGis().catch(() => {}); showQuota();
   if (Cloud.cfg() && !Cloud.ready && navigator.onLine) Cloud.init().then(() => { const c = $('#synccard'); if (c && ROUTE.path === 'settings') c.innerHTML = syncCardHTML(); }).catch(() => {});
   $('#restore').onchange = async e => { const f = e.target.files[0]; if (!f || !confirm('Restore will REPLACE all data on this device with the backup. Continue?')) return; try { await importBackup(f); toast('Restored — unlock with the backup PIN'); lockApp(true); } catch (er) { alert('Restore failed: ' + er.message); } };
 }

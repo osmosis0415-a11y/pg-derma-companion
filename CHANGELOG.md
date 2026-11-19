@@ -2,6 +2,12 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 19 Nov 2026 (Google Drive)
+- **Cloud sync now uses your own Google Drive.** Settings → Cloud sync → **Connect Google Drive**. Records and photos are saved, encrypted with your PIN, in a hidden PG Derma folder in *your* Drive (your own 15 GB, not a shared limit). The app can't see any of your other Drive files.
+- **Restore from Google Drive** on a new phone from the first screen.
+- If Google's 1-hour access expires, a blue **"Tap to reconnect Google Drive"** bar appears — one tap and syncing continues.
+- The email/password login is now only for the Batch hub.
+
 ## 19 Nov 2026 (accounts)
 - **Email verification:** new email accounts get a verification link; Cloud sync and the Batch hub unlock once it's clicked (Google accounts are verified automatically).
 - **Account section** in Settings: sign out, change password, and delete your account and cloud data (data on your phone is never touched).

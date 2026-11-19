@@ -8,7 +8,7 @@ Open it on your phone and install it to the home screen (Android Chrome: ⋮ →
 
 ## Cloud sync & updates
 
-- **Cloud sync (end-to-end encrypted):** Settings → Cloud sync → sign in with Google. Your data is encrypted on the device with your PIN-derived AES-256 key *before* upload to Firestore (`users/{uid}`), so Firebase stores only ciphertext. Edits from several devices are merged record by record (three-way merge). On a new phone, use **Restore from cloud** on the first screen.
+- **Cloud sync to Google Drive (end-to-end encrypted):** Settings → Cloud sync → Connect Google Drive. Records and photos are encrypted on the device with the PIN-derived AES-256 key and stored in the user's own Drive *app data folder* (`drive.appdata` scope — a hidden folder the app can't see beyond). Several devices merge record by record (three-way merge). On a new phone use **Restore from Google Drive**. Google's browser access lasts 1 hour; when it lapses the app shows a one-tap reconnect bar.
 - **Refresh-safe:** reloading keeps the app unlocked until the auto-lock time (default 15 min).
 - **OTA updates:** every push to `main` deploys a new build, and installed apps show *"New version available — tap to update"*. See [CHANGELOG.md](CHANGELOG.md).
 
@@ -31,7 +31,7 @@ Open it on your phone and install it to the home screen (Android Chrome: ⋮ →
 | **3 · Formulary & OT** | Searchable personal formulary with weight-based dosing (editable), isotretinoin cumulative-dose calculator, FTU guide (adult + paediatric) and tube calculator, compounding calculator (Kligman's, Whitfield's, salicylic acid, coal tar…), lignocaine maximum-dose calculator, 9 minor-OT tray checklists |
 | **5 · Privacy & analytics** | PIN vault, **Conference mode** de-identification (eye bars, pixelate, black box, auto face detection where the browser supports it; re-encoding strips EXIF/GPS), logbook quota tracker, thesis recruitment gauge, case mix (Derm / Ven / Lep / Aesthetics), monthly visits |
 
-| **Batch hub** (online, optional) | Firebase-backed: create or join your batch with a code, a **shared batch calendar** (seminars, journal clubs, postings, exams; weekly repeats; add to your phone calendar; share the week on WhatsApp) and **anonymous logbook comparison** (you vs batch average / median / top, per procedure and year). Only event details, display names and procedure *counts* are uploaded, never patient data |
+| **Batch hub** (online, optional) | Firebase-backed (email or Google login): create or join your batch with a code, a **shared batch calendar** (seminars, journal clubs, postings, exams; weekly repeats; add to your phone calendar; share the week on WhatsApp) and **anonymous logbook comparison** (you vs batch average / median / top, per procedure and year). Only event details, display names and procedure *counts* are uploaded, never patient data |
 
 Phone gets a bottom nav with a central ＋ button; iPad and tablet (≥900 px) get a sidebar and a two-pane patient list and detail view.
 
