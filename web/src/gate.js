@@ -35,6 +35,11 @@ async function googleSignIn() {
   Cloud.user = Cloud.auth.currentUser;
 }
 
+/* Referral: ?ref=CODE in an invite link is remembered until sign-up. A person's code = first 8 characters of their uid. */
+(() => { try { const r = new URLSearchParams(location.search).get('ref'); if (r && /^[A-Za-z0-9]{4,20}$/.test(r)) localStorage.setItem('pgd_ref', r); } catch (e) {} })();
+const myRefCode = () => (Cloud.user?.uid || (Gate.cached || {}).uid || '').slice(0, 8);
+const inviteLink = () => location.origin + location.pathname + '?ref=' + myRefCode();
+const AUTH_SLIDES = [['reels', 'Swipe to learn', 'An endless feed of MCQs, spots, pearls and flashcards, made for MD DVL.'], ['users', 'Your residency community', 'Share cases, ask doubts, follow seniors, message and call batchmates.'], ['book', 'Log everything', 'Encrypted case logbook, photos, scores and thesis tracking, all on your phone.'], ['flame', 'Build a daily streak', 'Five minutes a day, reminders that work, and a weekly leaderboard.']];
 const Gate = {
   cached: null, _done: null, unsub: null,
   enabled() { return !!Cloud.cfg(); },
@@ -44,9 +49,9 @@ const Gate = {
     if (g && g.status === 'approved') { this.cached = g; return; }
     await new Promise(res => { this._done = res; this.screen(); });
   },
-  box(html) {
-    $('#app').hidden = true; const l = $('#lock'); l.hidden = false;
-    l.innerHTML = `<div class="lockbox"><div class="logo">${ic('steth')}</div><h1>PG Derma Companion</h1><p class="muted small">MD Dermatology, Venereology & Leprosy</p>${html}</div>`;
+  box(html, hero) {
+    $('#app').hidden = true; const l = $('#lock'); l.hidden = false; clearInterval(this._car);
+    l.innerHTML = authShell(html, hero);
   },
   retry(msg) { this.box(`<p class="err">${esc(msg)}</p><button class="btn" id="gretry" style="width:100%">Try again</button>`); $('#gretry').onclick = () => this.screen(); },
   async screen() {
@@ -55,39 +60,84 @@ const Gate = {
     try { await Cloud.init(); } catch (e) { return this.retry('Could not reach Google sign-in. Check your internet.'); }
     const u = Cloud.user;
     if (!u) {
-      this.box(`<p class="small">Sign in with your Google account to continue. New accounts are approved by the app admin before first use.</p>
-        <button class="btn gbtn" id="gsign" style="width:100%"><span class="g">G</span> Continue with Google</button><p id="lerr" class="err"></p>
-        <p class="tiny muted">Patient data stays encrypted on your device. Google sign-in only confirms who you are.</p>`);
-      Drive.loadGis().catch(() => {});
-      $('#gsign').onclick = async () => { $('#gsign').disabled = true; try { await googleSignIn(); this.screen(); } catch (e) { $('#lerr').textContent = authMsg(e); $('#gsign').disabled = false; } };
-      return;
+      return this.welcome();
     }
     if (isAdminUser(u)) return this.approve(u);
     const f = Cloud.f, ref = f.doc(Cloud.db, 'approvals', u.uid);
     let s;
     try {
       s = await f.getDoc(ref);
-      if (!s.exists()) { await f.setDoc(ref, { email: u.email, name: u.displayName || '', photo: u.photoURL || '', status: 'pending', requestedAt: f.serverTimestamp() }); s = await f.getDoc(ref); }
-    } catch (e) { return this.retry('Could not send your access request (' + (e.code || e.message) + ').'); }
+      if (!s.exists()) return this.signupForm(u);
+    } catch (e) { return this.retry('Could not reach the server (' + (e.code || e.message) + ').'); }
     const st = s.data().status;
     if (st === 'approved') return this.approve(u);
     this.pending(u, st);
     if (this.unsub) this.unsub();
     this.unsub = f.onSnapshot(ref, d => { const x = d.data(); if (!x) return; if (x.status === 'approved') { this.unsub(); this.unsub = null; this.approve(u); } else this.pending(u, x.status); }, () => {});
   },
+  /* ---------- Welcome: carousel + Create account / Log in ---------- */
+  welcome(mode) {
+    const ref = localStorage.getItem('pgd_ref');
+    this.box(`<div class="carousel" id="car">${AUTH_SLIDES.map((x, k) => `<div class="slide${k ? '' : ' on'}"><span class="sic">${ic(x[0])}</span><b>${x[1]}</b><p>${x[2]}</p></div>`).join('')}</div>
+      <div class="cdots">${AUTH_SLIDES.map((_, k) => `<i class="${k ? '' : 'on'}"></i>`).join('')}</div>
+      ${ref ? `<div class="refban">${ic('users')}<span>You were invited by a batchmate · code <b>${esc(ref)}</b></span></div>` : ''}
+      <button class="btn abtn" id="gup">${ic('plus')} Create account</button>
+      <button class="btn ghost abtn" id="gin"><span class="g">G</span> Log in with Google</button>
+      <p id="lerr" class="err"></p>
+      <p class="tiny muted">Both use your Google account; no new password. New accounts are approved by the admin. Patient data stays encrypted on your phone.</p>`, true);
+    Drive.loadGis().catch(() => {});
+    let k = 0; const sl = $$('#car .slide'), dots = $$('.cdots i');
+    const show = n => { k = (n + sl.length) % sl.length; sl.forEach((e, i) => e.classList.toggle('on', i === k)); dots.forEach((e, i) => e.classList.toggle('on', i === k)); };
+    this._car = setInterval(() => show(k + 1), 3200);
+    dots.forEach((d, i) => d.onclick = () => { show(i); clearInterval(this._car); });
+    let sx = null; const car = $('#car'); car.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true }); car.addEventListener('touchend', e => { if (sx == null) return; const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 40) { show(k + (dx < 0 ? 1 : -1)); clearInterval(this._car); } sx = null; });
+    const go = async (which) => { const b = $(which === 'up' ? '#gup' : '#gin'); b.disabled = true; this.mode = which; try { await googleSignIn(); this.screen(); } catch (e) { $('#lerr').textContent = authMsg(e); b.disabled = false; } };
+    $('#gup').onclick = () => go('up'); $('#gin').onclick = () => go('in');
+  },
+  /* ---------- Sign-up details (first time only) ---------- */
+  signupForm(u) {
+    const ref = localStorage.getItem('pgd_ref') || '';
+    this.box(`${steps(1)}<h2 class="ah">${this.mode === 'in' ? 'Finish creating your account' : 'Tell us about you'}</h2>
+      <div class="aform">
+        <div class="who">${u.photoURL ? `<img src="${esc(u.photoURL)}" alt="" referrerpolicy="no-referrer">` : `<span>${esc(initials(u.displayName || u.email))}</span>`}<div><b>${esc(u.displayName || '')}</b><small>${esc(u.email)}</small></div></div>
+        <label>Name as you'd like it shown<input id="su_name" maxlength="80" value="${esc(u.displayName || '')}" placeholder="Dr. Your Name"></label>
+        <label>College / institute<input id="su_col" maxlength="80" placeholder="e.g. Osmania Medical College"></label>
+        <label>You are</label>${chips('su_year', [['JR1', 'JR1'], ['JR2', 'JR2'], ['JR3', 'JR3'], ['SR', 'Senior resident'], ['Faculty', 'Faculty'], ['Aspirant', 'PG aspirant']], 'JR1')}
+        <label>Referral code (optional)<input id="su_ref" maxlength="20" value="${esc(ref)}" placeholder="From your batchmate's invite link"></label>
+        <label class="row decl"><input type="checkbox" id="su_ok"> <span class="small">I'm a doctor or medical student. I won't post patient-identifiable information, and I accept that the admin may remove content or access.</span></label>
+        <button class="btn abtn" id="su_go">Request access</button><p id="lerr" class="err"></p>
+        <button class="link small" id="su_out">Use a different Google account</button></div>`);
+    $('#su_out').onclick = async () => { try { await Cloud.f.signOut(Cloud.auth); } catch (e) {} Cloud.user = null; this.welcome(); };
+    $('#su_go').onclick = async () => {
+      const name = $('#su_name').value.trim(), col = $('#su_col').value.trim(), yr = getChips('su_year') || 'JR1', rf = $('#su_ref').value.trim();
+      if (name.length < 2) return $('#lerr').textContent = 'Please enter your name';
+      if (!col) return $('#lerr').textContent = 'Please enter your college';
+      if (rf && !/^[A-Za-z0-9]{4,20}$/.test(rf)) return $('#lerr').textContent = 'That referral code doesn\'t look right';
+      if (!$('#su_ok').checked) return $('#lerr').textContent = 'Please accept the community rules';
+      $('#su_go').disabled = true;
+      const f = Cloud.f, d = { email: u.email, name: name.slice(0, 80), photo: (u.photoURL || '').slice(0, 500), status: 'pending', requestedAt: f.serverTimestamp(), college: col.slice(0, 80), year: yr };
+      if (rf && rf !== u.uid.slice(0, 8)) d.ref = rf;
+      try { await f.setDoc(f.doc(Cloud.db, 'approvals', u.uid), d); if (D) { D.settings.name = d.name; } localStorage.setItem('pgd_signup', JSON.stringify({ name: d.name, college: d.college, year: yr })); localStorage.removeItem('pgd_ref'); this.screen(); }
+      catch (e) { $('#su_go').disabled = false; $('#lerr').textContent = 'Could not send your request (' + (e.code || e.message) + ')'; }
+    };
+  },
   pending(u, st) {
     const rej = st === 'rejected';
     const msg = `Hi Dr. Sriram, I've requested access to PG Derma Companion with ${u.email}. Please approve. ${location.origin + location.pathname}`;
-    this.box(`${u.photoURL ? `<img class="gav" src="${esc(u.photoURL)}" alt="" referrerpolicy="no-referrer">` : ''}<p><b>${esc(u.displayName || '')}</b><br><span class="small muted">${esc(u.email)}</span></p>
+    const inv = `Join me on PG Derma — the app for MD Dermatology residents: daily study feed, case community and logbook.\n${inviteLink()}`;
+    this.box(`${steps(rej ? -1 : 2)}<div class="who big">${u.photoURL ? `<img src="${esc(u.photoURL)}" alt="" referrerpolicy="no-referrer">` : `<span>${esc(initials(u.displayName || u.email))}</span>`}<div><b>${esc(u.displayName || '')}</b><small>${esc(u.email)}</small></div></div>
       ${rej ? '<p class="err">Your access request was not approved. Contact the admin if you think this is a mistake.</p>'
-        : '<p class="small">⏳ <b>Waiting for approval</b> by the app admin. This screen opens automatically once you are approved.</p>'}
-      ${rej ? '' : `<a class="btn wa" style="width:100%" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Ask for approval on WhatsApp</a>`}
-      <button class="btn ghost" id="gcheck" style="width:100%;margin-top:8px">Check again</button>
-      <button class="btn ghost" id="gout" style="width:100%;margin-top:8px">Use a different Google account</button>`);
+        : `<div class="waiting"><span class="pulse"></span><b>Waiting for admin approval</b><small>This screen opens the app by itself the moment you're approved.</small></div>
+        <a class="btn wa abtn" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Ask the admin on WhatsApp</a>
+        <div class="invite"><b>Invite your batchmates</b><small>Share your link. You get credit when they join.</small><div class="code">${esc(myRefCode())}</div><a class="btn ghost abtn" href="https://wa.me/?text=${encodeURIComponent(inv)}" target="_blank" rel="noopener">${ic('send')} Share invite</a></div>`}
+      <button class="btn ghost abtn" id="gcheck">Check again</button>
+      <button class="link small" id="gout">Use a different Google account</button>`);
     $('#gcheck').onclick = () => this.screen();
     $('#gout').onclick = async () => { if (this.unsub) { this.unsub(); this.unsub = null; } try { await Cloud.f.signOut(Cloud.auth); } catch (e) {} Cloud.user = null; this.screen(); };
   },
   async approve(u) {
+    try { const su = JSON.parse(localStorage.getItem('pgd_signup') || 'null'); if (su) { Gate.signup = su; localStorage.removeItem('pgd_signup'); } } catch (e) {}
+    clearInterval(this._car);
     const g = { uid: u.uid, email: u.email, name: u.displayName || '', photo: u.photoURL || '', status: 'approved', at: Date.now() };
     await IDB.put('meta', 'gate', g); this.cached = g;
     if (this._done) { const d = this._done; this._done = null; d(); }
@@ -119,6 +169,29 @@ const Gate = {
   }
 };
 
+function steps(n) {
+  const L = [['Google', 'check'], ['Details', 'user'], ['Approval', 'shield'], ['Ready', 'flame']];
+  return `<div class="steps">${L.map(([t, i], k) => `<span class="${n < 0 && k === 2 ? 'bad' : k < n || (n === 3) ? 'done' : k === n ? 'cur' : ''}"><i>${ic(i)}</i><small>${t}</small></span>`).join('<b></b>')}</div>`;
+}
+function authShell(html, hero) {
+  return `<div class="authbg"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i></div><div class="authcard${hero ? ' hero' : ''}"><div class="alogo">${LOGO_SVG}</div><h1>PG Derma</h1><p class="atag">${hero ? '<span class="rot"><span>Learn daily.</span><span>Discuss cases.</span><span>Log your residency.</span></span>' : 'MD Dermatology, Venereology & Leprosy'}</p>${html}</div>`;
+}
+/* ---------- Invite card (Profile) ---------- */
+function inviteCardHTML() {
+  if (!Cloud.user && !(Gate.cached || {}).uid) return '';
+  const n = typeof Notif !== 'undefined' ? Notif.list.filter(x => x.type === 'refer').length : 0;
+  return `<div class="card invite2"><div class="row between"><div><b>Invite batchmates</b><small class="muted"> · ${n} joined with your link</small></div><span class="code">${esc(myRefCode())}</span></div>
+    <div class="btnrow"><button class="btn sm" data-act="invshare">${ic('send')} Share invite</button><button class="btn sm ghost" data-act="invcopy">Copy link</button></div></div>`;
+}
+ACT.invshare = () => { const t = `Join me on PG Derma — the app for MD Dermatology residents: daily study feed, case community and logbook.\n${inviteLink()}`; if (navigator.share) navigator.share({ text: t }).catch(() => {}); else window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank'); };
+ACT.invcopy = async () => { try { await navigator.clipboard.writeText(inviteLink()); toast('Invite link copied'); } catch (e) { toast(inviteLink(), 5000); } };
+/* When the admin approves someone who used a referral code, credit the referrer. */
+async function creditReferrer(x) {
+  if (!x || !x.ref) return; const f = Cloud.f;
+  try { const all = await f.getDocs(f.collection(Cloud.db, 'approvals')); const r = all.docs.find(d => d.id.slice(0, 8) === x.ref && d.id !== x.id); if (!r) return;
+    await f.addDoc(f.collection(Cloud.db, 'notifs'), { to: r.id, from: Cloud.user.uid, fromName: (x.name || x.email || 'A resident').slice(0, 80), type: 'refer', ref: x.id.slice(0, 120), text: '', at: f.serverTimestamp(), read: false, pushed: false }); } catch (e) {}
+}
+
 /* ---------- Admin panel ---------- */
 let adminUnsub = null;
 function vAdmin() {
@@ -143,7 +216,7 @@ function vAdmin() {
       const ts = x => (x && x.seconds ? x.seconds * 1000 : 0);
       const list = all.filter(x => x.status === tab).sort((a, b) => ts(b.requestedAt) - ts(a.requestedAt));
       const el = $('#alist'); if (!el) return;
-      el.innerHTML = list.map(x => `<div class="li"><div class="row" style="gap:10px">${x.photo ? `<img class="gav sm" src="${esc(x.photo)}" alt="" referrerpolicy="no-referrer">` : ''}<div><b>${esc(x.name || x.email)}</b><small>${esc(x.email)}${ts(x.requestedAt) ? ' · requested ' + fmt(new Date(ts(x.requestedAt)).toISOString()) : ''}</small></div></div>
+      el.innerHTML = list.map(x => `<div class="li"><div class="row" style="gap:10px">${x.photo ? `<img class="gav sm" src="${esc(x.photo)}" alt="" referrerpolicy="no-referrer">` : ''}<div><b>${esc(x.name || x.email)}</b><small>${esc(x.email)}${x.year || x.college ? ' · ' + esc([x.year, x.college].filter(Boolean).join(', ')) : ''}${x.ref ? ' · referred by ' + esc((all.find(y => y.id.slice(0, 8) === x.ref) || {}).name || x.ref) : ''}${ts(x.requestedAt) ? ' · requested ' + fmt(new Date(ts(x.requestedAt)).toISOString()) : ''}</small></div></div>
         <div class="btnrow" style="margin:0">${x.status !== 'approved' ? `<button class="btn xs" data-act="adminset" data-id="${x.id}" data-s="approved">Approve</button>` : ''}${x.status === 'pending' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Reject</button>` : ''}${x.status === 'approved' && !ADMIN_EMAILS.includes((x.email || '').toLowerCase()) ? `<button class="btn xs" data-act="admindial" data-id="${x.id}" data-n="${esc(x.name || x.email)}" data-v="0" aria-label="Voice call">${ic('phone')}</button><button class="btn xs" data-act="admindial" data-id="${x.id}" data-n="${esc(x.name || x.email)}" data-v="1" aria-label="Video call">${ic('video')}</button>` : ''}${x.status === 'approved' && !ADMIN_EMAILS.includes((x.email || '').toLowerCase()) ? `<button class="btn xs ${x.calls ? '' : 'ghost'}" data-act="admincalls" data-id="${x.id}" data-on="${x.calls ? 1 : 0}" title="Voice/video calls">${ic('phone')} Calls ${x.calls ? 'on' : 'off'}</button>` : ''}${x.status === 'approved' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Revoke</button>` : ''}${x.status === 'rejected' ? `<button class="btn xs ghost" data-act="admindel" data-id="${x.id}">Remove</button>` : ''}</div></div>`).join('') || `<p class="muted small">No ${tab} requests.</p>`;
     }, e => { const el = $('#alist'); if (el) el.innerHTML = `<p class="err">${esc(e.code || e.message)}</p>`; });
   }).catch(() => { $('#alist').innerHTML = '<p class="err">Could not reach Firebase.</p>'; });
@@ -153,7 +226,8 @@ ACT.adminset = async el => {
   const s = el.dataset.s;
   if (s === 'rejected' && !(await uiConfirm(el.textContent === 'Revoke' ? 'Revoke access? They will be locked out of the app the next time it goes online.' : 'Reject this request?'))) return;
   const f = Cloud.f;
-  try { await f.updateDoc(f.doc(Cloud.db, 'approvals', el.dataset.id), { status: s, decidedAt: f.serverTimestamp(), decidedBy: Cloud.user.email }); toast(s === 'approved' ? 'Approved ✓' : 'Done'); }
+  try { await f.updateDoc(f.doc(Cloud.db, 'approvals', el.dataset.id), { status: s, decidedAt: f.serverTimestamp(), decidedBy: Cloud.user.email }); toast(s === 'approved' ? 'Approved ✓' : 'Done');
+    if (s === 'approved') { const d = await f.getDoc(f.doc(Cloud.db, 'approvals', el.dataset.id)); creditReferrer(Object.assign({ id: el.dataset.id }, d.data())); } }
   catch (e) { toast('Could not update: ' + (e.code || e.message)); }
 };
 ACT.adminshare = () => { const url = location.origin + location.pathname; const msg = `PG Derma Companion — app for DVL residents 🩺\n${url}\nOpen it, tap “Continue with Google”, and I'll approve you.`; if (navigator.share) navigator.share({ text: msg }).catch(() => {}); else window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };

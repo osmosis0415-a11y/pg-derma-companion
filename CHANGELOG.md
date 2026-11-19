@@ -2,6 +2,14 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 2026-11-20 — New sign-up, log-in and invites
+- **Welcome screen:** an animated brand background, a swipeable tour of the app (Swipe to learn, Community, Logbook, Streaks), and separate **Create account** and **Log in with Google** buttons. Still no passwords.
+- **Sign-up details:** name, college and level (JR1/JR2/JR3, Senior resident, Faculty, PG aspirant), an optional referral code, and the community rules to accept.
+- **Live approval tracker:** steps from Google to Details, Approval and Ready. The app opens by itself the moment you're approved, and there's an Ask-the-admin-on-WhatsApp button.
+- **Invites and referrals:** everyone has an invite code and link (Profile → Invite batchmates). Opening someone's link fills in their code at sign-up. When the admin approves the new person, the inviter gets a "joined with your invite 🎉" notification.
+- **Admin** sees each request's college, level and who referred them, in the app and in the admin console.
+- **PIN screen** redesigned: "Welcome back, Dr. Name", PIN dots that fill as you type, and a shake on a wrong PIN. Your sign-up name and college carry into the app.
+
 ## 2026-11-20 — Follow, messages, notifications, profile photos, story polls & quizzes
 - **Profile photos:** tap your avatar on your profile to add one. It shows on posts, comments, stories, messages and the leaderboard.
 - **Follow / followers:** follow anyone from their profile, see follower and following counts, and use the new **Following** feed filter.

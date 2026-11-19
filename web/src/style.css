@@ -472,3 +472,46 @@ body.lay-twitter .cstories{display:none}
 .tweet .pact{justify-content:space-between;max-width:320px;padding:4px 0 0}.tweet .ptags{padding:4px 0 0}
 body.lay-twitter #plist{gap:0;background:var(--card);border-radius:14px;overflow:hidden;border:1px solid var(--line)}
 .laycard .btnrow .btn.on{outline:3px solid var(--acc2)}
+
+/* ===== Auth: welcome, sign-up, approval, PIN (animated brand) ===== */
+#lock{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto;background:#0B3B3A}
+.authbg{position:fixed;inset:0;background:linear-gradient(130deg,#0B7A75,#0e5f75 40%,#14A3A0 70%,#F2735B);background-size:300% 300%;animation:agrad 14s ease infinite;z-index:0}
+@keyframes agrad{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.blob{position:absolute;border-radius:50%;filter:blur(40px);opacity:.45;animation:afloat 12s ease-in-out infinite}
+.b1{width:260px;height:260px;background:#F2735B;top:-60px;right:-60px}.b2{width:220px;height:220px;background:#5eead4;bottom:-50px;left:-40px;animation-delay:-4s}.b3{width:160px;height:160px;background:#F5A524;top:40%;left:60%;animation-delay:-8s}
+@keyframes afloat{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-24px,30px) scale(1.12)}}
+.authcard{position:relative;z-index:1;width:100%;max-width:400px;background:rgba(255,255,255,.96);border-radius:26px;padding:26px 22px 20px;box-shadow:0 30px 80px rgba(0,0,0,.25);text-align:center;animation:arise .5s cubic-bezier(.2,.9,.3,1.2)}
+@media (prefers-color-scheme:dark){.authcard{background:rgba(17,26,26,.95)}}
+@keyframes arise{from{opacity:0;transform:translateY(24px) scale(.98)}to{opacity:1;transform:none}}
+.alogo svg{width:72px;height:72px;border-radius:20px;box-shadow:0 10px 30px rgba(11,122,117,.35);animation:abob 4s ease-in-out infinite}
+@keyframes abob{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-6px) rotate(-3deg)}}
+.authcard h1{margin:10px 0 2px;font-size:26px;font-weight:800;letter-spacing:-.02em;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.atag{margin:0 0 14px;color:var(--mut);font-size:14px;height:20px;overflow:hidden}
+.rot{display:inline-flex;flex-direction:column;animation:arot 7.5s infinite}.rot span{height:20px;line-height:20px;font-weight:600;color:var(--acc)}
+@keyframes arot{0%,28%{transform:translateY(0)}33%,61%{transform:translateY(-20px)}66%,95%{transform:translateY(-40px)}100%{transform:translateY(0)}}
+.carousel{position:relative;height:150px;margin:6px 0 8px}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;opacity:0;transform:translateX(30px);transition:.5s;padding:0 8px}
+.slide.on{opacity:1;transform:none}.slide .sic{width:54px;height:54px;border-radius:16px;background:var(--grad);color:#fff;display:flex;align-items:center;justify-content:center}.slide .sic svg{width:28px;height:28px}
+.slide b{font-size:17px}.slide p{margin:0;color:var(--mut);font-size:13.5px;line-height:1.45}
+.cdots{display:flex;justify-content:center;gap:6px;margin-bottom:14px}.cdots i{width:7px;height:7px;border-radius:7px;background:var(--line);transition:.3s;cursor:pointer}.cdots i.on{width:22px;background:var(--acc)}
+.abtn{width:100%;margin-top:8px;min-height:50px;font-size:15.5px;border-radius:14px}.btn.abtn:not(.ghost){background:var(--grad);box-shadow:0 8px 20px rgba(11,122,117,.3)}
+.abtn .g{font-weight:800;color:#4285F4}
+.refban{display:flex;align-items:center;gap:8px;background:#fff7ed;color:#9a3412;border-radius:12px;padding:9px 12px;font-size:13px;text-align:left;margin-bottom:6px}.refban svg{width:18px;height:18px;flex:none}
+.ah{font-size:19px;margin:6px 0 4px}
+.aform{text-align:left}.aform label{display:block;font-size:13px;font-weight:600;color:var(--mut);margin-top:10px}.aform input:not([type=checkbox]){margin-top:4px}.aform .chips{margin-top:4px}
+.who{display:flex;align-items:center;gap:10px;background:var(--accs);border-radius:14px;padding:10px;text-align:left}.who img,.who>span{width:42px;height:42px;border-radius:50%;flex:none;object-fit:cover;background:var(--grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+.who div{display:flex;flex-direction:column;min-width:0}.who small{color:var(--mut);overflow:hidden;text-overflow:ellipsis}.who.big{margin:6px 0 10px}
+.steps{display:flex;align-items:center;justify-content:center;gap:4px;margin:4px 0 12px}.steps>b{flex:0 1 26px;height:2px;background:var(--line)}
+.steps span{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--mut)}.steps i{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;background:var(--card)}.steps i svg{width:15px;height:15px}.steps small{font-size:10.5px}
+.steps .done i{background:var(--acc);border-color:var(--acc);color:#fff}.steps .cur i{border-color:var(--acc);color:var(--acc);animation:apulse 1.6s infinite}.steps .cur small{color:var(--acc);font-weight:700}.steps .bad i{border-color:var(--red);color:var(--red)}
+@keyframes apulse{0%{box-shadow:0 0 0 0 rgba(20,163,160,.45)}100%{box-shadow:0 0 0 12px rgba(20,163,160,0)}}
+.waiting{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px;border-radius:16px;background:var(--accs);margin-bottom:6px}.waiting small{color:var(--mut)}
+.pulse{width:14px;height:14px;border-radius:50%;background:var(--acc);animation:apulse 1.4s infinite;margin-bottom:4px}
+.invite{margin-top:12px;padding:12px;border:1px dashed var(--line);border-radius:16px;display:flex;flex-direction:column;align-items:center;gap:4px}.invite small{color:var(--mut)}
+.code{font:700 18px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;background:var(--accs);color:var(--acc);padding:8px 12px;border-radius:10px}
+.invite2 .code{font-size:14px;padding:6px 10px}
+.pindots{display:flex;justify-content:center;gap:10px;margin:12px 0 4px}.pindots i{width:13px;height:13px;border-radius:50%;border:2px solid var(--acc);transition:.15s}.pindots i.on{background:var(--acc);transform:scale(1.15)}
+.pindots.shake{animation:ashake .4s}@keyframes ashake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+.authcard input#pin,.authcard input#pin2{text-align:center;font-size:20px;letter-spacing:6px;margin:6px 0}
+.authcard .link{background:none;border:0;margin-top:10px;color:var(--mut)}
+#lock{align-items:flex-start}.authcard{margin:auto}.btn.abtn.wa{background:#25D366;box-shadow:0 8px 20px rgba(37,211,102,.3)}

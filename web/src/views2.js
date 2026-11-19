@@ -475,7 +475,7 @@ function vMore() {
   const t = [['#/batch', 'users', 'Batch'], ['#/logbook', 'book', 'Logbook'], ['#/thesis', 'grad', 'Thesis'], ['#/inv', 'flask', 'Reports'], ['#/cal', 'calendar', 'Follow-ups'], ['#/analytics', 'chart', 'Analytics'], ['#/formulary', 'pill', 'Formulary'], ['#/checklists', 'check', 'OT lists'], ['#/settings', 'settings', 'Settings']];
   if (amAdmin()) t.unshift(['#/admin', 'shield', 'Admin']);
   const ph = [...D.photos].sort((a, b) => (b.at || '').localeCompare(a.at || ''));
-  main().innerHTML = `<section class="prof">
+  main().innerHTML = `${inviteCardHTML()}<section class="prof">
     <div class="phead"><div class="pbig hot">${esc(initials(s.name || 'PG'))}</div>
       <div class="pstats"><a href="#/patients"><b>${D.patients.length}</b><small>patients</small></a><a href="#/vault"><b>${D.photos.length}</b><small>photos</small></a><a href="#/logbook"><b>${perf}</b><small>procedures</small></a></div></div>
     <div class="pbio"><b>${esc(s.name ? 'Dr. ' + s.name : 'Add your name in Settings')}</b><span>MD Dermatology, Venereology & Leprosy · ${esc(yr)}</span>${s.inst || s.unit ? `<span class="muted">${esc([s.inst, s.unit].filter(Boolean).join(' · '))}</span>` : ''}</div>

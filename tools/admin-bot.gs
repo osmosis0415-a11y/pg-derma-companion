@@ -379,8 +379,8 @@ function setupStudy() {
  * Residents' apps write notifs/{id} (like, comment, follow, dm, call, vote). This sends each unread one to the
  * person's phones through Firebase Cloud Messaging (free), using the tokens their app saved in pushTokens/{uid}.
  * ===================================================================================== */
-var PUSH_TXT = { like: 'liked your post', comment: 'commented on your post', follow: 'started following you', dm: 'sent you a message', call: 'is calling you — open PG Derma', vote: 'answered your story' };
-function pushUrl_(n) { return n.type === 'dm' ? '#/dm/' + n.ref : n.type === 'follow' || n.type === 'call' ? '#/u/' + n.from : n.type === 'vote' ? '#/community' : '#/post/' + n.ref; }
+var PUSH_TXT = { refer: 'joined PG Derma with your invite', like: 'liked your post', comment: 'commented on your post', follow: 'started following you', dm: 'sent you a message', call: 'is calling you — open PG Derma', vote: 'answered your story' };
+function pushUrl_(n) { return n.type === 'refer' ? '#/u/' + n.ref : n.type === 'dm' ? '#/dm/' + n.ref : n.type === 'follow' || n.type === 'call' ? '#/u/' + n.from : n.type === 'vote' ? '#/community' : '#/post/' + n.ref; }
 function fcmSend_(token, data) {
   var r = UrlFetchApp.fetch('https://fcm.googleapis.com/v1/projects/' + PROJECT + '/messages:send', { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },

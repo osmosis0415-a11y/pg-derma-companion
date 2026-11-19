@@ -56,11 +56,11 @@ const Notif = {
   unread() { return this.list.filter(n => !n.read).length; },
   badge() { const n = this.unread() + DM.unread(); $$('[data-nbadge]').forEach(el => { el.textContent = n > 9 ? '9+' : n; el.hidden = !n; }); commBadge(); }
 };
-const NTXT = { like: 'liked your post', comment: 'commented on your post', follow: 'started following you', dm: 'sent you a message', call: 'tried to call you', vote: 'answered your story' };
+const NTXT = { refer: 'joined PG Derma with your invite 🎉', like: 'liked your post', comment: 'commented on your post', follow: 'started following you', dm: 'sent you a message', call: 'tried to call you', vote: 'answered your story' };
 function vNotifs() {
   setTitle('Notifications', true, `<a class="icon" href="#/dms" aria-label="Messages">${ic('send')}</a>`);
   const L = Notif.list, today = Date.now() - 864e5;
-  const row = n => `<a class="li nrow${n.read ? '' : ' unread'}" href="${n.type === 'dm' ? '#/dm/' + esc(n.ref) : n.type === 'follow' || n.type === 'call' ? '#/u/' + esc(n.from) : n.type === 'vote' ? '#/community' : '#/post/' + esc(n.ref)}" data-nid="${n.id}">
+  const row = n => `<a class="li nrow${n.read ? '' : ' unread'}" href="${n.type === 'dm' ? '#/dm/' + esc(n.ref) : n.type === 'refer' ? '#/u/' + esc(n.ref) : n.type === 'follow' || n.type === 'call' ? '#/u/' + esc(n.from) : n.type === 'vote' ? '#/community' : '#/post/' + esc(n.ref)}" data-nid="${n.id}">
     <span class="pav" data-av="${esc(n.from)}">${av(n.from, n.fromName)}</span><span class="nt"><b>${esc(n.fromName)}</b> ${NTXT[n.type] || ''}${n.text ? `: <span class="muted">${esc(n.text)}</span>` : ''}<small>${agoTxt(tsMs(n.at))}</small></span>${n.type === 'follow' && !Follow.has(n.from) ? `<button class="btn xs" data-act="follow" data-id="${esc(n.from)}" data-n="${esc(n.fromName)}">Follow back</button>` : ''}</a>`;
   main().innerHTML = `${pushPromptHTML()}${L.length ? `<h4 class="nh">New</h4><div class="list">${L.filter(n => tsMs(n.at) > today).map(row).join('') || '<p class="muted small">Nothing new today.</p>'}</div><h4 class="nh">Earlier</h4><div class="list">${L.filter(n => tsMs(n.at) <= today).map(row).join('') || '<p class="muted small">—</p>'}</div>` : `<div class="card empty-feed"><h3>No notifications yet</h3><p class="muted small">Likes, comments, new followers and messages appear here.</p></div>`}`;
   const f = Cloud.f; L.filter(n => !n.read).forEach(n => { f.updateDoc(f.doc(Cloud.db, 'notifs', n.id), { read: true }).catch(() => {}); });

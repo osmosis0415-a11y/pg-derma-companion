@@ -29,11 +29,14 @@ service cloud.firestore {
         || (signedIn() && u == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.email == request.auth.token.email
-        && request.resource.data.keys().hasOnly(['email', 'name', 'photo', 'status', 'requestedAt'])
-        && shortStr(request.resource.data.name, 120) && shortStr(request.resource.data.photo, 500));
+        && request.resource.data.keys().hasOnly(['email', 'name', 'photo', 'status', 'requestedAt', 'college', 'year', 'ref'])
+        && shortStr(request.resource.data.name, 120) && shortStr(request.resource.data.photo, 500)
+        && (!('college' in request.resource.data) || shortStr(request.resource.data.college, 80))
+        && (!('year' in request.resource.data) || request.resource.data.year in ['JR1', 'JR2', 'JR3', 'SR', 'Faculty', 'Aspirant'])
+        && (!('ref' in request.resource.data) || (request.resource.data.ref is string && request.resource.data.ref.matches('^[A-Za-z0-9]{4,20}$'))));
       allow update: if isAdminUser()
         && request.resource.data.status in ['pending', 'approved', 'rejected']
-        && request.resource.data.keys().hasOnly(['email', 'name', 'photo', 'status', 'requestedAt', 'decidedAt', 'decidedBy', 'calls'])
+        && request.resource.data.keys().hasOnly(['email', 'name', 'photo', 'status', 'requestedAt', 'decidedAt', 'decidedBy', 'calls', 'college', 'year', 'ref'])
         && (!('calls' in request.resource.data) || request.resource.data.calls is bool);
       allow delete: if isAdminUser();
     }
@@ -130,7 +133,7 @@ service cloud.firestore {
       allow read: if signedIn() && resource.data.to == request.auth.uid;
       allow create: if approved() && request.resource.data.from == request.auth.uid && request.resource.data.to != request.auth.uid
         && request.resource.data.keys().hasOnly(['to', 'from', 'fromName', 'type', 'ref', 'text', 'at', 'read', 'pushed'])
-        && request.resource.data.type in ['like', 'comment', 'follow', 'dm', 'call', 'vote']
+        && request.resource.data.type in ['like', 'comment', 'follow', 'dm', 'call', 'vote', 'refer']
         && request.resource.data.read == false && request.resource.data.pushed == false
         && shortStr(request.resource.data.fromName, 80) && shortStr(request.resource.data.text, 160) && shortStr(request.resource.data.ref, 120);
       allow update: if signedIn() && resource.data.to == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);

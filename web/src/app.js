@@ -31,12 +31,14 @@ function render() {
 async function showLock() {
   const auth = await IDB.get('meta', 'auth');
   $('#app').hidden = true; $('#lock').hidden = false;
-  $('#lock').innerHTML = `<div class="lockbox"><div class="logo">${ic('steth')}</div><h1>PG Derma Companion</h1><p class="muted small">MD Dermatology, Venereology & Leprosy</p>
-  ${auth ? `<input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Enter PIN"><button class="btn" id="unlock">Unlock</button><p id="lerr" class="err"></p>`
-    : `<p class="small">Create a PIN to encrypt all patient data and photos on this device (AES-256). There is no PIN recovery — keep backups.</p>
-    <input id="pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="New PIN (min 4)"><input id="pin2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="Confirm PIN"><button class="btn" id="unlock">Create vault</button><p id="lerr" class="err"></p>`}
-  ${!auth ? '<button class="btn ghost" id="restorebtn" style="width:100%;margin-top:10px">☁️ Restore from Google Drive (new phone)</button>' : ''}
-  <p class="tiny muted">Works offline · encrypted on this device</p></div>`;
+  const gname = ((Gate.signup || {}).name || (Gate.cached || {}).name || '').replace(/^Dr\.?\s+/i, '').split(' ')[0];
+  $('#lock').innerHTML = authShell(`${auth ? `<h2 class="ah">${gname ? 'Welcome back, Dr. ' + esc(gname) : 'Welcome back'}</h2><p class="small muted">Enter your PIN to unlock</p><div class="pindots" id="pdots"></div><input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN"><button class="btn abtn" id="unlock">Unlock</button><p id="lerr" class="err"></p>`
+    : `${Gate.cached ? steps(3) : ''}<h2 class="ah">Secure your vault</h2><p class="small muted">Create a PIN. It encrypts all patient data and photos on this phone (AES-256). There is no PIN recovery, so keep backups.</p><div class="pindots" id="pdots"></div>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="New PIN (min 4)"><input id="pin2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="Confirm PIN"><button class="btn abtn" id="unlock">Create vault</button><p id="lerr" class="err"></p>`}
+  ${!auth ? '<button class="btn ghost abtn" id="restorebtn">☁️ Restore from Google Drive (new phone)</button>' : ''}
+  <p class="tiny muted">Works offline · encrypted on this device</p>`);
+  const dots = () => { const d = $('#pdots'); if (d) { const n = $('#pin').value.length; d.innerHTML = Array.from({ length: Math.max(4, Math.min(8, n)) }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join(''); } };
+  $('#pin').addEventListener('input', dots); dots();
   $('#restorebtn')?.addEventListener('click', restoreFlow);
   const pin = $('#pin'); pin.focus();
   const go2 = async () => {
@@ -46,10 +48,12 @@ async function showLock() {
     try {
       if (!auth) { if (v !== $('#pin2').value) throw new Error('PINs do not match'); await Vault.setup(v); }
       else if (!(await Vault.unlock(v))) throw new Error('Incorrect PIN');
-      await Store.load(); await Store.flush(); await Session.save();
+      await Store.load();
+      if (Gate.signup) { if (!D.settings.name) D.settings.name = Gate.signup.name; if (!D.settings.inst) D.settings.inst = Gate.signup.college; D.community = Object.assign(D.community || {}, { college: (D.community || {}).college || Gate.signup.college }); Gate.signup = null; }
+      await Store.flush(); await Session.save();
       $('#lock').hidden = true; $('#app').hidden = false; pin.value = '';
       lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); Calls.start(); Cloud.cfg() && Cloud.init().then(() => { Study.pull(); Social.start(); }).catch(() => {});
-    } catch (e) { $('#lerr').textContent = e.message; $('#unlock').disabled = false; $('#unlock').textContent = auth ? 'Unlock' : 'Create vault'; pin.select(); }
+    } catch (e) { $('#lerr').textContent = e.message; const pd = $('#pdots'); if (pd) { pd.classList.remove('shake'); void pd.offsetWidth; pd.classList.add('shake'); } $('#unlock').disabled = false; $('#unlock').textContent = auth ? 'Unlock' : 'Create vault'; pin.select(); }
   };
   $('#unlock').onclick = go2; pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); if (auth) go2(); else $('#pin2').focus(); } });
   $('#pin2')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go2(); } });
