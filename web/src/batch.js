@@ -142,7 +142,8 @@ function paintBatch() {
     $('[data-group="blr"]').addEventListener('click', () => setTimeout(() => go('#/batch?t=log&y=' + yr + '&r=' + getChips('blr'))));
   }
   if (t === 'mem') {
-    el.innerHTML = `<div class="card">${(B().members || []).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(m => { const me = m.id === Cloud.user?.uid, on = me || Calls.isOnline(m.id);
+    const gOn = (B().members || []).filter(m => m.id !== Cloud.user?.uid && Calls.canCall(m.id) && Calls.isOnline(m.id)).length;
+    el.innerHTML = `${Calls.allowed ? `<div class="card gcard"><div><b>Group call</b><small class="muted">Up to 4 people · discuss cases, revise together · ${gOn} online</small></div><button class="btn sm" data-act="gcall" ${gOn ? '' : 'disabled'}>${ic('users')} Start</button></div>` : ''}<div class="card">${(B().members || []).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(m => { const me = m.id === Cloud.user?.uid, on = me || Calls.isOnline(m.id);
       return `<div class="li"><div class="row" style="gap:10px"><span class="pres${on ? ' on' : ''}" title="${on ? 'Online' : 'Offline'}"></span><div><b>${esc(m.name)}</b>${me ? ' <span class="tag">You</span>' : ''}<small>${esc(m.year || '')}${!me ? (on ? ' · online' : ' · offline') : ''}</small></div></div>
       <div class="row" style="gap:2px">${!me && Calls.canCall(m.id) ? `<button class="icon callbtn" data-act="bcall" data-id="${m.id}" data-n="${esc(m.name)}" data-v="0" aria-label="Voice call ${esc(m.name)}" ${on ? '' : 'disabled'}>${ic('phone')}</button><button class="icon callbtn" data-act="bcall" data-id="${m.id}" data-n="${esc(m.name)}" data-v="1" aria-label="Video call ${esc(m.name)}" ${on ? '' : 'disabled'}>${ic('video')}</button>` : ''}${bAdmin() && !me ? `<button class="icon" data-act="bkick" data-id="${m.id}" aria-label="Remove">✕</button>` : ''}</div></div>`; }).join('') || '<p class="muted">Loading…</p>'}</div>
     ${Calls.allowed ? '' : '<p class="small muted">Voice/video calls are switched on by the admin. Ask the admin if you need calling.</p>'}<div class="btnrow"><button class="btn sm ghost" data-act="bleave">Leave batch</button><button class="btn sm ghost" data-act="bsignout">Sign out</button></div>
@@ -197,6 +198,17 @@ const bAdmin = () => !!(B() && (B().admin || amAdmin()));
    Members go last because the batch-admin rules check membership. Used by the batch admin and the app admin. */
 async function deleteBatchAll(id, onProgress) {
   const f = Cloud.f, db = Cloud.db; let n = 0;
+  { // group-call rooms and everything under them
+    const rs = await f.getDocs(f.collection(db, 'batches', id, 'rooms'));
+    for (const r of rs.docs) {
+      const sg = await f.getDocs(f.collection(r.ref, 'sig'));
+      for (const s of sg.docs) { const cd = await f.getDocs(f.collection(s.ref, 'cands')); for (let i = 0; i < cd.docs.length; i += 400) { const wb = f.writeBatch(db); cd.docs.slice(i, i + 400).forEach(x => wb.delete(x.ref)); await wb.commit(); } }
+      const pe = await f.getDocs(f.collection(r.ref, 'peers'));
+      const all = sg.docs.concat(pe.docs);
+      for (let i = 0; i < all.length; i += 400) { const wb = f.writeBatch(db); all.slice(i, i + 400).forEach(x => wb.delete(x.ref)); await wb.commit(); }
+      await f.deleteDoc(r.ref); n++;
+    }
+  }
   for (const sub of ['calls', 'presence', 'messages', 'events', 'logstats', 'members']) {
     if (sub === 'calls') { const cs = await f.getDocs(f.collection(db, 'batches', id, 'calls')); for (const d of cs.docs) { const cd = await f.getDocs(f.collection(db, 'batches', id, 'calls', d.id, 'cands')); for (let i = 0; i < cd.docs.length; i += 400) { const wb = f.writeBatch(db); cd.docs.slice(i, i + 400).forEach(x => wb.delete(x.ref)); await wb.commit(); } } }
     const snap = await f.getDocs(f.collection(db, 'batches', id, sub));

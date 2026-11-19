@@ -2,6 +2,12 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 2026-11-19 — Today dashboard and group calls
+- **New home: Today.** Opens with what's due today (follow-ups, thesis visits, reports to trace, overdue in red), your logbook and thesis progress bars, six quick actions, your batch (who's online, new messages) and your four latest cases.
+- Bottom bar is now Today · Patients · Add case · Batch · Profile. Photos moved to quick actions and Profile.
+- **Group calls (up to 4, voice or video).** Batch hub → Members → Group call: pick up to 3 online batchmates. They get a ringing screen and join with voice or video. Same rules as 1:1 calls: only people the admin switched calling on for can start or join, and nothing is recorded. Uses the same free relay.
+- Deleting a batch also deletes its group-call rooms.
+
 ## 19 Nov 2026 (familiar layout)
 - **Layout people already know:** a quick-access row of circles at the top of Home (New case, Follow-ups, Thesis, Reports, Logbook, Photos, Formulary, and batchmates online), then **Recent cases** with each case's photo, scores and quick actions.
 - **Profile tab** replaces "More": your counts (patients, photos, procedures), Edit profile, circles for every tool, and a grid of your clinical photos.

@@ -139,6 +139,45 @@ service cloud.firestore {
         }
       }
 
+      // Group calls (up to 4). Only the people listed in the room can see or join it; everyone must have calling on.
+      match /rooms/{r} {
+        function roomPeople() { return get(/databases/$(database)/documents/batches/$(b)/rooms/$(r)).data.people; }
+        function inRoom() { return request.auth.uid in roomPeople(); }
+        allow read: if isMember(b) && request.auth.uid in resource.data.people;
+        allow create: if isMember(b)
+          && request.resource.data.keys().hasOnly(['host', 'hostName', 'people', 'names', 'video', 'status', 'createdAt'])
+          && request.resource.data.host == request.auth.uid
+          && request.resource.data.people is list
+          && request.resource.data.people.size() >= 2 && request.resource.data.people.size() <= 4
+          && request.resource.data.people[0] == request.auth.uid
+          && canCall(request.auth.uid) && canCall(request.resource.data.people[1])
+          && (request.resource.data.people.size() < 3 || canCall(request.resource.data.people[2]))
+          && (request.resource.data.people.size() < 4 || canCall(request.resource.data.people[3]))
+          && request.resource.data.status == 'live' && request.resource.data.video is bool
+          && shortStr(request.resource.data.hostName, 80) && request.resource.data.names is map;
+        allow update: if isMember(b) && request.auth.uid in resource.data.people
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'endedAt'])
+          && request.resource.data.status == 'ended';
+        allow delete: if isAdminUser() || isAdmin(b);
+
+        match /peers/{u} {
+          allow read: if isMember(b) && inRoom();
+          allow create, update: if isMember(b) && u == request.auth.uid && inRoom() && canCall(request.auth.uid)
+            && request.resource.data.keys().hasOnly(['name', 'sid', 'video', 'at']) && shortStr(request.resource.data.name, 80);
+          allow delete: if signedIn() && (u == request.auth.uid || isAdmin(b) || isAdminUser());
+        }
+        match /sig/{p} {
+          allow read: if isMember(b) && inRoom();
+          allow create, update: if isMember(b) && inRoom() && request.resource.data.keys().hasOnly(['offer', 'answer']);
+          allow delete: if isAdminUser() || isAdmin(b);
+          match /cands/{x} {
+            allow read: if isMember(b) && inRoom();
+            allow create: if isMember(b) && inRoom() && request.resource.data.keys().hasOnly(['from', 'c']) && request.resource.data.from == request.auth.uid;
+            allow delete: if isAdminUser() || isAdmin(b);
+          }
+        }
+      }
+
       match /logstats/{u} {
         allow read: if isMember(b) || isAdminUser();
         allow create, update: if isMember(b) && u == request.auth.uid

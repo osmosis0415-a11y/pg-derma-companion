@@ -26,7 +26,7 @@ const Calls = {
     }
     this.unsubs.push(f.onSnapshot(f.doc(db, 'approvals', me), s => {
       const was = this.allowed; let ok = false; try { ok = !!(s && typeof s.exists === 'function' && s.exists() && s.data().calls === true); } catch (e) {} this.allowed = isAdminUser(Cloud.user) || ok;
-      if (was !== this.allowed) { beat(); if (!this.allowed && this.cur) this.hangup(); if (ROUTE.path === 'batch' && ROUTE.q.t === 'mem') paintBatch(); }
+      if (was !== this.allowed) { beat(); if (!this.allowed && this.cur) this.hangup(); if (!this.allowed && Group.room) Group.leave(false, 'Calling was switched off by the admin'); if (ROUTE.path === 'batch' && ROUTE.q.t === 'mem') paintBatch(); }
     }, () => {}));
     beat(); this.presTimer = setInterval(() => { if (!document.hidden) beat(); }, PRESENCE_MS);
     this._vis = () => { if (!document.hidden) beat(); }; document.addEventListener('visibilitychange', this._vis);
@@ -39,9 +39,11 @@ const Calls = {
         s.docChanges ? s.docChanges().forEach(ch => { if (ch.type === 'added') this.incoming(ch.doc.id, ch.doc.data()); })
           : s.docs.forEach(d => this.incoming(d.id, d.data()));
       }, e => { this.diag('ringlisten', e); clearTimeout(this._retry); this._retry = setTimeout(() => this.start(), 15000); }));
+      Group.watch();
     } catch (e) { ErrLog.capture('calls', String(e && e.message || e), e && e.stack); }
   },
   stop() {
+    Group.dismiss(); if (Group.room) Group.leave(true);
     this.unsubs.forEach(u => { try { u(); } catch (e) {} }); this.unsubs = [];
     clearInterval(this.presTimer); this.presTimer = null;
     if (this._vis) document.removeEventListener('visibilitychange', this._vis);
@@ -67,7 +69,7 @@ const Calls = {
   /* ---------- outgoing ---------- */
   async call(uid, name, video) {
     if (!this.allowed) return toast('Calling is not enabled for you yet — ask the admin');
-    if (this.cur) return toast('You are already on a call');
+    if (this.cur || Group.room) return toast('You are already on a call');
     if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) return toast('Calls are not supported in this browser');
     const f = Cloud.f, db = Cloud.db, b = D.batch.id, me = Cloud.user.uid;
     let local; try { local = await this.media(video); } catch (e) { return toast(video ? 'Allow camera & microphone to call' : 'Allow microphone to call'); }
@@ -97,7 +99,7 @@ const Calls = {
     const age = x.createdAt && x.createdAt.toMillis ? Date.now() - x.createdAt.toMillis() : 0;
     if (age > CALL_RING_MS + 60000) return;
     const f = Cloud.f, ref = f.doc(Cloud.db, 'batches', D.batch.id, 'calls', id);
-    if (this.cur) { f.updateDoc(ref, { status: 'busy', endedAt: f.serverTimestamp() }).catch(() => {}); return; }
+    if (this.cur || Group.room) { f.updateDoc(ref, { status: 'busy', endedAt: f.serverTimestamp() }).catch(() => {}); return; }
     const c = this.cur = { id, ref, role: 'callee', peer: x.caller, peerName: x.callerName, video: !!x.video, offer: x.offer, unsubs: [], status: 'incoming' };
     c.unsubs.push(f.onSnapshot(ref, s => { const y = s.data(); if (this.cur !== c || !y) return; if (['ended', 'missed'].includes(y.status) && c.status !== 'ended') this.finish(c.status === 'incoming' ? 'missed' : 'ended'); }));
     this.screen(); this.tone('ring'); try { navigator.vibrate && navigator.vibrate([400, 200, 400, 200, 400]); } catch (e) {}

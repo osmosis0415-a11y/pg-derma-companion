@@ -8,7 +8,7 @@ const ROUTES = [
   [/^deid\/([\w-]+)$/, vDeid, 'vault', ['id']], [/^compare\/([\w-]+)$/, vCompare, 'vault', ['id']],
   [/^inv$/, vInv, 'more'], [/^cal$/, vCal, 'more'], [/^logbook$/, vLogbook, 'more'], [/^logadd$/, vLogAdd, 'more'], [/^targets$/, vTargets, 'more'],
   [/^thesis$/, vThesis, 'more'], [/^thesis-setup$/, vThesisSetup, 'more'], [/^analytics$/, vAnalytics, 'more'],
-  [/^formulary$/, vFormulary, 'more'], [/^checklists$/, vChecklists, 'more'], [/^more$/, vMore, 'more'], [/^settings$/, vSettings, 'more'], [/^batch$/, vBatch, 'more'], [/^admin$/, vAdmin, 'more']
+  [/^formulary$/, vFormulary, 'more'], [/^checklists$/, vChecklists, 'more'], [/^more$/, vMore, 'more'], [/^settings$/, vSettings, 'more'], [/^batch$/, vBatch, 'batch'], [/^admin$/, vAdmin, 'more']
 ];
 function render() {
   if (!D) return;
@@ -64,10 +64,10 @@ async function lockApp(skipFlush) {
 ACT.lock = lockApp;
 let lastAct = Date.now(), hiddenAt = 0;
 ['pointerdown', 'keydown', 'scroll'].forEach(e => addEventListener(e, () => { lastAct = Date.now(); Session.touch(); }, { passive: true }));
-setInterval(() => { if (Calls.cur) { lastAct = Date.now(); return; } if (D && Date.now() - lastAct > (D.settings.lockMin || 15) * 60000) lockApp(); }, 15000);
+setInterval(() => { if (Calls.cur || Group.room) { lastAct = Date.now(); return; } if (D && Date.now() - lastAct > (D.settings.lockMin || 15) * 60000) lockApp(); }, 15000);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { hiddenAt = Date.now(); Store.flush(); Session.save().catch(() => {}); }
-  else if (D && hiddenAt && !Calls.cur && Date.now() - hiddenAt > (D.settings.lockMin || 15) * 60000) lockApp();
+  else if (D && hiddenAt && !Calls.cur && !Group.room && Date.now() - hiddenAt > (D.settings.lockMin || 15) * 60000) lockApp();
   else if (D && Sync.on()) Sync.run();
 });
 addEventListener('pagehide', () => Store.flush());

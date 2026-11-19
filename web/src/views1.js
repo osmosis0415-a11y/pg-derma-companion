@@ -56,48 +56,45 @@ const dueBadge = d => { const k = daysBetween(today(), d); return k < 0 ? `<span
 const initials = t => String(t || '?').replace(/^Dr\.?\s+/i, '').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 const nbadge = n => n ? `<b class="nb">${n > 99 ? '99+' : n}</b>` : '';
 function vHome() {
-  const due = dueItems(0), unread = typeof Chat !== 'undefined' ? Chat.unread() : 0;
+  const due = dueItems(0), unread = typeof Chat !== 'undefined' ? Chat.unread() : 0, t = today();
   setTitle('PG Derma', false, `<a class="icon topic" href="#/cal" aria-label="Reminders due">${ic('bell')}${nbadge(due.length)}</a><a class="icon topic" href="#/batch?t=chat" aria-label="Batch discussion">${ic('chat')}${nbadge(unread)}</a>`);
   $('#title').classList.add('brandmark'); $('#title').insertAdjacentHTML('afterbegin', ic('steth'));
-  const yr = residencyYear(new Date());
-  const cases = D.patients.filter(p => p.arm && !p.dropout).length;
-  const thesisDue = due.filter(d => d.kind === 'thesis').length;
+  const yr = residencyYear(new Date()), hr = new Date().getHours();
+  const first = (D.settings.name || '').replace(/^Dr\.?\s+/i, '').split(/\s+/)[0];
+  const hello = (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', Dr. ' + first : '');
+  const overdue = due.filter(d => d.date < t).length;
+  const kindIc = { rem: 'bell', thesis: 'grad', inv: 'flask', batch: 'users' };
+  // progress
+  const perf = D.logbook.filter(l => l.role === 'Performed').length;
+  const tgt = PROCEDURES.reduce((a, p) => a + (procTarget(p[0]) || 0), 0);
+  const thA = D.patients.filter(p => p.arm === 'Case' && !p.dropout).length, thB = D.patients.filter(p => p.arm === 'Control' && !p.dropout).length;
+  const thT = (+D.settings.sampleCase || 0) + (+D.settings.sampleControl || 0);
   const invOpen = D.inv.filter(i => i.status !== 'correlated').length;
-  const st = [
-    { href: '#/add', label: 'New case', icon: 'plus', add: true },
-    { href: '#/cal', label: 'Follow-ups', icon: 'calendar', n: due.length, ring: due.length > 0 },
-    { href: '#/thesis', label: 'Thesis', icon: 'grad', n: thesisDue, ring: thesisDue > 0, sub: D.thesis ? cases + ' enrolled' : '' },
-    { href: '#/inv', label: 'Reports', icon: 'flask', n: invOpen, ring: invOpen > 0 },
-    { href: '#/logbook', label: 'Logbook', icon: 'book' },
-    { href: '#/vault', label: 'Photos', icon: 'image' },
-    { href: '#/formulary', label: 'Formulary', icon: 'pill' }
-  ];
-  if (D.batch && typeof Calls !== 'undefined') for (const m of (D.batch.members || [])) {
-    if (m.id === Cloud.user?.uid || !Calls.isOnline(m.id)) continue;
-    st.push({ href: '#/batch?t=mem', label: (m.name || 'Batchmate').split(' ')[0], txt: initials(m.name), ring: true, live: true });
-  }
-  const story = x => `<a class="story${x.ring ? ' hot' : ''}${x.live ? ' live' : ''}${x.add ? ' add' : ''}" href="${x.href}"><span class="sav">${x.txt ? esc(x.txt) : ic(x.icon)}${x.add ? '<i class="splus">+</i>' : ''}</span>${x.n ? `<b class="sn">${x.n}</b>` : ''}<small>${esc(x.label)}</small></a>`;
-  const recent = [...D.visits].sort((a, b) => (b.created || b.date).localeCompare(a.created || a.date)).slice(0, 12);
-  const post = v => {
-    const p = P(v.pid); if (!p) return '';
-    const ph = D.photos.filter(x => x.vid === v.id), sc = D.scores.filter(s => s.vid === v.id), dx = (v.dx || []).join(', ') || (p.dx || []).join(', ');
-    const media = ph.length ? `<a class="pmedia" href="#/visit/${v.id}"><img data-pid="${ph[ph.length - 1].id}" data-thumb="1" alt="">${ph.length > 1 ? `<span class="pcount">${ph.length} photos</span>` : ''}</a>`
-      : sc.length ? `<a class="pmedia pscore" href="#/visit/${v.id}">${sc.slice(0, 3).map(x => `<div><b>${esc(String(x.total))}</b><small>${esc(x.scale)}</small></div>`).join('')}</a>` : '';
-    const note = (v.notes || '').replace(/\s+/g, ' ').trim();
-    return `<article class="post">
-      <header><a class="pav${p.arm ? ' hot' : ''}" href="#/patient/${p.id}">${esc(initials(p.name || p.uhid))}</a><a class="pwho" href="#/patient/${p.id}"><b>${esc(ptLabel(p))}</b><small>${esc(dx || v.label || '')}</small></a><a class="icon" href="#/visit/${v.id}" aria-label="Open visit">${ic('more')}</a></header>
-      ${media}
-      <div class="pact"><a class="icon" href="#/cam/${p.id}" aria-label="Add photo">${ic('camera')}</a><a class="icon" href="#/visit/${v.id}" aria-label="Scores and notes">${ic('chart')}</a><a class="icon" href="#/wa/${p.id}" aria-label="Patient instructions (WhatsApp)">${ic('chat')}</a><span class="sp"></span>${(p.buckets || []).length ? `<span class="ptag">${esc(p.buckets[0])}</span>` : ''}</div>
-      <p class="pcap"><b>${esc(v.label || 'Visit')}</b> ${esc(note.slice(0, 140))}${note.length > 140 ? '… <a class="muted" href="#/visit/' + v.id + '">more</a>' : ''}</p>
-      <small class="pdate">${fmt(v.date)}${sc.length ? ' · ' + sc.map(x => x.scale + ' ' + x.total).join(' · ') : ''}</small>
-    </article>`;
-  };
-  main().innerHTML = `<div class="stories" aria-label="Quick access">${st.map(story).join('')}</div>
-  ${!D.settings.lastBackup || daysBetween(ymd(D.settings.lastBackup), today()) > 7 ? `<a class="warn" href="#/settings">⚠️ No backup in the last 7 days — tap to back up</a>` : ''}
+  const prog = (href, icon, label, n, of, sub) => { const pc = of ? Math.min(100, Math.round(n / of * 100)) : 0;
+    return `<a class="pg" href="${href}"><span class="pgi">${ic(icon)}</span><span class="pgb"><span class="row between"><b>${esc(label)}</b><small>${of ? n + ' / ' + of : esc(sub || '')}</small></span>${of ? `<span class="bar"><i style="width:${pc}%" class="${pc >= 100 ? 'ok' : ''}"></i></span>` : ''}</span></a>`; };
+  const quick = [['#/add', 'plus', 'New case'], ['#/logadd', 'book', 'Log procedure'], ['#/vault', 'image', 'Photos'], ['#/formulary', 'pill', 'Formulary'], ['#/inv', 'flask', 'Reports'], ['#/checklists', 'check', 'Checklists']];
+  const online = D.batch && typeof Calls !== 'undefined' ? (D.batch.members || []).filter(m => m.id !== Cloud.user?.uid && Calls.isOnline(m.id)) : [];
+  const recent = [...D.visits].sort((a, b) => (b.created || b.date).localeCompare(a.created || a.date)).slice(0, 4);
+  main().innerHTML = `<section class="hello"><h2>${esc(hello)}</h2><p class="muted small">${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })} · ${esc(yr)}</p></section>
+  ${!D.settings.lastBackup || daysBetween(ymd(D.settings.lastBackup), t) > 7 ? `<a class="warn" href="#/settings">No backup in the last 7 days — tap to back up</a>` : ''}
+  <section class="card today"><div class="row between"><h3>Today</h3><a class="link" href="#/cal">See all ›</a></div>
+    ${due.length ? `<p class="small muted">${due.length} due${overdue ? ` · <b class="od">${overdue} overdue</b>` : ''}</p><div class="tlist">${due.slice(0, 4).map(d => `<a class="ti" href="${d.href}"><span class="tic k-${d.kind}">${ic(kindIc[d.kind] || 'calendar')}</span><span class="tib"><b>${esc(d.title)}</b><small>${esc(d.sub || '')}</small></span><small class="${d.date < t ? 'od' : 'muted'}">${d.date < t ? fmt(d.date) : 'Today'}</small></a>`).join('')}</div>`
+      : `<p class="muted small">Nothing due today. Follow-ups, thesis visits and report tracing show up here.</p>`}</section>
+  <section class="card"><h3>Your progress</h3>
+    ${prog('#/logbook', 'book', 'Logbook · performed', perf, tgt)}
+    ${D.thesis ? prog('#/thesis', 'grad', 'Thesis recruitment', thA + thB, thT) : prog('#/thesis-setup', 'grad', 'Thesis', 0, 0, 'Set up ›')}
+    ${prog('#/inv', 'flask', 'Reports to trace', invOpen, 0, invOpen ? invOpen + ' open' : 'All clear')}
+  </section>
+  <div class="quick">${quick.map(([h, i, l]) => `<a href="${h}"><span>${ic(i)}</span>${esc(l)}</a>`).join('')}</div>
+  ${D.batch ? `<section class="card batchrow"><div class="row between"><h3>${esc(D.batch.name || 'Your batch')}</h3><a class="link" href="#/batch">Open ›</a></div>
+    <div class="row between"><span class="small muted">${online.length ? online.length + ' online · ' + esc(online.slice(0, 3).map(m => (m.name || '').split(' ')[0]).join(', ')) : 'No one online right now'}${unread ? ' · ' + unread + ' new messages' : ''}</span>
+    ${typeof Calls !== 'undefined' && Calls.allowed && online.length ? `<a class="btn sm ghost" href="#/batch?t=mem">${ic('video')} Call</a>` : ''}</div></section>`
+    : `<a class="card batchrow link" href="#/batch"><b>Join your batch</b><small class="muted"> — discuss cases, share calendar, compare logbooks</small></a>`}
   <div class="row between feedhead"><h3>Recent cases</h3><a class="link" href="#/patients">All patients ›</a></div>
-  <div class="feed">${recent.length ? recent.map(post).join('') : `<div class="card empty-feed"><div class="sav big">${ic('plus')}</div><h3>No cases yet</h3><p class="muted small">Add your first OPD case. Its photos, scores and notes appear here for quick review.</p><a class="btn" href="#/add">Add a case</a></div>`}</div>
-  <p class="muted small center" style="margin:18px 0 6px">${yr} · ${D.patients.length} patients · ${D.visits.length} visits</p>`;
-  hydrateImgs();
+  <div class="list">${recent.map(v => { const p = P(v.pid); if (!p) return ''; const dx = (v.dx || []).join(', ') || (p.dx || []).join(', ');
+    return `<a class="li" href="#/visit/${v.id}"><div class="row" style="gap:10px"><span class="pav sm">${esc(initials(p.name || p.uhid))}</span><div><b>${esc(ptLabel(p))}</b><small>${esc(dx || v.label || '')} · ${fmt(v.date)}</small></div></div>›</a>`; }).join('')
+    || `<div class="card empty-feed"><h3>Add your first case</h3><p class="muted small">Photos, severity scores and notes for each OPD case stay encrypted on this phone.</p><a class="btn" href="#/add">Add a case</a></div>`}</div>
+  <p class="muted small center" style="margin:18px 0 6px">${D.patients.length} patients · ${D.visits.length} visits · ${D.logbook.length} logbook entries</p>`;
 }
 /* ---------- PATIENTS LIST ---------- */
 function patientListHTML(q = '', bucket = '') {

@@ -12,7 +12,7 @@ window.__installFsMock = (uid, email, name) => {
   const write = (p, data, merge) => { const o = load(), k = p.join('/'), prev = merge ? (o[k] || {}) : {}; const nx = Object.assign({}, prev); for (const [a, b] of Object.entries(data)) nx[a] = resolve(prev[a], b); o[k] = JSON.parse(JSON.stringify(nx)); save(o); changed(); };
   const snapDoc = (k, v) => ({ id: k.split('/').pop(), ref: docRef(k.split('/')), exists: () => v !== undefined, data: () => v });
   const listDocs = q => { const pre = q.p.join('/') + '/', o = load(); let docs = Object.keys(o).filter(k => k.startsWith(pre) && !k.slice(pre.length).includes('/')).map(k => snapDoc(k, o[k]));
-    for (const m of q.m || []) { if (m.op === '==') docs = docs.filter(d => d.data()[m.fld] === m.v); if (m.op === '>=') docs = docs.filter(d => d.data()[m.fld] >= m.v);
+    for (const m of q.m || []) { if (m.op === '==') docs = docs.filter(d => d.data()[m.fld] === m.v); if (m.op === 'array-contains') docs = docs.filter(d => (d.data()[m.fld] || []).includes(m.v)); if (m.op === '>=') docs = docs.filter(d => d.data()[m.fld] >= m.v);
       if (m.ob) { const v = d => d.data()[m.ob]; docs.sort((a, b) => (v(a) > v(b) ? 1 : v(a) < v(b) ? -1 : 0) * (m.dir === 'desc' ? -1 : 1)); } if (m.lim) docs = docs.slice(0, m.lim); }
     return docs; };
   const f = {
