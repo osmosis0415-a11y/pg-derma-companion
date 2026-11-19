@@ -36,6 +36,13 @@ async function get(url, opts = {}, tries = 3) {
   return last;
 }
 
+// Deploy state first: during (or just after) a deploy, GitHub's CDN can briefly serve mixed builds.
+const runsRes = await get(`https://api.github.com/repos/${REPO}/actions/runs?branch=main&per_page=20`, { headers: { Accept: 'application/vnd.github+json', ...GH } });
+const runList = runsRes.status === 200 ? (JSON.parse(runsRes.text).workflow_runs || []) : [];
+const latestPages = runList.find((r) => r.path.endsWith('pages.yml'));
+const deploying = !!latestPages && (latestPages.status !== 'completed' || Date.now() - Date.parse(latestPages.updated_at) < 15 * 60000);
+const mismatch = (m) => (deploying ? warn(m + ' (a deploy just ran — rechecking next time)') : bad(m));
+
 const result = { ok: true, problems, warnings, stale: false, liveBuild: '', mainSha: MAIN_SHA, checkedAt: new Date().toISOString() };
 
 // 1. Live app page
@@ -58,7 +65,7 @@ for (const f of ['sw.js', 'manifest.webmanifest', 'admin.html', 'icon-192.png', 
   const r = await get(SITE + f + '?monitor=' + Date.now());
   if (r.status !== 200) { bad(`${f} returned HTTP ${r.status}`); continue; }
   if (f === 'manifest.webmanifest') { try { JSON.parse(r.text); } catch { bad('manifest.webmanifest is not valid JSON (install-to-home-screen would break).'); continue; } }
-  if (f === 'sw.js' && result.liveBuild && !r.text.includes(result.liveBuild)) bad('sw.js build does not match index.html — phones may be stuck on an old offline copy.');
+  if (f === 'sw.js' && result.liveBuild && !r.text.includes(result.liveBuild)) mismatch('sw.js build does not match index.html — phones may be stuck on an old offline copy.');
   if (f === 'admin.html' && !/apiKey/.test(r.text)) bad('admin.html is missing the Firebase config.');
   good(f + ' OK');
 }
@@ -93,17 +100,17 @@ if (API_KEY && PROJECT) {
 }
 
 // 5. Recent deploys and CI
-const runs = await get(`https://api.github.com/repos/${REPO}/actions/runs?branch=main&per_page=20`, { headers: { Accept: 'application/vnd.github+json', ...GH } });
-if (runs.status === 200) {
-  const list = JSON.parse(runs.text).workflow_runs || [];
+if (runsRes.status === 200) {
+  const list = runList;
   const last = (wf) => list.find((r) => r.path.endsWith(wf) && r.status === 'completed');
   const pages = last('pages.yml');
   if (pages && pages.conclusion !== 'success') bad(`Last deploy (${pages.head_sha.slice(0, 7)}) failed: ${pages.html_url}`);
   else if (pages) good('Last deploy succeeded');
   const fl = last('flutter.yml');
   if (fl && fl.conclusion !== 'success') warn(`Android APK build failed: ${fl.html_url}`);
-} else warn(`Could not read GitHub Actions (HTTP ${runs.status}).`);
+} else warn(`Could not read GitHub Actions (HTTP ${runsRes.status}).`);
 
+result.deploying = deploying;
 result.ok = problems.length === 0;
 fs.writeFileSync('monitor-result.json', JSON.stringify(result, null, 2));
 console.log(result.ok ? '\nALL CORE CHECKS PASSED' : `\n${problems.length} PROBLEM(S)`);
