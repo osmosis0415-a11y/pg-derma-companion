@@ -1,0 +1,46 @@
+name: Lighthouse (speed, accessibility, PWA)
+# Google Lighthouse (free) audits the built app on a simulated mid-range phone.
+# Runs on every PR and weekly on the live site; the scores are in the run summary.
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '53 22 * * 2'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Build
+        run: python web/build.py && rm -f dist/bundle-check.js
+      - name: Serve build
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+        run: (python3 -m http.server 8080 -d dist >/dev/null 2>&1 &) && sleep 2
+      - name: Run Lighthouse
+        run: |
+          URL=http://localhost:8080/
+          [ "${{ github.event_name }}" = "schedule" ] && URL=https://osmosis0415-a11y.github.io/pg-derma-companion/
+          npx -y lighthouse@12 "$URL" --quiet --chrome-flags="--headless=new --no-sandbox" \
+            --form-factor=mobile --throttling-method=simulate \
+            --only-categories=performance,accessibility,best-practices,seo \
+            --output=json --output=html --output-path=./lh
+          node -e "
+            const r=require('./lh.report.json'); const c=r.categories;
+            const L=['## Lighthouse — '+r.finalDisplayedUrl,'','| Category | Score |','|---|---|'];
+            for (const k in c) L.push('| '+c[k].title+' | '+Math.round(c[k].score*100)+' |');
+            const a=r.audits; L.push('','First Contentful Paint: '+a['first-contentful-paint'].displayValue+' · Largest Contentful Paint: '+a['largest-contentful-paint'].displayValue+' · Total Blocking Time: '+a['total-blocking-time'].displayValue);
+            const fails=Object.values(a).filter(x=>x.score!==null&&x.score<0.9&&x.scoreDisplayMode==='binary').slice(0,15).map(x=>'- '+x.title);
+            if(fails.length) L.push('','**Top things to fix**',...fails);
+            require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY,L.join('\n')+'\n'); console.log(L.join('\n'));
+            if (c.accessibility.score < 0.8) { console.log('::warning::Accessibility score below 80'); }"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: lighthouse-report, path: 'lh.report.*', retention-days: 14 }

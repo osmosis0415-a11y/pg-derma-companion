@@ -1,0 +1,33 @@
+name: CodeQL security scan
+# GitHub's free code scanner (public repos): looks for XSS, injection and other
+# security bugs in the app's JavaScript and the workflows. Findings appear under
+# Security → Code scanning; the daily health check reads them.
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', 'tools/**', '.github/workflows/**']
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '41 21 * * 0'
+  workflow_dispatch:
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v3
+        with: { category: '/language:${{ matrix.language }}' }
