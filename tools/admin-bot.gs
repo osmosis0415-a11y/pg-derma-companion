@@ -427,6 +427,7 @@ var DIGEST_JOURNALS = ['J Am Acad Dermatol', 'Br J Dermatol', 'JAMA Dermatol', '
 var INDIAN_JOURNALS = /indian|lepr/i;
 var EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/';
 var EPMC = 'https://www.ebi.ac.uk/europepmc/webservices/rest/';
+var COMMONS_OFF = false; // Wikimedia sometimes rate-limits Google's servers; then skip it for the rest of the run (admin can add a picture from the admin page)
 var DIGEST_KEYS = ['status', 'kind', 'h', 's', 'k', 'w', 'lvl', 'top', 'j', 'au', 'yr', 'pmid', 'doi', 'url', 'pt', 'img', 'imgCap', 'imgCredit', 'imgLic', 'imgSrc', 'imgKind', 'src', 'model', 'createdAt', 'approvedAt', 'pubAt', 'err', 'by'];
 
 function get_(url) {
@@ -514,7 +515,7 @@ function writeDigest_(a, by) {
     url: a.doi ? 'https://doi.org/' + a.doi : 'https://pubmed.ncbi.nlm.nih.gov/' + a.pmid + '/', pt: a.pt, src: 'ai', model: g.model, by: by || 'bot' };
   var pic = null;
   try { pic = paperFigure_(a.pmc); if (pic) pic.imgCredit = clip_(a.au + ', ' + a.j + ' ' + a.yr, 160); } catch (e) { Logger.log('figure: ' + e); }
-  if (!pic) { try { pic = commonsImage_(clip_(o.img, 40)); } catch (e) { Logger.log('commons: ' + e); } }
+  if (!pic && !COMMONS_OFF) { try { pic = commonsImage_(clip_(o.img, 40)); } catch (e) { Logger.log('commons: ' + e); if (/429|403/.test(String(e))) COMMONS_OFF = true; } }
   if (pic) Object.keys(pic).forEach(function (k) { post[k] = pic[k]; });
   return post;
 }

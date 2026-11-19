@@ -189,10 +189,12 @@ function digestForm(x) {
     <label>Picture — link (https://…) or upload a JPEG/PNG</label><div class="row" style="flex-wrap:nowrap"><input id="d_img" value="${x.img && !/^data:/.test(x.img) ? v('img') : ''}" placeholder="${x.img && /^data:/.test(x.img) ? 'Uploaded picture kept' : 'https://…'}"><input id="d_file" type="file" accept="image/*" style="width:auto"></div>
     <div class="two"><div><label>Picture credit</label><input id="d_imgCredit" value="${v('imgCredit')}" placeholder="Author / owner"></div><div><label>Licence</label><input id="d_imgLic" value="${v('imgLic')}" placeholder="CC BY 4.0, own photo, public domain…"></div></div>
     <div class="two"><div><label>Picture source page</label><input id="d_imgSrc" value="${v('imgSrc')}"></div><div><label>Caption</label><input id="d_imgCap" value="${v('imgCap')}"></div></div>
+    <div class="row" style="margin-top:8px"><input id="d_pq" style="flex:1" placeholder="Search open pictures (e.g. vitiligo)" value="${esc(x.top && x.top !== 'Dermatology' ? x.top : '')}"><button class="b g" type="button" id="d_pfind">Find an open picture</button></div><div id="d_pres" class="row" style="margin-top:6px"></div>
     <p class="muted" style="font-size:12px">Only use pictures you own (patient consent, face and identifiers removed) or openly licensed ones (Creative Commons / public domain), with credit. Publisher figures from paywalled papers can't be reused.</p></div>`;
 }
 const shrink = file => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => { const im = new Image(); im.onload = () => { const k = Math.min(1, 1100 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); let q = 0.82, d; do { d = c.toDataURL('image/jpeg', q); q -= 0.12; } while (d.length > 440000 && q > 0.3); d.length > 440000 ? rej(new Error('Picture too large')) : res(d); }; im.onerror = () => rej(new Error('Not an image')); im.src = r.result; }; r.readAsDataURL(file); });
 async function readForm(x) {
+  if (window.__pickKind && $('#d_img') && !$('#d_img').value) window.__pickKind = null;
   const g = k => ($('#d_' + k) ? $('#d_' + k).value.trim() : ''), up = {};
   for (const k of ['h', 's', 'w', 'lvl', 'top', 'j', 'yr', 'au', 'url', 'pmid', 'imgCredit', 'imgLic', 'imgSrc', 'imgCap']) up[k] = g(k);
   up.k = g('k').split('\n').map(s => s.trim()).filter(Boolean).slice(0, 5);
@@ -201,10 +203,26 @@ async function readForm(x) {
   if (up.imgSrc && !okUrl(up.imgSrc)) throw new Error('The picture source must start with https://');
   const f = $('#d_file') && $('#d_file').files[0], il = g('img');
   if (f) { up.img = await shrink(f); up.imgKind = 'own'; }
-  else if (il) { if (!okUrl(il)) throw new Error('The picture link must start with https://'); up.img = il; if (il !== x.img) up.imgKind = x.imgKind && x.img === il ? x.imgKind : 'linked'; }
+  else if (il) { if (!okUrl(il)) throw new Error('The picture link must start with https://'); up.img = il; if (il !== x.img) up.imgKind = window.__pickKind || 'linked'; }
   else if (x.img && /^data:/.test(x.img)) up.img = x.img; else up.img = '';
   if (up.img && !up.imgLic) throw new Error('Add the picture licence (e.g. CC BY 4.0, own photo)');
   return up;
+}
+/* Openly licensed pictures from Wikimedia Commons, searched from the admin's own browser. */
+async function findPics(qs) {
+  const u = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=6&gsrlimit=12&prop=imageinfo&iiprop=url%7Cextmetadata&iiurlwidth=900&gsrsearch=' + encodeURIComponent(qs + ' filetype:bitmap');
+  const pages = Object.values(((await (await fetch(u)).json()).query || {}).pages || {}).sort((a, b) => (a.index || 0) - (b.index || 0));
+  const strip = h => { const d = document.createElement('div'); d.innerHTML = String(h || ''); return d.textContent.trim(); };
+  return pages.map(p => { const ii = (p.imageinfo || [])[0] || {}, md = ii.extmetadata || {}, v = k => strip((md[k] || {}).value);
+    return { img: ii.thumburl || ii.url, imgLic: v('LicenseShortName').slice(0, 60), imgCredit: (v('Artist') || v('Credit') || 'Wikimedia Commons').slice(0, 160), imgSrc: ii.descriptionurl || '', imgCap: (v('ImageDescription') || String(p.title || '').replace(/^File:/, '')).slice(0, 300) }; })
+    .filter(p => okUrl(p.img) && /^(CC|Public domain|PD)/i.test(p.imgLic)).slice(0, 8);
+}
+function wirePics() {
+  const b = $('#d_pfind'); if (!b) return;
+  b.onclick = async () => { const qs = $('#d_pq').value.trim(); if (!qs) return toast('Type what to search for'); const box = $('#d_pres'); box.innerHTML = '<small class="muted">Searching Wikimedia Commons…</small>';
+    try { const list = await findPics(qs); box.innerHTML = list.length ? list.map((p, i) => `<button type="button" class="b g" data-pick="${i}" style="padding:4px;width:110px"><img src="${esc(p.img)}" alt="" style="width:100%;height:80px;object-fit:cover;border-radius:6px" referrerpolicy="no-referrer"><small style="display:block;font-size:10px">${esc(p.imgLic)}</small></button>`).join('') : '<small class="muted">No openly licensed pictures found. Try another word.</small>';
+      $$('[data-pick]').forEach(el => el.onclick = () => { const p = list[+el.dataset.pick]; $('#d_img').value = p.img; $('#d_imgLic').value = p.imgLic; $('#d_imgCredit').value = p.imgCredit; $('#d_imgSrc').value = p.imgSrc; $('#d_imgCap').value = p.imgCap; window.__pickKind = 'illustrative'; $$('[data-pick]').forEach(z => z.style.outline = ''); el.style.outline = '3px solid var(--acc)'; toast('Picture chosen — credit and licence filled in'); }); }
+    catch (e) { box.innerHTML = '<small class="muted">Could not reach Wikimedia Commons.</small>'; } };
 }
 const clean = o => { const r = {}; for (const [k, v] of Object.entries(o)) { if (v === '' || (Array.isArray(v) && !v.length)) continue; r[k] = v; } return r; };
 async function vDigest(m) {
@@ -232,6 +250,7 @@ async function vDigest(m) {
     await F.addDoc(F.collection(db, 'digest'), Object.assign({ status: 'queued', by: 'admin', src: 'ai', createdAt: F.serverTimestamp() }, pm ? { pmid: v } : { doi: v })); toast('Queued — the bot writes it within a minute or two'); dtab = 'draft'; render();
   };
   $('#dnew').onclick = () => { $('#dnewbox').innerHTML = digestForm({}) + `<div class="row" style="margin-top:8px"><button class="b" id="dnsave" data-live="1">Publish</button><button class="b g" id="dnsave2">Save as draft</button><button class="b g" id="dncancel">Cancel</button></div>`;
+    window.__pickKind = null; wirePics();
     const save = async live => { try { const up = clean(await readForm({})); await F.addDoc(F.collection(db, 'digest'), Object.assign(up, { kind: 'journal', src: 'admin', by: 'admin', status: live ? 'live' : 'draft', createdAt: F.serverTimestamp() }, live ? { approvedAt: F.serverTimestamp() } : {})); toast(live ? 'Published' : 'Saved as draft'); dtab = live ? 'live' : 'draft'; render(); } catch (e) { toast(e.message); } };
     $('#dnsave').onclick = () => save(true); $('#dnsave2').onclick = () => save(false); $('#dncancel').onclick = () => { $('#dnewbox').innerHTML = ''; }; };
   $$('[data-dpub]').forEach(b => b.onclick = async () => { await F.updateDoc(ref(b.dataset.dpub), { status: 'live', approvedAt: F.serverTimestamp() }); toast('Published'); render(); });
@@ -241,6 +260,7 @@ async function vDigest(m) {
   $$('[data-ddel]').forEach(b => b.onclick = async () => { if (!(await confirmBox('Delete this post?'))) return; await F.deleteDoc(ref(b.dataset.ddel)); toast('Deleted'); render(); });
   $$('[data-dedit]').forEach(b => b.onclick = () => { const x = all.find(y => y.id === b.dataset.dedit), box = $('#d_' + x.id);
     box.innerHTML = digestForm(x) + `<div class="row" style="margin-top:8px"><button class="b" id="desave">Save${x.status === 'draft' ? ' and publish' : ''}</button>${x.status === 'draft' ? '<button class="b g" id="desave2">Save only</button>' : ''}<button class="b g" id="decancel">Cancel</button></div>`;
+    window.__pickKind = null; wirePics();
     $('#decancel').onclick = render;
     const save = async pub => { try { const up = await readForm(x), out = {}; for (const k of DKEYS) { if (k in up) out[k] = up[k] === '' ? F.deleteField() : up[k]; }
         if (pub) { out.status = 'live'; out.approvedAt = F.serverTimestamp(); } await F.updateDoc(ref(x.id), out); toast(pub ? 'Saved and published' : 'Saved'); render(); } catch (e) { toast(e.message); } };

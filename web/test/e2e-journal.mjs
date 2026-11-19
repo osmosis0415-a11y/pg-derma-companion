@@ -57,8 +57,11 @@ const MODS = {
   'firebase-auth.js': `export const getAuth=()=>({});export const onAuthStateChanged=(a,cb)=>setTimeout(()=>cb({uid:'uA',email:'sriramdeverashetty@gmail.com',emailVerified:true}),0);export const signOut=async()=>{};export class GoogleAuthProvider{setCustomParameters(){}};export const signInWithPopup=async()=>{};`,
   'firebase-firestore.js': `const f=window.__F;export const getFirestore=()=>({});export const {collection,doc,where,orderBy,limit,query,setDoc,updateDoc,addDoc,getDoc,getDocs,deleteDoc,onSnapshot,serverTimestamp,increment,arrayUnion}=f;export const deleteField=()=>undefined;`
 };
-await send('Fetch.enable', { patterns: [{ urlPattern: '*gstatic.com*' }] });
-evs.push(d => { if (d.method !== 'Fetch.requestPaused') return; const name = d.params.request.url.split('/').pop();
+await send('Fetch.enable', { patterns: [{ urlPattern: '*gstatic.com*' }, { urlPattern: '*commons.wikimedia.org*' }] });
+const COMMONS = JSON.stringify({ query: { pages: { 1: { index: 1, title: 'File:NonFree.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/nf.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:NonFree.jpg', extmetadata: { LicenseShortName: { value: 'Fair use' } } }] }, 2: { index: 2, title: 'File:Acne.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/acne.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Acne.jpg', extmetadata: { LicenseShortName: { value: 'CC BY-SA 3.0' }, Artist: { value: '<a href="#">Dr B</a>' } } }] } } } });
+evs.push(d => { if (d.method !== 'Fetch.requestPaused' || !d.params.request.url.includes('commons.wikimedia.org')) return;
+  send('Fetch.fulfillRequest', { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: Buffer.from(COMMONS).toString('base64') }); });
+evs.push(d => { if (d.method !== 'Fetch.requestPaused' || d.params.request.url.includes('commons.wikimedia.org')) return; const name = d.params.request.url.split('/').pop();
   send('Fetch.fulfillRequest', { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'text/javascript' }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: Buffer.from(MODS[name] || '').toString('base64') }); });
 await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
 await send('Page.navigate', { url: 'http://localhost:8765/admin.html#digest' }); await sleep(1800);
@@ -86,6 +89,11 @@ chk('publish now', (await store())['digest/' + dId].status === 'live');
 await ev(`$('[data-t=live]').click()`); await sleep(400); await ev(`$('[data-dedit="a1"]').click()`); await sleep(200);
 await ev(`$('#d_h').value='Edited headline'; $('#desave').click()`); await sleep(500);
 chk('edit keeps the paper figure and credit', (await store())['digest/a1'].h === 'Edited headline' && (await store())['digest/a1'].imgKind === 'paper' && (await store())['digest/a1'].img === IMG);
+await ev(`$('[data-dedit="${dId}"]').click()`); await sleep(200);
+await ev(`$('#d_pq').value='acne'; $('#d_pfind').click()`); await sleep(800);
+chk('picture finder shows only openly licensed results', (await ev(`$$('[data-pick]').length`)) === 1);
+await ev(`$('[data-pick="0"]').click(); $('#desave').click()`); await sleep(500);
+chk('picked picture saved with credit + licence', (() => true)() && await (async () => { const d = (await store())['digest/' + dId]; return d.img === 'https://upload.wikimedia.org/acne.jpg' && d.imgLic === 'CC BY-SA 3.0' && d.imgCredit === 'Dr B' && d.imgKind === 'illustrative'; })());
 await ev(`$('#dauto').click()`); await sleep(300); await ev(`document.querySelector('.dlg [data-r="1"]')?.click()`); await sleep(500);
 chk('auto-publish switch saved', (await store())['config/digest'].auto === true);
 await shot('admin-digest');
