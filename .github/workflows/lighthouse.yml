@@ -41,6 +41,6 @@ jobs:
             if(fails.length) L.push('','**Top things to fix**',...fails);
             require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY,L.join('\n')+'\n'); console.log(L.join('\n'));
             if (c.accessibility.score < 0.8) { console.log('::warning::Accessibility score below 80'); }"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: lighthouse-report, path: 'lh.report.*', retention-days: 14 }
