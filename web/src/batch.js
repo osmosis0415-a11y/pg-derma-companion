@@ -121,7 +121,7 @@ function paintBatch() {
   if (t === 'cal') {
     const up = (B().events || []).filter(e => e.date >= today()).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
     const past = (B().events || []).filter(e => e.date < today()).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
-    const row = e => `<div class="li"><div><b>${esc(e.title)}</b> <span class="tag">${esc(e.type)}</span><small>${fmt(e.date)}${e.time ? ' · ' + esc(e.time) : ''}${e.venue ? ' · ' + esc(e.venue) : ''}${e.presenter ? ' · ' + esc(e.presenter) : ''}</small>${e.notes ? `<small>${esc(e.notes)}</small>` : ''}</div>${e.createdBy === Cloud.user?.uid || B().admin ? `<button class="icon" data-act="bevdel" data-id="${e.id}" aria-label="Delete">✕</button>` : ''}</div>`;
+    const row = e => `<div class="li"><div><b>${esc(e.title)}</b> <span class="tag">${esc(e.type)}</span><small>${fmt(e.date)}${e.time ? ' · ' + esc(e.time) : ''}${e.venue ? ' · ' + esc(e.venue) : ''}${e.presenter ? ' · ' + esc(e.presenter) : ''}</small>${e.notes ? `<small>${esc(e.notes)}</small>` : ''}</div>${e.createdBy === Cloud.user?.uid || bAdmin() ? `<button class="icon" data-act="bevdel" data-id="${e.id}" aria-label="Delete">✕</button>` : ''}</div>`;
     el.innerHTML = `<div class="btnrow"><button class="btn sm" data-act="bevadd">＋ Add event</button><button class="btn sm ghost" data-act="bevics">📅 Add all to my calendar</button><button class="btn sm ghost" data-act="bevwa">Share week on WhatsApp</button></div>
     <div class="card">${up.map(row).join('') || '<p class="muted">No upcoming events. Add the seminar / journal-club schedule so everyone sees it.</p>'}</div>
     ${past.length ? `<details><summary class="small muted">Past events</summary><div class="card">${past.map(row).join('')}</div></details>` : ''}`;
@@ -142,8 +142,9 @@ function paintBatch() {
     $('[data-group="blr"]').addEventListener('click', () => setTimeout(() => go('#/batch?t=log&y=' + yr + '&r=' + getChips('blr'))));
   }
   if (t === 'mem') {
-    el.innerHTML = `<div class="card">${(B().members || []).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(m => `<div class="li"><div><b>${esc(m.name)}</b>${m.id === Cloud.user?.uid ? ' <span class="tag">You</span>' : ''}<small>${esc(m.year || '')}</small></div>${B().admin && m.id !== Cloud.user?.uid ? `<button class="icon" data-act="bkick" data-id="${m.id}" aria-label="Remove">✕</button>` : ''}</div>`).join('') || '<p class="muted">Loading…</p>'}</div>
-    <div class="btnrow"><button class="btn sm ghost" data-act="bleave">Leave batch</button><button class="btn sm ghost" data-act="bsignout">Sign out</button></div>`;
+    el.innerHTML = `<div class="card">${(B().members || []).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(m => `<div class="li"><div><b>${esc(m.name)}</b>${m.id === Cloud.user?.uid ? ' <span class="tag">You</span>' : ''}<small>${esc(m.year || '')}</small></div>${bAdmin() && m.id !== Cloud.user?.uid ? `<button class="icon" data-act="bkick" data-id="${m.id}" aria-label="Remove">✕</button>` : ''}</div>`).join('') || '<p class="muted">Loading…</p>'}</div>
+    <div class="btnrow"><button class="btn sm ghost" data-act="bleave">Leave batch</button><button class="btn sm ghost" data-act="bsignout">Sign out</button></div>
+    ${bAdmin() ? `<div class="card"><h3>Admin</h3><p class="small muted">${B().admin ? 'You created this batch.' : 'You are the app admin.'} These actions affect everyone.</p><div class="btnrow"><button class="btn sm ghost danger" data-act="bclearchat">Clear chat</button><button class="btn sm danger" data-act="bdelete">Delete batch</button></div></div>` : ''}`;
   }
 }
 function subscribeBatch() {
@@ -189,6 +190,37 @@ ACT.bleave = async () => { if (!confirm('Leave this batch? Your shared counts wi
 ACT.bkick = async el => { if (!confirm('Remove this member?')) return; const f = Cloud.f; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', B().id, 'logstats', el.dataset.id)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', B().id, 'members', el.dataset.id)); } catch (e) { toast(e.code || e.message); } };
 ACT.fbcfgclear = () => { delete D.settings.fbConfig; Store.save(); Cloud.ready = null; toast('Removed'); render(); };
 
+const bAdmin = () => !!(B() && (B().admin || amAdmin()));
+/* Delete a whole batch: every message, event, shared count and member, then the batch itself.
+   Members go last because the batch-admin rules check membership. Used by the batch admin and the app admin. */
+async function deleteBatchAll(id, onProgress) {
+  const f = Cloud.f, db = Cloud.db; let n = 0;
+  for (const sub of ['messages', 'events', 'logstats', 'members']) {
+    const snap = await f.getDocs(f.collection(db, 'batches', id, sub));
+    for (let i = 0; i < snap.docs.length; i += 400) {
+      const wb = f.writeBatch(db); snap.docs.slice(i, i + 400).forEach(d => wb.delete(d.ref)); await wb.commit();
+      n += Math.min(400, snap.docs.length - i); onProgress && onProgress(n);
+    }
+  }
+  await f.deleteDoc(f.doc(db, 'batches', id));
+  return n;
+}
+async function clearBatchChat(id) {
+  const f = Cloud.f, db = Cloud.db, snap = await f.getDocs(f.collection(db, 'batches', id, 'messages'));
+  for (let i = 0; i < snap.docs.length; i += 400) { const wb = f.writeBatch(db); snap.docs.slice(i, i + 400).forEach(d => wb.delete(d.ref)); await wb.commit(); }
+  return snap.docs.length;
+}
+ACT.bdelete = async () => {
+  const b = B(); if (!b || !bAdmin()) return;
+  if (prompt(`This permanently deletes "${b.name}" for everyone: chat, calendar, shared counts and members.\n\nType DELETE to confirm.`) !== 'DELETE') return toast('Not deleted');
+  try { Cloud.stop(); toast('Deleting…'); const n = await deleteBatchAll(b.id); D.batch = null; Store.save(); toast(`Batch deleted (${n} items)`); render(); }
+  catch (e) { toast('Could not delete: ' + (e.code || e.message)); subscribeBatch(); }
+};
+ACT.bclearchat = async () => {
+  if (!bAdmin() || !confirm('Delete ALL chat messages in this batch for everyone?')) return;
+  try { const n = await clearBatchChat(B().id); toast(n + ' messages deleted'); } catch (e) { toast('Could not clear: ' + (e.code || e.message)); }
+};
+
 /* ---------- Batch group chat ----------
    batches/{id}/messages/{m} = { uid, name, text, at }. Only members can read or post; you can delete your own
    messages and the batch admin can delete any. The last 150 messages are kept in memory only (not in backups). */
@@ -219,7 +251,7 @@ function paintChatList(force) {
     if (dk !== day) { day = dk; prev = null; h += `<div class="chatday">${fmt(d.toISOString().slice(0, 10))}</div>`; }
     const mine = m.uid === me, cont = prev && prev.uid === m.uid && m.at - prev.at < 5 * 60e3; prev = m;
     const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return h + `<div class="msg${mine ? ' me' : ''}${cont ? ' cont' : ''}">${!mine && !cont ? `<b>${esc(m.name || 'Member')}</b>` : ''}<p>${esc(m.text).replace(/\n/g, '<br>')}</p><small>${t}${mine || B().admin ? ` · <button type="button" class="linkbtn" data-act="chatdel" data-id="${m.id}">delete</button>` : ''}</small></div>`;
+    return h + `<div class="msg${mine ? ' me' : ''}${cont ? ' cont' : ''}">${!mine && !cont ? `<b>${esc(m.name || 'Member')}</b>` : ''}<p>${esc(m.text).replace(/\n/g, '<br>')}</p><small>${t}${mine || bAdmin() ? ` · <button type="button" class="linkbtn" data-act="chatdel" data-id="${m.id}">delete</button>` : ''}</small></div>`;
   }).join('') : '<p class="empty">No messages yet. Say hi to your batch 👋</p>';
   if (near) box.scrollTop = box.scrollHeight;
 }

@@ -24,6 +24,8 @@ await ev(`(()=>{
   deleteDoc:async d=>{store.delete(key(d.p));notify()},
   onSnapshot:(q,cb)=>{const pre=key(q.p)+'/';const s={fire(){let docs=[...store.entries()].filter(([k])=>k.startsWith(pre)&&!k.slice(pre.length).includes('/')).map(([k,v])=>({id:k.slice(pre.length),data:()=>v}));for(const m of (q.m||[])){if(m.op==='>=')docs=docs.filter(d=>d.data()[m.fld]>=m.v);if(m.ob){const v=d=>d.data()[m.ob];docs.sort((a,b)=>(v(a)>v(b)?1:v(a)<v(b)?-1:0)*(m.dir==='desc'?-1:1))}if(m.lim)docs=docs.slice(0,m.lim)}cb({docs})}};subs.push(s);s.fire();return()=>{subs.splice(subs.indexOf(s),1)}},
   signOut:async()=>{Cloud.user=null},
+  getDocs:async q=>{const pre=key(q.p)+'/';const docs=[...store.entries()].filter(([k])=>k.startsWith(pre)&&!k.slice(pre.length).includes('/')).map(([k,v])=>({id:k.slice(pre.length),ref:{p:k.split('/')},data:()=>v}));return{docs,size:docs.length}},
+  writeBatch:()=>{const ops=[];return{delete:r=>ops.push(r),commit:async()=>{ops.forEach(r=>store.delete(key(r.p)));notify()}}},
  };
  window.__store=store;
  D.settings.fbConfig={apiKey:'x',projectId:'demo'};
@@ -63,4 +65,24 @@ chk('hash unchanged after delete click', await ev(`location.hash==='#/batch?t=ch
 chk('others messages have no delete for non-admin', await ev(`(()=>{D.batch.admin=false;paintChatList(true);return !document.querySelector('.msg:not(.me) [data-act=chatdel]')})()`));
 await shot('chat');
 chk('send bar visible above nav', await ev(`(()=>{const b=$('#chatform').getBoundingClientRect(),n=$('.nav.bottom').getBoundingClientRect();return b.bottom<=n.top+1 && b.top>0})()`));
+// ---- admin tools ----
+await ev(`location.hash='#/batch?t=mem'`); await sleep(400);
+chk('creator sees admin card', await ev(`(()=>{D.batch.admin=true;paintBatch();return !!$('[data-act=bdelete]') && !!$('[data-act=bclearchat]')})()`));
+await ev(`window.confirm=()=>true; ACT.bclearchat()`); await sleep(400);
+chk('clear chat removes all messages', await ev(`![...__store.keys()].some(k=>k.startsWith('batches/${code}/messages/'))`));
+await ev(`__store.set('batches/${code}/messages/m9',{uid:'u2',name:'Priya',text:'x',at:1});__store.set('batches/${code}/events/e9',{title:'t',date:'2026-12-01'})`);
+await ev(`window.prompt=()=>'nope'; ACT.bdelete()`); await sleep(300);
+chk('wrong confirm word keeps batch', await ev(`__store.has('batches/${code}') && D.batch!==null`));
+await ev(`window.prompt=()=>'DELETE'; ACT.bdelete()`); await sleep(600);
+chk('batch + all contents deleted', await ev(`![...__store.keys()].some(k=>k.startsWith('batches/${code}')) && D.batch===null`));
+// app admin page: Batches tab
+await ev(`__store.set('batches/DVL-AAAA-BBBB',{name:'Other batch',createdBy:'u9',admins:['u9'],createdAt:{seconds:1700000000}});__store.set('batches/DVL-AAAA-BBBB/members/u9',{name:'Rahul',year:'JR2'});__store.set('batches/DVL-AAAA-BBBB/members/u8',{name:'Kiran',year:'JR1'});__store.set('batches/DVL-AAAA-BBBB/messages/q1',{uid:'u9',text:'hey',at:1})`);
+await ev(`Cloud.user.email='sriramdeverashetty@gmail.com'; location.hash='#/admin?t=batches'`); await sleep(700);
+chk('admin sees all batches', await ev(`$('#blist').textContent.includes('Other batch') && $('#blist').textContent.includes('2 members') && $('#blist').textContent.includes('1 message')`));
+await ev(`window.confirm=()=>true; $('[data-act=abkick][data-id=u8]').click()`); await sleep(500);
+chk('admin removed a member', await ev(`!__store.has('batches/DVL-AAAA-BBBB/members/u8') && __store.has('batches/DVL-AAAA-BBBB/members/u9')`));
+await ev(`window.prompt=()=>'DELETE'; $('[data-act=abdel][data-b="DVL-AAAA-BBBB"]').click()`); await sleep(700);
+chk('admin deleted other batch', await ev(`![...__store.keys()].some(k=>k.startsWith('batches/DVL-AAAA-BBBB'))`));
+chk('batches tab shows empty', await ev(`$('#blist').textContent.includes('No batches yet')`));
+await shot('admin-batches');
 console.log('ERRORS', JSON.stringify(errs)); process.exit(0);

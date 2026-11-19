@@ -126,7 +126,8 @@ function vAdmin() {
   if (!amAdmin()) { main().innerHTML = empty('Admins only'); return; }
   const tab = ROUTE.q.t || 'pending';
   if (tab === 'errors') return vAdminErrors();
-  main().innerHTML = `<div class="chips">${[['pending', '⏳ Pending'], ['approved', '✅ Approved'], ['rejected', '⛔ Rejected'], ['errors', '🐞 Errors']].map(([k, l]) => `<a class="chip${k === tab ? ' on' : ''}" href="#/admin?t=${k}">${l} <span id="cnt_${k}"></span></a>`).join('')}</div>
+  if (tab === 'batches') return vAdminBatches();
+  main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === tab ? ' on' : ''}" href="#/admin?t=${k}">${l} <span id="cnt_${k}"></span></a>`).join('')}</div>
   <div id="alist" class="card"><p class="muted small">Loading…</p></div>
   <div class="card"><h3>Invite people</h3><p class="small muted">Share the app link. They sign in with Google and appear here for your approval.</p><button class="btn sm ghost" data-act="adminshare">Share app link</button></div>`;
   Cloud.init().then(() => {
@@ -139,7 +140,7 @@ function vAdmin() {
       const list = all.filter(x => x.status === tab).sort((a, b) => ts(b.requestedAt) - ts(a.requestedAt));
       const el = $('#alist'); if (!el) return;
       el.innerHTML = list.map(x => `<div class="li"><div class="row" style="gap:10px">${x.photo ? `<img class="gav sm" src="${esc(x.photo)}" alt="" referrerpolicy="no-referrer">` : ''}<div><b>${esc(x.name || x.email)}</b><small>${esc(x.email)}${ts(x.requestedAt) ? ' · requested ' + fmt(new Date(ts(x.requestedAt)).toISOString()) : ''}</small></div></div>
-        <div class="btnrow" style="margin:0">${x.status !== 'approved' ? `<button class="btn xs" data-act="adminset" data-id="${x.id}" data-s="approved">Approve</button>` : ''}${x.status === 'pending' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Reject</button>` : ''}${x.status === 'approved' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Revoke</button>` : ''}</div></div>`).join('') || `<p class="muted small">No ${tab} requests.</p>`;
+        <div class="btnrow" style="margin:0">${x.status !== 'approved' ? `<button class="btn xs" data-act="adminset" data-id="${x.id}" data-s="approved">Approve</button>` : ''}${x.status === 'pending' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Reject</button>` : ''}${x.status === 'approved' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Revoke</button>` : ''}${x.status === 'rejected' ? `<button class="btn xs ghost" data-act="admindel" data-id="${x.id}">Remove</button>` : ''}</div></div>`).join('') || `<p class="muted small">No ${tab} requests.</p>`;
     }, e => { const el = $('#alist'); if (el) el.innerHTML = `<p class="err">${esc(e.code || e.message)}</p>`; });
   }).catch(() => { $('#alist').innerHTML = '<p class="err">Could not reach Firebase.</p>'; });
 }
@@ -152,8 +153,42 @@ ACT.adminset = async el => {
 };
 ACT.adminshare = () => { const url = location.origin + location.pathname; const msg = `PG Derma Companion — app for DVL residents 🩺\n${url}\nOpen it, tap “Continue with Google”, and I'll approve you.`; if (navigator.share) navigator.share({ text: msg }).catch(() => {}); else window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };
 ACT.appsignout = () => Gate.signOut();
+const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['batches', 'Batches'], ['errors', 'Errors']];
+ACT.admindel = async el => {
+  if (!confirm('Remove this record? If they sign in again they will appear as a new request.')) return;
+  try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'approvals', el.dataset.id)); toast('Removed'); } catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
+};
+function vAdminBatches() {
+  main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === 'batches' ? ' on' : ''}" href="#/admin?t=${k}">${l}</a>`).join('')}</div>
+  <p class="small muted">Every batch in the app. Deleting removes its chat, calendar, shared counts and members for everyone.</p><div id="blist" class="card"><p class="muted small">Loading…</p></div>`;
+  Cloud.init().then(async () => {
+    const f = Cloud.f, db = Cloud.db, snap = await f.getDocs(f.collection(db, 'batches'));
+    const rows = await Promise.all(snap.docs.map(async d => {
+      const x = d.data(), [m, msg] = await Promise.all([f.getDocs(f.collection(db, 'batches', d.id, 'members')), f.getDocs(f.collection(db, 'batches', d.id, 'messages'))]);
+      return { id: d.id, name: x.name, created: x.createdAt && x.createdAt.seconds ? x.createdAt.seconds * 1000 : 0, members: m.docs.map(z => ({ id: z.id, name: z.data().name, year: z.data().year })), msgs: msg.size };
+    }));
+    rows.sort((a, b) => b.created - a.created);
+    const el = $('#blist'); if (!el) return;
+    el.innerHTML = rows.map(r => `<details class="err-item"><summary><b>${esc(r.name || r.id)}</b><br><small class="muted">${esc(r.id)} · ${r.members.length} member${r.members.length === 1 ? '' : 's'} · ${r.msgs} message${r.msgs === 1 ? '' : 's'}${r.created ? ' · created ' + fmt(new Date(r.created).toISOString()) : ''}</small></summary>
+      ${r.members.map(m => `<div class="li"><div>${esc(m.name || 'Member')}<small>${esc(m.year || '')}</small></div><button class="btn xs ghost danger" data-act="abkick" data-b="${esc(r.id)}" data-id="${esc(m.id)}">Remove</button></div>`).join('') || '<p class="small muted">No members.</p>'}
+      <div class="btnrow"><button class="btn sm ghost danger" data-act="abclear" data-b="${esc(r.id)}">Clear chat</button><button class="btn sm danger" data-act="abdel" data-b="${esc(r.id)}" data-n="${esc(r.name || r.id)}">Delete batch</button></div></details>`).join('') || '<p class="muted small">No batches yet.</p>';
+  }).catch(e => { const el = $('#blist'); if (el) el.innerHTML = `<p class="err">${esc(e.code || e.message)}</p>`; });
+}
+ACT.abdel = async el => {
+  if (prompt(`Delete "${el.dataset.n}" for everyone (chat, calendar, counts, members)?\n\nType DELETE to confirm.`) !== 'DELETE') return toast('Not deleted');
+  el.disabled = true; el.textContent = 'Deleting…';
+  try { const n = await deleteBatchAll(el.dataset.b); if (D.batch && D.batch.id === el.dataset.b) { D.batch = null; Store.save(); } toast(`Deleted (${n} items)`); render(); }
+  catch (e) { toast('Could not delete: ' + (e.code || e.message)); render(); }
+};
+ACT.abclear = async el => { if (!confirm('Delete ALL chat messages in this batch?')) return; try { const n = await clearBatchChat(el.dataset.b); toast(n + ' messages deleted'); render(); } catch (e) { toast('Could not clear: ' + (e.code || e.message)); } };
+ACT.abkick = async el => {
+  if (!confirm('Remove this member from the batch? Their shared counts are removed too.')) return;
+  const f = Cloud.f, db = Cloud.db;
+  try { await f.deleteDoc(f.doc(db, 'batches', el.dataset.b, 'logstats', el.dataset.id)).catch(() => {}); await f.deleteDoc(f.doc(db, 'batches', el.dataset.b, 'members', el.dataset.id)); toast('Removed'); render(); }
+  catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
+};
 function vAdminErrors() {
-  main().innerHTML = `<div class="chips">${[['pending', '⏳ Pending'], ['approved', '✅ Approved'], ['rejected', '⛔ Rejected'], ['errors', '🐞 Errors']].map(([k, l]) => `<a class="chip${k === 'errors' ? ' on' : ''}" href="#/admin?t=${k}">${l}</a>`).join('')}</div>
+  main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === 'errors' ? ' on' : ''}" href="#/admin?t=${k}">${l}</a>`).join('')}</div>
   <p class="small muted">App errors from approved users (last 50). Messages are scrubbed — no patient data is sent.</p>
   <div class="btnrow"><button class="btn sm ghost" data-act="errclear">Clear all</button></div><div id="elist" class="card"><p class="muted small">Loading…</p></div>`;
   Cloud.init().then(async () => {

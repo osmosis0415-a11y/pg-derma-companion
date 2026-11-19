@@ -2,6 +2,12 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 19 Nov 2026 (admin tools)
+- **Admin → Access requests → Batches:** see every batch with its members and message count. Remove members, clear a batch's chat, or delete the whole batch (chat, calendar, shared counts and members). You must type DELETE to confirm.
+- **Batch creators** can clear the chat or delete their batch from Batch hub → Members.
+- The app admin can delete any chat message or event inside a batch.
+- **Rejected requests** now have a Remove button to clear old records.
+
 ## 19 Nov 2026 (batch chat)
 - **Batch group chat:** Batch hub → **Chat**. Message your whole batch inside the app. Unread messages show as a red count on the Chat tab. Delete your own messages; the batch admin can delete any.
 - A reminder sits above the chat, and you're asked to confirm before sending anything that looks like a UHID, OPD number or phone number.
