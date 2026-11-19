@@ -12,12 +12,13 @@ const art = (pmid, journal, pmc, extra = '') => `<PubmedArticle><MedlineCitation
 <PublicationTypeList><PublicationType>Journal Article</PublicationType><PublicationType>Randomized Controlled Trial</PublicationType></PublicationTypeList>${extra}</Article></MedlineCitation>
 <PubmedData><ArticleIdList><ArticleId IdType="pubmed">${pmid}</ArticleId><ArticleId IdType="doi">10.1/x${pmid}</ArticleId>${pmc ? `<ArticleId IdType="pmc">${pmc}</ArticleId>` : ''}</ArticleIdList></PubmedData></PubmedArticle>`;
 const ARTS = { 111: art(111, 'Br J Dermatol', 'PMC900'), 222: art(222, 'Indian J Dermatol Venereol Leprol', 'PMC800'), 333: art(333, 'JAMA Dermatol', ''), 444: art(444, 'Clin Exp Dermatol', '') };
+let busyOnce = 0;
 let geminiText = id => JSON.stringify({ ok: true, h: 'Headline ' + id, s: 'Summary in own words', k: ['Point one', 'Point two', 'Point three'], w: 'Practice line', lvl: 'Randomised controlled trial', top: 'Vitiligo', img: 'vitiligo' });
 
 const g = {
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => P[k] ?? null, setProperty: (k, v) => P[k] = v }) },
   Session: { getEffectiveUser: () => ({ getEmail: () => 'admin@x.com' }) },
-  Utilities: { getUuid: () => crypto.randomUUID(), computeHmacSha256Signature: (m, k) => [...crypto.createHmac('sha256', k).update(m).digest()], base64EncodeWebSafe: b => Buffer.from(b).toString('base64'), formatDate: d => d.toISOString().slice(0, 10) },
+  Utilities: { sleep: () => {}, getUuid: () => crypto.randomUUID(), computeHmacSha256Signature: (m, k) => [...crypto.createHmac('sha256', k).update(m).digest()], base64EncodeWebSafe: b => Buffer.from(b).toString('base64'), formatDate: d => d.toISOString().slice(0, 10) },
   ScriptApp: { getService: () => ({ getUrl: () => 'https://w/exec' }), getOAuthToken: () => 'T', getProjectTriggers: () => [], deleteTrigger: () => {}, newTrigger: () => ({ timeBased: () => ({ everyDays: () => ({ atHour: () => ({ create: () => 1 }) }) }) }) },
   LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
   MailApp: { sendEmail: o => sent.push(o), getRemainingDailyQuota: () => 90 }, Logger: { log: () => {} },
@@ -29,6 +30,7 @@ const g = {
     if (url.includes('europepmc/webservices/rest/search')) return resp(200, { resultList: { result: [{ license: url.includes('PMC900') ? 'cc by' : 'Publisher-specific' }] } });
     if (url.includes('/fullTextXML')) return resp(200, '<article><fig id="f1"><label>Figure 1</label><caption><p>Repigmentation at 24 weeks.</p></caption><graphic xlink:href="bjd-fig1"/></fig></article>');
     if (url.includes('commons.wikimedia.org')) return resp(200, { query: { pages: { 1: { index: 1, title: 'File:Nonfree.jpg', imageinfo: [{ thumburl: 'https://up/nf.jpg', descriptionurl: 'https://c/nf', extmetadata: { LicenseShortName: { value: 'Fair use' } } }] }, 2: { index: 2, title: 'File:Vitiligo.jpg', imageinfo: [{ thumburl: 'https://up/v.jpg', descriptionurl: 'https://c/v', extmetadata: { LicenseShortName: { value: 'CC BY-SA 4.0' }, Artist: { value: '<a href="x">Dr A</a>' } } }] } } } });
+    if (url.includes('generativelanguage') && busyOnce > 0) { busyOnce--; return resp(503, 'high demand'); }
     if (url.includes('generativelanguage')) { const m = JSON.parse(o.payload).contents[0].parts[0].text.match(/Title: Trial (\d+)/); return resp(200, { candidates: [{ content: { parts: [{ text: typeof geminiText === 'function' ? geminiText(m && m[1]) : geminiText }] } }] }); }
     const path = url.split('/documents')[1];
     if (path === ':runQuery') { const q = JSON.parse(o.payload).structuredQuery, coll = q.from[0].collectionId, w = q.where && q.where.fieldFilter;
@@ -82,4 +84,8 @@ B.digestTick();
 ok('queued DOI written as draft', store['digest/q1'].status === 'draft' && store['digest/q1'].pmid === '444' && store['digest/q1'].h === 'Queued 444' && store['digest/q1'].by === 'admin');
 ok('bad PMID marked failed with reason', store['digest/q2'].status === 'failed' && /PubMed/.test(store['digest/q2'].err));
 ok('due scheduled post goes live, future one waits', store['digest/s1'].status === 'live' && store['digest/s2'].status === 'scheduled');
+geminiText = id => JSON.stringify({ ok: true, h: 'Busy ' + id, s: 'S', k: ['a'], w: 'w', lvl: 'Review', top: 'Acne', img: 'acne' });
+busyOnce = 1; store['digest/q3'] = { status: 'queued', pmid: '111' }; B.digestTick();
+ok('Gemini "high demand" 503 is retried, not fatal', store['digest/q3'].status === 'draft' && store['digest/q3'].h === 'Busy 111');
+ok('Commons URL has no raw | (Apps Script rejects it)', urls.filter(u => u.includes('commons')).every(u => !u.includes('|')));
 ok('setupDigest runs', B.setupDigest() === undefined);

@@ -245,7 +245,7 @@ function gemini_(prompt) {
       payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.4, responseMimeType: 'application/json' } }) });
   };
   // Try the model that worked last time, then every other text "flash" model (newest first) until one is free and answers.
-  var first = props_().getProperty('GEMINI_MODEL') || 'gemini-2.5-flash', tried = [], r = null, lastErr = '';
+  var first = props_().getProperty('GEMINI_MODEL') || 'gemini-2.5-flash', tried = [], r = null, lastErr = '', busy = {};
   var list = null, candidates = function () {
     if (!list) {
       var j = JSON.parse(UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key }, muteHttpExceptions: true }).getContentText());
@@ -262,7 +262,8 @@ function gemini_(prompt) {
     r = call(m); var code = r.getResponseCode();
     if (code < 300) { props_().setProperty('GEMINI_MODEL', m); var j2 = JSON.parse(r.getContentText()), t = (((j2.candidates || [])[0] || {}).content || {}).parts; return { model: m, text: (t || []).map(function (p) { return p.text || ''; }).join('') }; }
     lastErr = m + ' → ' + code + ': ' + r.getContentText().slice(0, 200);
-    if (code === 404 || code === 429 || code === 403 || code === 400) { if (!queue.length) queue = candidates().filter(function (x) { return tried.indexOf(x) < 0; }); continue; }
+    if (code >= 500 && tried.filter(function (x) { return x === m; }).length === 1 && !busy[m]) { busy[m] = 1; Utilities.sleep(4000); tried.pop(); queue.unshift(m); continue; } // busy: retry once
+    if (code === 404 || code === 429 || code === 403 || code === 400 || code >= 500) { if (!queue.length) queue = candidates().filter(function (x) { return tried.indexOf(x) < 0; }); continue; }
     break;
   }
   throw new Error('Gemini: no free model answered. Last: ' + lastErr);
@@ -479,7 +480,7 @@ function paperFigure_(pmc) {
 }
 function commonsImage_(q) {
   if (!q) return null;
-  var u = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=8&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=900&gsrsearch=' + encodeURIComponent(q + ' skin filetype:bitmap');
+  var u = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=8&prop=imageinfo&iiprop=url%7Cextmetadata&iiurlwidth=900&gsrsearch=' + encodeURIComponent(q + ' skin filetype:bitmap');
   var pages = (JSON.parse(get_(u)).query || {}).pages || {};
   var list = Object.keys(pages).map(function (k) { return pages[k]; }).sort(function (a, b) { return (a.index || 0) - (b.index || 0); });
   for (var i = 0; i < list.length; i++) {
@@ -530,8 +531,8 @@ function makeDigest(maxOverride) {
     var arts = pubmedFetch_(ids.slice(0, 30));
     // one Indian paper first when available, then the rest, newest first
     arts.sort(function (x, y) { return (INDIAN_JOURNALS.test(y.j) ? 1 : 0) - (INDIAN_JOURNALS.test(x.j) ? 1 : 0); });
-    var auto = cfg.auto === true, saved = [];
-    for (var i = 0; i < arts.length && saved.length < want; i++) {
+    var auto = cfg.auto === true, saved = [], t0 = Date.now();
+    for (var i = 0; i < arts.length && saved.length < want && Date.now() - t0 < 240000; i++) {
       var p; try { p = writeDigest_(arts[i]); } catch (e) { Logger.log('digest write ' + arts[i].pmid + ': ' + e); if (/no free model/.test(String(e))) break; continue; }
       if (!p) continue;
       p.status = auto ? 'live' : 'draft'; p.createdAt = new Date(); if (auto) p.approvedAt = new Date();
