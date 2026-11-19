@@ -35,7 +35,9 @@ function eq_(a, b) { // constant-time compare
   if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
   var d = 0; for (var i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0;
 }
-function webUrl_() { return ScriptApp.getService().getUrl() || ''; }
+// Always use the public /exec address in emails. getUrl() returns the editor-only /dev address when a function runs from the editor.
+var BOT_EXEC_URL = 'https://script.google.com/macros/s/AKfycbzvLDQYZp0q9WDDP1t0eZs1YcsgNLhoQmtcohepwokDeMRgeM4jWAqeD7wUvvtjyjJ_/exec';
+function webUrl_() { var u = props_().getProperty('WEB_URL') || ScriptApp.getService().getUrl() || ''; return /\/exec$/.test(u) ? u : BOT_EXEC_URL; }
 function link_(uid, act) { return webUrl_() + '?a=' + act + '&u=' + encodeURIComponent(uid) + '&s=' + sig_(uid, act); }
 function dashLink_() { return webUrl_() + '?a=list&s=' + sig_('*', 'list'); }
 function esc_(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -355,6 +357,13 @@ function nudge() {
   props_().setProperty('NUDGED', JSON.stringify(sent));
 }
 
+/* Re-send the review email for every draft still waiting (grouped by batch). */
+function resendDrafts() {
+  var drafts = query_('content', 'status', 'EQUAL', 'draft', 500), groups = {};
+  drafts.forEach(function (d) { (groups[d.tag] = groups[d.tag] || []).push(d); });
+  Object.keys(groups).forEach(function (tag) { emailDrafts_(groups[tag], groups[tag][0].topic || groups[tag][0].top || 'Dermatology', tag); });
+  return drafts.length;
+}
 function setupStudy() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (['makeContent', 'nudge'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('makeContent').timeBased().everyDays(1).atHour(6).create();

@@ -74,3 +74,4 @@ store['study/d'] = { remind: false, hour: hr, last: '', streak: 0, email: 'd@x.c
 sent.length = 0; B.nudge();
 ok('nudges only due, not-yet-studied, opted-in', sent.length === 1 && sent[0].to === 'a@x.com' && sent[0].subject.includes('6-day streak'));
 B.nudge(); ok('no duplicate nudge same day', sent.length === 1);
+ok('links use public /exec address', B.link_('x', 'capprove').startsWith('https://w/exec'));
