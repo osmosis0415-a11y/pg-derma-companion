@@ -221,30 +221,17 @@ function syncCardHTML() {
       <div class="btnrow wrap"><button class="btn sm" data-act="syncnow">↻ Sync now</button>${Sync.state === 'reconnect' ? '<button class="btn sm" data-act="driveconnect">Reconnect Google Drive</button>' : ''}<button class="btn sm ghost" data-act="syncoff">Turn off on this device</button><button class="btn sm ghost danger" data-act="drivewipe">Delete Drive backup</button></div>`
     : `<button class="btn" data-act="driveconnect">Connect Google Drive</button><p class="small muted">Google will ask to let PG Derma use its own app folder in your Drive. It can't see any of your other Drive files.</p>`}
   </div>`;
-  return drive + (Cloud.user ? accountHTML() : '');
+  return (Gate.enabled() && Gate.cached ? accountHTML() : '') + drive;
 }
 function showQuota() { if (!Drive.valid()) return; Drive.about().then(a => { const el = $('#drivequota'); if (!el || !a.storageQuota) return; const u = +a.storageQuota.usage || 0, l = +a.storageQuota.limit || 0; el.textContent = 'Google Drive used: ' + (u / 1073741824).toFixed(1) + ' GB' + (l ? ' of ' + (l / 1073741824).toFixed(0) + ' GB' : ''); }).catch(() => {}); }
 function accountHTML() {
-  const u = Cloud.user, pw = (u.providerData || []).some(p => p.providerId === 'password'), g = (u.providerData || []).some(p => p.providerId === 'google.com');
-  return `<div class="card"><h3>👤 Batch hub account</h3>
-  <p class="small"><b>${esc(u.email || '')}</b> ${u.emailVerified ? '<span class="badge green">verified</span>' : '<span class="badge amber">not verified</span>'}<br><span class="muted">Signed in with ${[pw && 'email & password', g && 'Google'].filter(Boolean).join(' + ') || 'Firebase'}</span></p>
-  <div class="btnrow wrap"><button class="btn sm ghost" data-act="acctsignout">Sign out</button>${pw ? '<button class="btn sm ghost" data-act="acctpw">Change password</button>' : ''}<button class="btn sm ghost danger" data-act="acctdel">Delete Batch hub account</button></div>
-  <p class="small muted">Used only for the Batch hub (shared calendar & logbook comparison). Your records sync through Google Drive above.</p></div>`;
+  const g = Gate.cached || {};
+  return `<div class="card"><h3>👤 Account</h3><div class="row" style="gap:10px">${g.photo ? `<img class="gav sm" src="${esc(g.photo)}" alt="" referrerpolicy="no-referrer">` : ''}<div><b>${esc(g.name || '')}</b><div class="small muted">${esc(g.email || '')} · Google · approved${amAdmin() ? ' · admin' : ''}</div></div></div>
+  <div class="btnrow wrap">${amAdmin() ? '<a class="btn sm" href="#/admin">🛡️ Access requests</a>' : ''}<button class="btn sm ghost" data-act="appsignout">Sign out of the app</button></div></div>`;
 }
-ACT.acctsignout = async () => { Cloud.stop(); try { await Cloud.f.signOut(Cloud.auth); } catch (e) {} Cloud.user = null; toast('Signed out of Batch hub'); render(); };
-ACT.acctpw = async () => { try { await Cloud.f.sendPasswordResetEmail(Cloud.auth, Cloud.user.email); toast('A link to set a new password was sent to ' + Cloud.user.email, 4500); } catch (e) { toast(authMsg(e)); } };
-ACT.acctdel = async () => {
-  if (prompt('This permanently deletes your Batch hub login and removes you from your batch. Your Google Drive backup and the data on this phone are not touched. Type DELETE to confirm.') !== 'DELETE') return;
-  const f = Cloud.f, uidv = Cloud.user.uid;
-  try {
-    if (D.batch) { await f.deleteDoc(f.doc(Cloud.db, 'batches', D.batch.id, 'logstats', uidv)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', D.batch.id, 'members', uidv)).catch(() => {}); D.batch = null; }
-    await f.deleteUser(Cloud.user);
-    Cloud.stop(); Cloud.user = null; Store.save(); toast('Batch hub account deleted'); render();
-  } catch (e) { toast(e.code === 'auth/requires-recent-login' ? 'For security, sign out, sign in again and tap Delete once more.' : 'Could not finish: ' + (e.code || e.message), 5000); }
-};
 ACT.driveconnect = async () => {
   try {
-    await Drive.connect(D.sync && D.sync.email);
+    await Drive.connect((D.sync && D.sync.email) || (Gate.cached && Gate.cached.email));
     const about = await Drive.about().catch(() => ({}));
     const email = about.user && about.user.emailAddress;
     if (!(D.sync && D.sync.on)) {
@@ -281,7 +268,7 @@ async function restoreFlow() {
   $('#rback').onclick = () => showLock();
   Drive.loadGis().catch(() => {});
   $('#rg').onclick = async () => {
-    try { await Drive.connect('', 'select_account'); } catch (e) { $('#lerr').textContent = e.message; return; }
+    try { await Drive.connect(Gate.cached && Gate.cached.email, Gate.cached ? '' : 'select_account'); } catch (e) { $('#lerr').textContent = e.message; return; }
     let m; try { m = await Drive.manifest(); } catch (e) { $('#lerr').textContent = e.message; return; }
     if (!m) { $('#rbody').innerHTML = '<p class="err">No PG Derma backup found in this Google Drive. Turn on Cloud sync on your other device first, or tap Back and choose another account.</p>'; return; }
     $('#rbody').innerHTML = `<p class="small">Backup found${m.at ? ' (last saved ' + esc(fmt(m.at)) + ')' : ''}. Enter the PIN you use on your other device.</p><input id="pin" type="password" inputmode="numeric" placeholder="PIN"><button class="btn" id="rgo" style="width:100%">Restore</button><p id="lerr" class="err"></p>`;

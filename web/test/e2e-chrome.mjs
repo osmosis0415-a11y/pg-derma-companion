@@ -11,7 +11,7 @@ const ev=async(expr)=>{const r=await send('Runtime.evaluate',{expression:expr,aw
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const shot=async(n)=>{const r=await send('Page.captureScreenshot',{format:'png'}); fs.writeFileSync('/tmp/shots/'+n+'.png',Buffer.from(r.result.data,'base64'));};
 fs.mkdirSync('/tmp/shots',{recursive:true});
-await send('Runtime.enable'); await send('Page.enable');
+await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"});
 await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
 await send('Page.navigate',{url:'http://localhost:8765/'}); await sleep(1500);
 await shot('01-lock');

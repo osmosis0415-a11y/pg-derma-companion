@@ -1,26 +1,42 @@
 rules_version = '2';
-// PG Derma Companion — batch hub security rules.
-// Only batch calendar events, member display names/years and anonymous procedure counts are stored.
+// PG Derma Companion — security rules.
+// Access is by Google sign-in + manual approval by the admin. Patient data is never stored here
+// (cloud sync goes, encrypted, to each user's own Google Drive). Firestore holds only:
+//   approvals/{uid}  — access requests;  batches/** — batch calendar, member names, anonymous procedure counts.
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Signed in AND email verified (Google accounts are verified automatically).
     function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
-    function isMember(b) { return signedIn() && exists(/databases/$(database)/documents/batches/$(b)/members/$(request.auth.uid)); }
-    function isAdmin(b) { return signedIn() && request.auth.uid in get(/databases/$(database)/documents/batches/$(b)).data.admins; }
+    function isAdminUser() { return signedIn() && request.auth.token.email in ['sriramdeverashetty@gmail.com']; }
+    function approved() {
+      return isAdminUser() || (signedIn()
+        && exists(/databases/$(database)/documents/approvals/$(request.auth.uid))
+        && get(/databases/$(database)/documents/approvals/$(request.auth.uid)).data.status == 'approved');
+    }
+    function isMember(b) { return approved() && exists(/databases/$(database)/documents/batches/$(b)/members/$(request.auth.uid)); }
+    function isAdmin(b) { return approved() && request.auth.uid in get(/databases/$(database)/documents/batches/$(b)).data.admins; }
     function shortStr(v, n) { return v is string && v.size() <= n; }
 
-    // Personal encrypted vault for Cloud sync. Contents are AES-256-GCM ciphertext made on the device;
-    // only the signed-in owner can read or write their own subtree.
-    match /users/{uid}/{doc=**} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
+    // Access requests. A user can only file their own request as "pending"; only the admin decides.
+    match /approvals/{u} {
+      allow get: if signedIn() && (u == request.auth.uid || isAdminUser());
+      allow list: if isAdminUser();
+      allow create: if signedIn() && u == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.keys().hasOnly(['email', 'name', 'photo', 'status', 'requestedAt'])
+        && shortStr(request.resource.data.name, 120) && shortStr(request.resource.data.photo, 500);
+      allow update: if isAdminUser()
+        && request.resource.data.status in ['pending', 'approved', 'rejected']
+        && request.resource.data.keys().hasOnly(['email', 'name', 'photo', 'status', 'requestedAt', 'decidedAt', 'decidedBy']);
+      allow delete: if isAdminUser();
     }
 
     match /batches/{b} {
-      // The batch ID is the secret invite code (DVL-XXXX-XXXX). Signed-in users may look up a code they know,
+      // The batch ID is the secret invite code (DVL-XXXX-XXXX). Approved users may look up a code they know,
       // but nobody can list batches.
-      allow get: if signedIn();
+      allow get: if approved();
       allow list: if false;
-      allow create: if signedIn()
+      allow create: if approved()
         && b.matches('DVL-[A-Z0-9]{4}-[A-Z0-9]{4}')
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.admins == [request.auth.uid]
@@ -30,7 +46,7 @@ service cloud.firestore {
 
       match /members/{u} {
         allow read: if isMember(b);
-        allow create, update: if signedIn() && u == request.auth.uid
+        allow create, update: if approved() && u == request.auth.uid
           && exists(/databases/$(database)/documents/batches/$(b))
           && request.resource.data.keys().hasOnly(['name', 'year', 'joinedAt'])
           && shortStr(request.resource.data.name, 80) && shortStr(request.resource.data.year, 10);

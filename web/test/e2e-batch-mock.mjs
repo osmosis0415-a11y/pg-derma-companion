@@ -6,7 +6,7 @@ const send=(method,params={})=>new Promise(r=>{const i=++id;pend[i]=r;ws.send(JS
 const ev=async e=>{const r=(await send('Runtime.evaluate',{expression:e,returnByValue:true,awaitPromise:true})).result; if(r.exceptionDetails) errs.push('EVAL: '+r.exceptionDetails.exception?.description); return r.result?.value};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)); const chk=(n,c)=>console.log((c?'PASS ':'FAIL ')+n);
 const shot=async n=>{const r=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync('/tmp/'+n+'.png',Buffer.from(r.result.data,'base64'))};
-await send('Runtime.enable'); await send('Page.enable');
+await send('Runtime.enable'); await send('Page.enable'); await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}})"});
 await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
 await send('Page.navigate',{url:'http://localhost:8765/'}); await sleep(1200);
 await ev(`$('#pin').value='1234';$('#pin2').value='1234';$('#unlock').click()`); await sleep(2000);

@@ -470,6 +470,7 @@ ACT.chkreset = () => { delete D.checks[CHECKLISTS[+(ROUTE.q.k || 0)].name]; Stor
 function vMore() {
   setTitle('More', false);
   const t = [['#/batch', '🧑‍🤝‍🧑', 'Batch hub'], ['#/logbook', '📒', 'NMC Logbook'], ['#/thesis', '🎓', 'Thesis tracker'], ['#/inv', '🧪', 'Investigations'], ['#/cal', '📅', 'Follow-ups'], ['#/analytics', '📊', 'Analytics'], ['#/formulary', '💊', 'Formulary & calculators'], ['#/checklists', '✅', 'OT checklists'], ['#/vault', '🖼️', 'Photo vault'], ['#/settings', '⚙️', 'Settings & backup']];
+  if (amAdmin()) t.unshift(['#/admin', '🛡️', 'Access requests']);
   main().innerHTML = `<div class="tiles">${t.map(([h, i, l]) => `<a class="tile" href="${h}">${i}<span>${l}</span></a>`).join('')}</div>`;
 }
 function vSettings() {

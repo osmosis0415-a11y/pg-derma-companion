@@ -12,6 +12,10 @@ Open it on your phone and install it to the home screen (Android Chrome: ⋮ →
 - **Refresh-safe:** reloading keeps the app unlocked until the auto-lock time (default 15 min).
 - **OTA updates:** every push to `main` deploys a new build, and installed apps show *"New version available — tap to update"*. See [CHANGELOG.md](CHANGELOG.md).
 
+## Access control
+
+Everyone signs in with Google. New accounts appear in **More → Access requests** for the admin (`sriramdeverashetty@gmail.com`, set in `web/src/gate.js` and `firestore.rules`) to approve, reject or revoke. Approval is enforced in `firestore.rules`, so unapproved accounts can't use the Batch hub even outside the app. Once approved, the decision is cached so the app works offline, and it is re-checked whenever the device is online.
+
 ## Privacy model
 
 - All patient data and photos stay **on your device only**, in IndexedDB, encrypted with **AES-256-GCM**. The key is derived from your PIN with PBKDF2-SHA256 (310,000 iterations), and the PIN itself is never stored.

@@ -2,6 +2,12 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 19 Nov 2026 (Google sign-in & approval)
+- **Sign in with Google** is now required to open the app. New accounts wait for **approval by the admin (Dr. Sriram)**; the screen unlocks automatically once approved. There's a button to ask for approval on WhatsApp.
+- Admin: **More → Access requests** to approve, reject or revoke. Revoked accounts are locked out the next time the app goes online.
+- Once approved, the app still works offline. Google Drive sync uses the same Google account.
+- Fixed: the very first visit could reload the page once while the offline cache installed.
+
 ## 19 Nov 2026 (Google Drive)
 - **Cloud sync now uses your own Google Drive.** Settings → Cloud sync → **Connect Google Drive**. Records and photos are saved, encrypted with your PIN, in a hidden PG Derma folder in *your* Drive (your own 15 GB, not a shared limit). The app can't see any of your other Drive files.
 - **Restore from Google Drive** on a new phone from the first screen.

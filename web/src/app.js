@@ -8,7 +8,7 @@ const ROUTES = [
   [/^deid\/([\w-]+)$/, vDeid, 'vault', ['id']], [/^compare\/([\w-]+)$/, vCompare, 'vault', ['id']],
   [/^inv$/, vInv, 'more'], [/^cal$/, vCal, 'more'], [/^logbook$/, vLogbook, 'more'], [/^logadd$/, vLogAdd, 'more'], [/^targets$/, vTargets, 'more'],
   [/^thesis$/, vThesis, 'more'], [/^thesis-setup$/, vThesisSetup, 'more'], [/^analytics$/, vAnalytics, 'more'],
-  [/^formulary$/, vFormulary, 'more'], [/^checklists$/, vChecklists, 'more'], [/^more$/, vMore, 'more'], [/^settings$/, vSettings, 'more'], [/^batch$/, vBatch, 'more']
+  [/^formulary$/, vFormulary, 'more'], [/^checklists$/, vChecklists, 'more'], [/^more$/, vMore, 'more'], [/^settings$/, vSettings, 'more'], [/^batch$/, vBatch, 'more'], [/^admin$/, vAdmin, 'more']
 ];
 function render() {
   if (!D) return;
@@ -17,6 +17,8 @@ function render() {
   const [path, qs] = h.split('?');
   ROUTE = { path: path.split('/')[0], q: Object.fromEntries(new URLSearchParams(qs || '')) };
   if (ROUTE.path !== 'batch' && typeof Cloud !== 'undefined') Cloud.stop();
+  if (ROUTE.path !== 'admin' && adminUnsub) { adminUnsub(); adminUnsub = null; }
+  const na = $('#navadmin'); if (na) na.hidden = !amAdmin();
   for (const [re, fn, tab, keys] of ROUTES) {
     const m = path.match(re);
     if (m) { (keys || []).forEach((k, i) => ROUTE[k] = m[i + 1]); $$('.nav a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab)); window.scrollTo(0, 0); fn(); return; }
@@ -45,7 +47,7 @@ async function showLock() {
       else if (!(await Vault.unlock(v))) throw new Error('Incorrect PIN');
       await Store.load(); await Store.flush(); await Session.save();
       $('#lock').hidden = true; $('#app').hidden = false; pin.value = '';
-      lastAct = Date.now(); render(); checkNotify(); Sync.start();
+      lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck();
     } catch (e) { $('#lerr').textContent = e.message; $('#unlock').disabled = false; $('#unlock').textContent = auth ? 'Unlock' : 'Create vault'; pin.select(); }
   };
   $('#unlock').onclick = go2; pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); if (auth) go2(); else $('#pin2').focus(); } });
@@ -93,8 +95,9 @@ let lastW = innerWidth; addEventListener('resize', () => { if ((lastW >= 900) !=
   if (!window.crypto?.subtle || !window.indexedDB) { document.body.innerHTML = '<p style="padding:24px">This browser does not support secure storage (needs HTTPS + IndexedDB + WebCrypto).</p>'; return; }
   try { await navigator.storage?.persist?.(); } catch (e) {}
   await IDB.open();
+  await Gate.ensure();
   if (await Session.resume()) {
-    try { await Store.load(); $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); checkNotify(); Sync.start(); }
+    try { await Store.load(); $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); }
     catch (e) { Vault.key = null; D = null; await Session.clear(); showLock(); }
   } else showLock();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
@@ -106,7 +109,8 @@ let lastW = innerWidth; addEventListener('resize', () => { if ((lastW >= 900) !=
       const check = () => reg.update().catch(() => {});
       setInterval(check, 30 * 60000); document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
     }).catch(() => {});
-    let reloading = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloading) { reloading = true; location.reload(); } });
+    let reloading = false; const hadController = !!navigator.serviceWorker.controller;
+    /* Reload only when an UPDATE takes over — not when the first-ever install claims the page. */
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloading) { reloading = true; location.reload(); } });
   }
 })();

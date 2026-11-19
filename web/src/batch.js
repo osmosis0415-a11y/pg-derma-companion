@@ -71,12 +71,10 @@ ACT.fbcfgsave = () => {
   D.settings.fbConfig = cfg; Store.save(); Cloud.ready = null; toast('Firebase config saved'); render();
 };
 function signInHTML() {
-  return `<div class="card form"><h3>Sign in to your batch hub</h3><p class="small muted">Only your name, residency year, batch events and (if you opt in) anonymous procedure counts are stored online. Patient data never leaves this phone.</p>
-  <button class="btn ghost" data-act="gsign" style="width:100%">Continue with Google</button><p class="center small muted">or</p>
-  <label>Email<input id="b_email" type="email" autocomplete="email"></label><label>Password<input id="b_pw" type="password" autocomplete="current-password"></label>
-  <div class="actions"><button class="btn ghost" data-act="esignup">Create account</button><button class="btn" data-act="esignin">Sign in</button></div>
-  <button class="btn xs ghost" data-act="ereset">Forgot password?</button></div>`;
+  return `<div class="card"><h3>Sign in to your batch hub</h3><p class="small muted">Only your name, residency year, batch events and (if you opt in) anonymous procedure counts are stored online. Patient data never leaves this phone unencrypted.</p>
+  <button class="btn gbtn" data-act="gsign2" style="width:100%"><span class="g">G</span> Continue with Google</button></div>`;
 }
+ACT.gsign2 = async () => { try { await googleSignIn(); render(); } catch (e) { toast(authMsg(e)); } };
 ACT.gsign = async () => { const f = Cloud.f, pr = new f.GoogleAuthProvider(); const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone; try { if (standalone) await f.signInWithRedirect(Cloud.auth, pr); else await f.signInWithPopup(Cloud.auth, pr); } catch (e) { if (e.code === 'auth/popup-blocked') await f.signInWithRedirect(Cloud.auth, pr); else toast(authMsg(e)); } };
 ACT.esignin = async () => { try { await Cloud.f.signInWithEmailAndPassword(Cloud.auth, val('b_email'), $('#b_pw').value); Cloud.user = Cloud.auth.currentUser; render(); } catch (e) { toast(authMsg(e)); } };
 ACT.esignup = async () => { try { await Cloud.f.createUserWithEmailAndPassword(Cloud.auth, val('b_email'), $('#b_pw').value); Cloud.user = Cloud.auth.currentUser; await sendVerify(); render(); } catch (e) { toast(authMsg(e)); } };
