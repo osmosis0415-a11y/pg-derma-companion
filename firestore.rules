@@ -59,6 +59,19 @@ service cloud.firestore {
         && request.resource.data.status in ['draft', 'live'];
       allow delete: if isAdminUser();
     }
+    // Journal digest: paper summaries the bot drafts (or the admin writes); residents read only published ("live") posts.
+    // Pictures are https links to openly licensed images, or a small JPEG the admin uploads.
+    match /digest/{d} {
+      function dkeys() { return ['status', 'kind', 'h', 's', 'k', 'w', 'lvl', 'top', 'j', 'au', 'yr', 'pmid', 'doi', 'url', 'pt', 'img', 'imgCap', 'imgCredit', 'imgLic', 'imgSrc', 'imgKind', 'src', 'model', 'createdAt', 'approvedAt', 'pubAt', 'err', 'by']; }
+      allow get, list: if isAdminUser() || (approved() && resource.data.status == 'live');
+      allow create, update: if isAdminUser()
+        && request.resource.data.keys().hasOnly(dkeys())
+        && request.resource.data.status in ['queued', 'draft', 'scheduled', 'live', 'failed']
+        && (!('img' in request.resource.data) || (request.resource.data.img is string && request.resource.data.img.size() < 450000
+          && (request.resource.data.img.matches('https://.*') || request.resource.data.img.matches('data:image/jpeg;base64,.*'))))
+        && (!('url' in request.resource.data) || (request.resource.data.url is string && request.resource.data.url.matches('https://.*')));
+      allow delete: if isAdminUser();
+    }
     // Direct calls (no batch needed): the admin can call any approved resident; residents can call each other when the admin has switched calling on for both. Media never touches Firestore.
     match /dcalls/{c} {
       function dparty() { return resource.data.caller == request.auth.uid || resource.data.callee == request.auth.uid; }

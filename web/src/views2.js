@@ -472,7 +472,7 @@ function vMore() {
   const s = D.settings, name = s.name || 'Your profile', yr = residencyYear(new Date());
   setTitle(name, false, `<button class="icon" data-act="lock" aria-label="Lock app">${ic('lock')}</button><a class="icon" href="#/settings" aria-label="Settings">${ic('menu')}</a>`);
   const perf = D.logbook.filter(l => l.role === 'Performed').length;
-  const t = [['#/batch', 'users', 'Batch'], ['#/logbook', 'book', 'Logbook'], ['#/thesis', 'grad', 'Thesis'], ['#/inv', 'flask', 'Reports'], ['#/cal', 'calendar', 'Follow-ups'], ['#/analytics', 'chart', 'Analytics'], ['#/formulary', 'pill', 'Formulary'], ['#/checklists', 'check', 'OT lists'], ['#/settings', 'settings', 'Settings']];
+  const t = [['#/batch', 'users', 'Batch'], ['#/journal', 'news', 'Journal'], ['#/logbook', 'book', 'Logbook'], ['#/thesis', 'grad', 'Thesis'], ['#/inv', 'flask', 'Reports'], ['#/cal', 'calendar', 'Follow-ups'], ['#/analytics', 'chart', 'Analytics'], ['#/formulary', 'pill', 'Formulary'], ['#/checklists', 'check', 'OT lists'], ['#/settings', 'settings', 'Settings']];
   if (amAdmin()) t.unshift(['#/admin', 'shield', 'Admin']);
   const ph = [...D.photos].sort((a, b) => (b.at || '').localeCompare(a.at || ''));
   main().innerHTML = `${inviteCardHTML()}<section class="prof">

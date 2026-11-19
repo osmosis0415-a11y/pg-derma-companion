@@ -73,6 +73,7 @@ function checkNew() {
     var pending = listByStatus_('pending');
     var fresh = pending.filter(function (p) { return seen.indexOf(p.uid) < 0; });
     try { pushOut(); } catch (e) { Logger.log('push: ' + e); }
+    try { digestTick(); } catch (e) { Logger.log('digest: ' + e); }
     if (!fresh.length) return;
     notifyEmail_(fresh, pending.length);
     notifyTelegram_(fresh);
@@ -402,4 +403,179 @@ function pushOut() {
     try { mark(); } catch (e) {}
   });
   return sent;
+}
+
+
+/* =====================================================================================
+ * JOURNAL DIGEST — new dermatology papers, summarised in our own words, with an openly licensed picture.
+ * makeDigest()  — daily ~7 am IST: searches PubMed for new reviews, trials, meta-analyses and guidelines in
+ *                 dermatology journals (Indian journals included), reads each abstract, asks Gemini for an
+ *                 ORIGINAL summary (never the abstract copied), and saves it to Firestore digest/{id}.
+ *                 Status "draft" (admin publishes in the admin page → Journal digest), or "live" straight away
+ *                 if the admin switched on Auto-publish there (config/digest.auto).
+ * digestTick()  — every minute (inside checkNew): writes posts the admin queued by PMID/DOI, and publishes
+ *                 scheduled posts whose time has come.
+ * Pictures: a figure from the paper ONLY when the paper is open access under a Creative Commons licence
+ *           (checked with Europe PMC), otherwise an openly licensed illustrative image from Wikimedia Commons,
+ *           otherwise none. Every picture keeps its credit, licence and source link.
+ * Run setupDigest() once from the editor.
+ * ===================================================================================== */
+var DIGEST_JOURNALS = ['J Am Acad Dermatol', 'Br J Dermatol', 'JAMA Dermatol', 'J Eur Acad Dermatol Venereol', 'J Invest Dermatol',
+  'Am J Clin Dermatol', 'Clin Exp Dermatol', 'Indian J Dermatol Venereol Leprol', 'Indian Dermatol Online J', 'Indian J Dermatol',
+  'Indian J Sex Transm Dis AIDS', 'Lepr Rev', 'Pediatr Dermatol', 'Dermatol Surg', 'J Cosmet Dermatol'];
+var INDIAN_JOURNALS = /indian|lepr/i;
+var EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/';
+var EPMC = 'https://www.ebi.ac.uk/europepmc/webservices/rest/';
+var DIGEST_KEYS = ['status', 'kind', 'h', 's', 'k', 'w', 'lvl', 'top', 'j', 'au', 'yr', 'pmid', 'doi', 'url', 'pt', 'img', 'imgCap', 'imgCredit', 'imgLic', 'imgSrc', 'imgKind', 'src', 'model', 'createdAt', 'approvedAt', 'pubAt', 'err', 'by'];
+
+function get_(url) {
+  var r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, headers: { 'User-Agent': 'PGDermaDigest/1.0 (non-commercial education)' } });
+  if (r.getResponseCode() >= 300) throw new Error('HTTP ' + r.getResponseCode() + ' ' + url.split('?')[0]);
+  return r.getContentText();
+}
+function untag_(s) {
+  return String(s || '').replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, function (m, h) { return String.fromCharCode(parseInt(h, 16)); }).replace(/&#(\d+);/g, function (m, d) { return String.fromCharCode(+d); })
+    .replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+}
+function tagAll_(xml, tag) { var re = new RegExp('<' + tag + '(\\s[^>]*)?>([\\s\\S]*?)</' + tag + '>', 'g'), out = [], m; while ((m = re.exec(xml))) out.push({ attr: m[1] || '', body: m[2] }); return out; }
+function tag1_(xml, tag) { var a = tagAll_(xml, tag); return a.length ? a[0].body : ''; }
+
+/* ---- PubMed ---- */
+function pubmedSearch_(term, days, max) {
+  var u = EUTILS + 'esearch.fcgi?db=pubmed&retmode=json&sort=pub_date&retmax=' + (max || 40) + (days ? '&datetype=edat&reldate=' + days : '') + '&term=' + encodeURIComponent(term);
+  return ((JSON.parse(get_(u)).esearchresult || {}).idlist || []).map(String);
+}
+function pubmedFetch_(pmids) {
+  if (!pmids.length) return [];
+  var xml = get_(EUTILS + 'efetch.fcgi?db=pubmed&retmode=xml&id=' + pmids.join(','));
+  return tagAll_(xml, 'PubmedArticle').map(function (a) {
+    var x = a.body, ids = {};
+    tagAll_(tag1_(x, 'ArticleIdList'), 'ArticleId').forEach(function (i) { var t = (i.attr.match(/IdType="([^"]+)"/) || [])[1]; if (t) ids[t] = untag_(i.body); });
+    var abs = tagAll_(x, 'AbstractText').map(function (p) { var l = (p.attr.match(/Label="([^"]+)"/) || [])[1]; return (l ? l + ': ' : '') + untag_(p.body); }).join('\n');
+    var authors = tagAll_(x, 'Author').map(function (au) { var ln = untag_(tag1_(au.body, 'LastName')), ini = untag_(tag1_(au.body, 'Initials')); return ln ? ln + (ini ? ' ' + ini : '') : untag_(tag1_(au.body, 'CollectiveName')); }).filter(String);
+    var ji = tag1_(x, 'JournalIssue'), yr = untag_(tag1_(tag1_(ji, 'PubDate'), 'Year')) || (untag_(tag1_(tag1_(ji, 'PubDate'), 'MedlineDate')).match(/\d{4}/) || [''])[0];
+    return { pmid: untag_(tag1_(x, 'PMID')), title: untag_(tag1_(x, 'ArticleTitle')), abs: abs, j: untag_(tag1_(x, 'ISOAbbreviation')) || untag_(tag1_(x, 'Title')),
+      yr: yr, au: authors.slice(0, 3).join(', ') + (authors.length > 3 ? ' et al.' : ''), doi: ids.doi || '', pmc: ids.pmc || '',
+      pt: tagAll_(x, 'PublicationType').map(function (p) { return untag_(p.body); }).filter(function (t) { return t !== 'Journal Article'; }).slice(0, 4) };
+  }).filter(function (a) { return a.pmid && a.title; });
+}
+
+/* ---- Pictures: open-licence only ---- */
+function paperFigure_(pmc) {
+  if (!pmc) return null;
+  var r = (JSON.parse(get_(EPMC + 'search?format=json&resultType=core&query=' + encodeURIComponent('PMCID:' + pmc))).resultList || {}).result || [];
+  var lic = String((r[0] || {}).license || '').toLowerCase();
+  if (!/^cc/.test(lic)) return null; // not openly licensed → never reuse its figures
+  var xml = get_(EPMC + pmc + '/fullTextXML'), figs = tagAll_(xml, 'fig');
+  for (var i = 0; i < figs.length; i++) {
+    var href = (figs[i].body.match(/<graphic[^>]*xlink:href="([^"]+)"/) || [])[1]; if (!href) continue;
+    var label = untag_(tag1_(figs[i].body, 'label')), cap = untag_(tag1_(figs[i].body, 'caption'));
+    return { img: 'https://europepmc.org/articles/' + pmc + '/bin/' + href + (/\.(jpe?g|png|gif)$/i.test(href) ? '' : '.jpg'),
+      imgCap: clip_((label ? label + '. ' : '') + cap, 300), imgLic: lic.toUpperCase(),
+      imgSrc: 'https://europepmc.org/article/PMC/' + pmc.replace(/^PMC/, ''), imgKind: 'paper' };
+  }
+  return null;
+}
+function commonsImage_(q) {
+  if (!q) return null;
+  var u = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=8&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=900&gsrsearch=' + encodeURIComponent(q + ' skin filetype:bitmap');
+  var pages = (JSON.parse(get_(u)).query || {}).pages || {};
+  var list = Object.keys(pages).map(function (k) { return pages[k]; }).sort(function (a, b) { return (a.index || 0) - (b.index || 0); });
+  for (var i = 0; i < list.length; i++) {
+    var ii = (list[i].imageinfo || [])[0]; if (!ii) continue; var md = ii.extmetadata || {}, v = function (k) { return untag_((md[k] || {}).value || ''); };
+    var lic = v('LicenseShortName');
+    if (!/^(CC|Public domain|PD)/i.test(lic)) continue; // openly licensed only
+    return { img: ii.thumburl || ii.url, imgCap: clip_(v('ImageDescription') || String(list[i].title || '').replace(/^File:/, ''), 300), imgCredit: clip_(v('Artist') || v('Credit') || 'Wikimedia Commons', 160),
+      imgLic: clip_(lic, 60), imgSrc: ii.descriptionurl || '', imgKind: 'illustrative' };
+  }
+  return null;
+}
+
+/* ---- Writing one post ---- */
+function digestPrompt_(a) {
+  return 'You write a short "journal watch" post for Indian MD Dermatology, Venereology & Leprosy residents.\n' +
+    'Use ONLY the facts in this PubMed record. Never add facts, numbers or claims that are not in it. Copy every number exactly as given.\n' +
+    'Write in your OWN words — do not copy sentences from the abstract. British spelling, plain text, no markdown.\n' +
+    'Title: ' + a.title + '\nJournal: ' + a.j + ' (' + a.yr + ')\nPublication type: ' + (a.pt.join(', ') || 'Article') + '\nAbstract:\n' + clip_(a.abs, 6000) + '\n\n' +
+    'Return JSON exactly as {"ok":true,"h":"<headline, max 90 characters>","s":"<summary, 60-110 words: question, how it was studied, main findings>",' +
+    '"k":["<3 or 4 key points, each one sentence>"],"w":"<1-2 sentences: what this means for a dermatology resident in India; say \'early evidence\' if it is preliminary>",' +
+    '"lvl":"<study design, e.g. Randomised controlled trial, Systematic review and meta-analysis, Guideline, Narrative review, Cohort study>",' +
+    '"top":"<main topic in 1-3 words, e.g. Psoriasis>","img":"<the main skin disease in 1-3 English words, for an image search, or empty if none>"}\n' +
+    'Set "ok":false if the record has no real abstract or is not useful for clinical dermatology training (e.g. purely molecular mouse work, errata, editorials).';
+}
+function writeDigest_(a, by) {
+  var g = gemini_(digestPrompt_(a)), o;
+  try { o = JSON.parse(g.text); } catch (e) { var m = g.text.match(/\{[\s\S]*\}/); o = m ? JSON.parse(m[0]) : null; }
+  if (!o || o.ok === false || !o.h || !o.s) return null;
+  var post = { kind: 'journal', h: clip_(o.h, 120), s: clip_(o.s, 1200), k: (o.k || []).map(function (x) { return clip_(x, 300); }).filter(String).slice(0, 5), w: clip_(o.w, 500),
+    lvl: clip_(o.lvl, 60), top: clip_(o.top || 'Dermatology', 40), j: clip_(a.j, 120), au: clip_(a.au, 160), yr: clip_(a.yr, 4), pmid: a.pmid, doi: clip_(a.doi, 120),
+    url: a.doi ? 'https://doi.org/' + a.doi : 'https://pubmed.ncbi.nlm.nih.gov/' + a.pmid + '/', pt: a.pt, src: 'ai', model: g.model, by: by || 'bot' };
+  var pic = null;
+  try { pic = paperFigure_(a.pmc); if (pic) pic.imgCredit = clip_(a.au + ', ' + a.j + ' ' + a.yr, 160); } catch (e) { Logger.log('figure: ' + e); }
+  if (!pic) { try { pic = commonsImage_(clip_(o.img, 40)); } catch (e) { Logger.log('commons: ' + e); } }
+  if (pic) Object.keys(pic).forEach(function (k) { post[k] = pic[k]; });
+  return post;
+}
+function digestFields_(o) { var f = {}; Object.keys(o).forEach(function (k) { if (DIGEST_KEYS.indexOf(k) >= 0 && o[k] !== undefined && o[k] !== '') f[k] = toFs_(o[k]); }); return f; }
+function digestCfg_() { try { return docObj_(fs_('get', '/config/digest')); } catch (e) { return {}; } }
+
+function makeDigest(maxOverride) {
+  var lock = LockService.getScriptLock(); if (!lock.tryLock(30000)) return 0;
+  try {
+    var cfg = digestCfg_(), want = Math.max(1, Math.min(6, +(maxOverride || cfg.perDay || props_().getProperty('DIGEST_PER_DAY') || 3)));
+    var have = {}; query_('digest', null, null, null, 1000).forEach(function (d) { if (d.pmid) have[d.pmid] = 1; });
+    var term = '(' + DIGEST_JOURNALS.map(function (j) { return '"' + j + '"[ta]'; }).join(' OR ') + ') AND (Review[pt] OR Systematic Review[pt] OR Meta-Analysis[pt] OR Randomized Controlled Trial[pt] OR Guideline[pt] OR Practice Guideline[pt] OR Clinical Trial[pt]) AND hasabstract[text] AND english[la]';
+    var ids = pubmedSearch_(term, 21, 60).filter(function (id) { return !have[id]; });
+    var arts = pubmedFetch_(ids.slice(0, 30));
+    // one Indian paper first when available, then the rest, newest first
+    arts.sort(function (x, y) { return (INDIAN_JOURNALS.test(y.j) ? 1 : 0) - (INDIAN_JOURNALS.test(x.j) ? 1 : 0); });
+    var auto = cfg.auto === true, saved = [];
+    for (var i = 0; i < arts.length && saved.length < want; i++) {
+      var p; try { p = writeDigest_(arts[i]); } catch (e) { Logger.log('digest write ' + arts[i].pmid + ': ' + e); if (/no free model/.test(String(e))) break; continue; }
+      if (!p) continue;
+      p.status = auto ? 'live' : 'draft'; p.createdAt = new Date(); if (auto) p.approvedAt = new Date();
+      var d = fs_('post', '/digest', { fields: digestFields_(p) }); p.id = d.name.split('/').pop(); saved.push(p);
+    }
+    if (saved.length) emailDigest_(saved, auto);
+    Logger.log('Journal digest: ' + saved.length + ' post(s), auto-publish ' + auto);
+    return saved.length;
+  } finally { lock.releaseLock(); }
+}
+function emailDigest_(posts, auto) {
+  var rows = posts.map(function (p) {
+    return '<div style="border:1px solid #e3e3e3;border-radius:10px;padding:10px 12px;margin:10px 0">' + (p.img ? '<img src="' + esc_(p.img) + '" style="max-width:100%;max-height:200px;border-radius:8px" alt="">' : '') +
+      '<div style="font-size:11px;color:#0f766e;font-weight:700;text-transform:uppercase">' + esc_(p.lvl) + ' · ' + esc_(p.top) + '</div><b>' + esc_(p.h) + '</b><div style="color:#444;margin-top:4px">' + esc_(p.s) + '</div>' +
+      '<div style="color:#888;font-size:12px">' + esc_(p.j + ' ' + p.yr) + ' · <a href="' + esc_(p.url) + '">paper</a>' + (p.imgLic ? ' · image ' + esc_(p.imgLic) : '') + '</div></div>';
+  }).join('');
+  MailApp.sendEmail({ to: admin_(), subject: 'PG Derma journal digest: ' + posts.length + (auto ? ' new post(s) published' : ' post(s) to review'), name: 'PG Derma bot',
+    htmlBody: '<div style="font-family:Arial,sans-serif;max-width:600px"><p>' + (auto ? 'Auto-publish is on, so these are already live.' : 'Check each against the paper, then publish in the admin page.') + '</p>' +
+      '<p><a href="' + APP_URL + 'admin.html#digest" style="display:inline-block;padding:8px 14px;border-radius:8px;background:#0f766e;color:#fff;text-decoration:none;font-weight:600">Open Journal digest</a></p>' + rows +
+      '<p style="color:#777;font-size:12px">AI summaries can contain errors — the paper is the source of truth.</p></div>' });
+}
+
+/* Posts queued from the admin page (PMID or DOI), and scheduled posts that are due. Runs every minute. */
+function digestTick() {
+  var queued = query_('digest', 'status', 'EQUAL', 'queued', 3);
+  queued.forEach(function (q) {
+    var patch = function (o) { fs_('patch', '/digest/' + encodeURIComponent(q.id) + '?' + Object.keys(o).map(function (k) { return 'updateMask.fieldPaths=' + k; }).join('&') + '&currentDocument.exists=true', { fields: digestFields_(o) }); };
+    try {
+      var pmid = String(q.pmid || '').replace(/\D/g, '');
+      if (!pmid && q.doi) pmid = (pubmedSearch_('"' + String(q.doi).replace(/^https?:\/\/(dx\.)?doi\.org\//, '') + '"[doi]', 0, 1)[0]) || '';
+      if (!pmid) return patch({ status: 'failed', err: 'Not found in PubMed. Check the PMID/DOI, or write the post yourself.' });
+      var a = pubmedFetch_([pmid])[0]; if (!a) return patch({ status: 'failed', err: 'PubMed returned nothing for PMID ' + pmid });
+      if (!a.abs) return patch({ status: 'failed', pmid: pmid, err: 'This paper has no abstract in PubMed, so the bot cannot summarise it safely.' });
+      var p = writeDigest_(a, q.by || 'admin'); if (!p) return patch({ status: 'failed', pmid: pmid, err: 'The AI judged it not useful for residents or could not summarise it. Write it yourself if you still want it.' });
+      p.status = 'draft'; p.err = ''; patch(p);
+    } catch (e) { try { patch({ status: 'failed', err: clip_(String(e.message || e), 300) }); } catch (e2) {} }
+  });
+  var now = Date.now();
+  query_('digest', 'status', 'EQUAL', 'scheduled', 50).forEach(function (d) {
+    if (d.pubAt && Date.parse(d.pubAt) <= now) fs_('patch', '/digest/' + encodeURIComponent(d.id) + '?updateMask.fieldPaths=status&updateMask.fieldPaths=approvedAt&currentDocument.exists=true', { fields: { status: { stringValue: 'live' }, approvedAt: { timestampValue: new Date().toISOString() } } });
+  });
+}
+function setupDigest() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'makeDigest') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('makeDigest').timeBased().everyDays(1).atHour(7).create();
+  Logger.log('Journal digest trigger set: daily ~7 am IST. Drafted now: ' + makeDigest());
 }

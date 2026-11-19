@@ -268,7 +268,8 @@ const Feed = {
   append(k) {
     const box = $('#feedlist'); if (!box) return;
     const items = this.next(k); if (!items.length) return;
-    const html = items.map(x => { const i = this.q.length; this.q.push(x); let h = this.cardHTML(x, i); if (this.q.length % 15 === 0) h += this.checkpointHTML(); return h; }).join('');
+    if (typeof Journal !== 'undefined') for (let p = 3; p < items.length; p += 8) { const j = Journal.feedPick(); if (j) items.splice(p, 0, Object.assign({ t: 'news' }, j)); }
+    const html = items.map(x => { const i = this.q.length; this.q.push(x); let h = x.t === 'news' ? Journal.feedHTML(x, i) : this.cardHTML(x, i); if (this.q.length % 15 === 0) h += this.checkpointHTML(); return h; }).join('');
     box.insertAdjacentHTML('beforeend', html);
     $$('#feedlist .fcard:not([data-obs])').forEach(el => { el.dataset.obs = 1; this.io.observe(el); });
   },
@@ -283,7 +284,7 @@ const Feed = {
   },
   open() {
     if (typeof Comm !== 'undefined' && Cloud.cfg()) Cloud.init().then(() => Comm.listen()).catch(() => {});
-    $('#feedui')?.remove(); this.q = []; this.n = 0; this.right = 0; this.answered = 0; this.viewT = {};
+    $('#feedui')?.remove(); if (typeof Journal !== 'undefined') Journal._fused = null; this.q = []; this.n = 0; this.right = 0; this.answered = 0; this.viewT = {};
     const ui = document.createElement('div'); ui.id = 'feedui';
     ui.innerHTML = `<div class="fbar"><button class="fx" data-fclose="1" aria-label="Close">‹</button><b class="fbrand">${logoSvg()}Feed</b><div id="fstat"></div></div><div id="feedlist"></div>`;
     document.body.appendChild(ui); document.body.classList.add('feedon');
@@ -293,7 +294,7 @@ const Feed = {
         if (+el.dataset.i >= this.q.length - 4) this.append(10);
         this.inT = this.inT || {}; this.inT[id] = Date.now();
         if (id && !el.dataset.counted) { const x = this.q[+el.dataset.i]; if (x && x.t === 'pearl') this.viewT[id] = setTimeout(() => { if (!el.dataset.counted) { el.dataset.counted = 1; this.count(x, true); } }, 1500); }
-      } else if (id) { clearTimeout(this.viewT[id]); if (this.inT && this.inT[id] && typeof Rank !== 'undefined') { const ms = Date.now() - this.inT[id]; delete this.inT[id]; const x = this.q[+el.dataset.i]; if (x) { if (x.t === 'post') { Rank.dwell(Object.assign({ top: x.top, t: x.post.kind }, x.post), ms); if (ms > 1500) Rank.seenPost(x.post.id); } else Rank.dwell(x, ms); } } }
+      } else if (id) { clearTimeout(this.viewT[id]); if (this.inT && this.inT[id] && typeof Rank !== 'undefined') { const ms = Date.now() - this.inT[id]; delete this.inT[id]; const x = this.q[+el.dataset.i]; if (x) { if (x.t === 'news') { Rank.dwell(x, ms); if (ms > 2500) { Journal.st().seen[x.id] = 1; } } else if (x.t === 'post') { Rank.dwell(Object.assign({ top: x.top, t: x.post.kind }, x.post), ms); if (ms > 1500) Rank.seenPost(x.post.id); } else Rank.dwell(x, ms); } } }
     }), { threshold: [0, 0.6, 1] });
     this.stat(); this.append(12);
     ui.addEventListener('click', e => this.click(e));
@@ -301,7 +302,7 @@ const Feed = {
   },
   close() { this.io && this.io.disconnect(); $('#feedui')?.remove(); document.body.classList.remove('feedon'); },
   save(c, only) {
-    const s = Study.st(), id = c.dataset.id; if (!id) return;
+    const s = Study.st(), id = c.dataset.id; if (!id || /^j_/.test(id)) return;
     if (only && s.saved[id]) { c.classList.add('burst'); setTimeout(() => c.classList.remove('burst'), 700); return; }
     if (s.saved[id]) delete s.saved[id]; else { s.saved[id] = 1; c.classList.add('burst'); setTimeout(() => c.classList.remove('burst'), 700); }
     Store.save(); const b = c.querySelector('[data-fsave]'); if (b) { b.classList.toggle('on', !!s.saved[id]); b.innerHTML = ic(s.saved[id] ? 'heartfill' : 'heart') + '<small>Save</small>'; }

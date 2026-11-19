@@ -2,7 +2,11 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
-
+## 2026-11-20 — Journal digest
+- **New: Journal digest** (Home card, Profile → Journal, and mixed into the swipe Feed). New dermatology papers — reviews, trials, meta-analyses and guidelines from JAAD, BJD, JAMA Dermatology, JEADV, IJDVL, IDOJ and more — summarised for residents: headline, short summary, key points, and "what it means for you", with a link to the paper.
+- **Pictures with credit:** a figure from the paper only when the paper is open access under a Creative Commons licence; otherwise an openly licensed illustrative image, or none. Every picture shows its credit and licence.
+- Save posts, filter by topic, share to WhatsApp. Read posts stop showing as "new". Works offline once loaded.
+- **Admin console → Journal digest:** the bot drafts papers every morning; review, edit, publish now or schedule. Add any paper by PMID or DOI and the bot writes it within a minute or two, or write a post yourself with your own picture. Optional auto-publish and papers-per-day setting.
 
 ## 2026-11-20 — Website look in the app; PIN-only login on a new phone
 - **The app now looks like the website:**

@@ -1,0 +1,93 @@
+// Journal digest: residents see only published posts (with picture credit), feed mixes them in, unsafe links are dropped;
+// admin page → Journal digest: queue by PMID, write own post, publish, schedule, auto-publish switch.
+import fs from 'fs';
+const MOCK = fs.readFileSync(new URL('./fs-shared-mock.js', import.meta.url), 'utf8');
+const DLG = fs.readFileSync(new URL('./dlg-auto.js', import.meta.url), 'utf8');
+const sleep = ms => new Promise(r => setTimeout(r, ms)); let fails = 0; const chk = (n, c) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + n); };
+const t = (await (await fetch('http://127.0.0.1:9333/json')).json()).find(t => t.type === 'page');
+const ws = new WebSocket(t.webSocketDebuggerUrl); await new Promise(r => ws.onopen = r);
+let id = 0; const pend = {}, errs = [], evs = [];
+ws.onmessage = m => { const d = JSON.parse(m.data); if (d.id && pend[d.id]) { pend[d.id](d); delete pend[d.id]; } if (d.method === 'Runtime.exceptionThrown') errs.push(d.params.exceptionDetails.exception?.description); if (d.method) evs.forEach(f => f(d)); };
+const send = (method, params = {}) => new Promise(r => { const i = ++id; pend[i] = r; ws.send(JSON.stringify({ id: i, method, params })); });
+const ev = async e => { const r = (await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true })).result; if (r.exceptionDetails) errs.push('EVAL: ' + (r.exceptionDetails.exception?.description || '').slice(0, 300)); return r.result?.value; };
+const shot = async n => { const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync('/tmp/' + n + '.png', Buffer.from(r.result.data, 'base64')); };
+await send('Runtime.enable'); await send('Page.enable');
+const boot = await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}});" + DLG + MOCK });
+await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+await send('Page.navigate', { url: 'http://localhost:8765/' }); await sleep(1500);
+await ev(`localStorage.removeItem('fsmock'); $('#pin').value='1234';$('#pin2').value='1234';$('#unlock').click()`); await sleep(2000);
+
+const IMG = await ev(`(()=>{const c=document.createElement('canvas');c.width=c.height=16;const x=c.getContext('2d');x.fillStyle='#c96';x.fillRect(0,0,16,16);return c.toDataURL('image/jpeg')})()`);
+await ev(`(()=>{const o={};
+  o['approvals/uR']={status:'approved',email:'r@x.com'};
+  o['digest/a1']={status:'live',kind:'journal',h:'Topical JAK cream helps vitiligo',s:'A trial of 120 adults found more repigmentation.',k:['Point A','Point B'],w:'Consider for facial vitiligo.',lvl:'Randomised controlled trial',top:'Vitiligo',j:'Br J Dermatol',au:'Rao K et al.',yr:'2026',pmid:'111',url:'https://doi.org/10.1/x',img:'${IMG}',imgKind:'paper',imgCredit:'Rao K, Br J Dermatol 2026',imgLic:'CC BY',imgSrc:'https://europepmc.org/article/PMC/900',approvedAt:Date.now()-1000};
+  o['digest/a2']={status:'live',kind:'journal',h:'<img src=x onerror=window.__pwn=1>Bad',s:'Escaping check',k:[],top:'Acne',url:'javascript:alert(1)',img:'http://insecure/x.jpg',imgSrc:'javascript:x',approvedAt:Date.now()-5000};
+  o['digest/d1']={status:'draft',h:'Not yet reviewed',s:'Hidden'};
+  localStorage.fsmock=JSON.stringify(o)})()`);
+await ev(`__installFsMock('uR','r@x.com','Resident'); Cloud.init().then(()=>Journal.pull(true))`); await sleep(500);
+chk('only live posts pulled', (await ev(`D.journal.length`)) === 2 && !(await ev(`D.journal.some(x=>x.h==='Not yet reviewed')`)));
+chk('unsafe paper/picture links dropped', await ev(`(()=>{const b=D.journal.find(x=>x.top==='Acne');return b.url===''&&b.img===''&&b.imgSrc===''})()`));
+await ev(`location.hash='#/home'`); await sleep(500);
+chk('home shows journal card with new count', (await ev(`$('.jhome')?.textContent||''`)).includes('2 new'));
+await ev(`location.hash='#/journal'`); await sleep(600);
+chk('journal lists both posts', (await ev(`$$('.jcard').length`)) === 2);
+chk('picture shown with credit and licence', (await ev(`$('#j_a1 .jcred')?.textContent||''`)).includes('CC BY') && (await ev(`!!$('#j_a1 img')`)));
+chk('html in headline is escaped', !(await ev(`window.__pwn`)) && (await ev(`$('#j_a2 .jh').textContent`)).startsWith('<img'));
+chk('no javascript: links rendered', !(await ev(`[...document.querySelectorAll('#main a')].some(a=>/^javascript:/i.test(a.getAttribute('href')||''))`)));
+await ev(`$('#j_a1 [data-act=jopen]').click()`); await sleep(200);
+chk('key points + take-home open', (await ev(`$('#j_a1 .jkp')?.textContent||''`)).includes('Point B') && (await ev(`$('#j_a1 .jtake')?.textContent||''`)).includes('facial vitiligo'));
+await ev(`$('#j_a1 [data-act=jsave]').click()`); await sleep(100);
+chk('save works', await ev(`!!D.jr.saved['j_a1']`));
+await ev(`location.hash='#/journal?f=Vitiligo'`); await sleep(400);
+chk('topic filter', (await ev(`$$('.jcard').length`)) === 1);
+await shot('journal');
+await ev(`location.hash='#/home'`); await sleep(400);
+chk('read posts no longer counted as new', !(await ev(`$('.jhome')?.textContent||''`)).includes('new'));
+chk('More has Journal tile', await ev(`(location.hash='#/more',new Promise(r=>setTimeout(()=>r(!!document.querySelector('a.tile[href="#/journal"]')),300)))`));
+await ev(`location.hash='#/feed'`); await sleep(900);
+chk('feed mixes in a journal card', (await ev(`$$('#feedlist .t-news').length`)) >= 1);
+await ev(`location.hash='#/home'`); await sleep(300);
+chk('no app errors', errs.length === 0); if (errs.length) console.log(errs);
+
+/* ---------- admin page, Firebase modules served by a mock ---------- */
+await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: boot.result.identifier });
+await send('Page.addScriptToEvaluateOnNewDocument', { source: DLG + MOCK + `;window.D={settings:{}};window.Cloud={};__installFsMock('uA','sriramdeverashetty@gmail.com','Sriram');Cloud.init();window.__F=Cloud.f;` });
+const MODS = {
+  'firebase-app.js': `export const initializeApp=()=>({});`,
+  'firebase-auth.js': `export const getAuth=()=>({});export const onAuthStateChanged=(a,cb)=>setTimeout(()=>cb({uid:'uA',email:'sriramdeverashetty@gmail.com',emailVerified:true}),0);export const signOut=async()=>{};export class GoogleAuthProvider{setCustomParameters(){}};export const signInWithPopup=async()=>{};`,
+  'firebase-firestore.js': `const f=window.__F;export const getFirestore=()=>({});export const {collection,doc,where,orderBy,limit,query,setDoc,updateDoc,addDoc,getDoc,getDocs,deleteDoc,onSnapshot,serverTimestamp,increment,arrayUnion}=f;export const deleteField=()=>undefined;`
+};
+await send('Fetch.enable', { patterns: [{ urlPattern: '*gstatic.com*' }] });
+evs.push(d => { if (d.method !== 'Fetch.requestPaused') return; const name = d.params.request.url.split('/').pop();
+  send('Fetch.fulfillRequest', { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'text/javascript' }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: Buffer.from(MODS[name] || '').toString('base64') }); });
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+await send('Page.navigate', { url: 'http://localhost:8765/admin.html#digest' }); await sleep(1800);
+const store = () => ev(`JSON.parse(localStorage.fsmock)`);
+chk('admin nav has Journal digest with draft count', (await ev(`$('a[data-v=digest]')?.textContent||''`)).includes('Journal digest') && (await ev(`$('#n_digest')?.textContent`)) === '1');
+chk('waiting tab shows the draft only', (await ev(`$('#main').textContent`)).includes('Not yet reviewed') && !(await ev(`$('#main').textContent`)).includes('Topical JAK'));
+await ev(`$('#dq').value='38123456'; $('#dqgo').click()`); await sleep(500);
+chk('PMID queued for the bot', Object.values(await store()).some(d => d.status === 'queued' && d.pmid === '38123456' && d.by === 'admin'));
+await ev(`$('#dq').value='not-a-paper'; $('#dqgo').click()`); await sleep(300);
+chk('invalid PMID/DOI rejected', Object.values(await store()).filter(d => d.status === 'queued').length === 1);
+await ev(`$('#dnew').click()`); await sleep(200);
+await ev(`$('#d_h').value='My own pearl post'; $('#d_s').value='Written by the admin.'; $('#d_k').value='One\\nTwo'; $('#d_img').value='https://upload.wikimedia.org/x.jpg'; $('#dnsave').click()`); await sleep(400);
+chk('picture without licence refused', !Object.values(await store()).some(d => d.h === 'My own pearl post'));
+await ev(`$('#d_imgLic').value='CC BY-SA 4.0'; $('#d_url').value='javascript:x'; $('#dnsave').click()`); await sleep(400);
+chk('non-https paper link refused', !Object.values(await store()).some(d => d.h === 'My own pearl post'));
+await ev(`$('#d_url').value='https://doi.org/10.1/own'; $('#dnsave').click()`); await sleep(600);
+const own = Object.values(await store()).find(d => d.h === 'My own pearl post');
+chk('admin post published with picture + licence', own && own.status === 'live' && own.src === 'admin' && own.imgLic === 'CC BY-SA 4.0' && own.k.length === 2 && !('pmid' in own));
+await ev(`location.hash='#x';location.hash='#digest'`); await sleep(600); await ev(`$('[data-t=draft]').click()`); await sleep(500);
+const dId = Object.entries(await store()).find(([, d]) => d.h === 'Not yet reviewed')[0].split('/')[1];
+await ev(`$('#dt_${dId}').value='2099-01-01T19:00'; $('[data-dsch="${dId}"]').click()`); await sleep(500);
+chk('schedule sets status + time', (await store())['digest/' + dId].status === 'scheduled' && (await store())['digest/' + dId].pubAt.startsWith('2099'));
+await ev(`$('[data-t=scheduled]').click()`); await sleep(400); await ev(`$('[data-dpub="${dId}"]').click()`); await sleep(500);
+chk('publish now', (await store())['digest/' + dId].status === 'live');
+await ev(`$('[data-t=live]').click()`); await sleep(400); await ev(`$('[data-dedit="a1"]').click()`); await sleep(200);
+await ev(`$('#d_h').value='Edited headline'; $('#desave').click()`); await sleep(500);
+chk('edit keeps the paper figure and credit', (await store())['digest/a1'].h === 'Edited headline' && (await store())['digest/a1'].imgKind === 'paper' && (await store())['digest/a1'].img === IMG);
+await ev(`$('#dauto').click()`); await sleep(300); await ev(`document.querySelector('.dlg [data-r="1"]')?.click()`); await sleep(500);
+chk('auto-publish switch saved', (await store())['config/digest'].auto === true);
+await shot('admin-digest');
+chk('no admin page errors', errs.length === 0); if (errs.length) console.log(errs);
+process.exit(fails ? 1 : 0);
