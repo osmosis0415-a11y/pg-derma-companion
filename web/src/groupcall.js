@@ -11,6 +11,7 @@ const Group = {
 
   /* ---------- invitations ---------- */
   watch() {
+    if (!D.batch) return;
     const f = Cloud.f, db = Cloud.db, b = D.batch.id, me = Cloud.user.uid;
     Calls.unsubs.push(f.onSnapshot(f.query(f.collection(db, 'batches', b, 'rooms'), f.where('people', 'array-contains', me)), s => {
       const docs = s.docChanges ? s.docChanges().filter(c => c.type !== 'removed').map(c => c.doc) : s.docs;

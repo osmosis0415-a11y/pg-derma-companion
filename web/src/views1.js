@@ -58,7 +58,7 @@ const nbadge = n => n ? `<b class="nb">${n > 99 ? '99+' : n}</b>` : '';
 function vHome() {
   const due = dueItems(0), unread = typeof Chat !== 'undefined' ? Chat.unread() : 0, t = today();
   setTitle('PG Derma', false, `<a class="icon topic" href="#/cal" aria-label="Reminders due">${ic('bell')}${nbadge(due.length)}</a><a class="icon topic" href="#/batch?t=chat" aria-label="Batch discussion">${ic('chat')}${nbadge(unread)}</a>`);
-  $('#title').classList.add('brandmark'); $('#title').insertAdjacentHTML('afterbegin', ic('steth'));
+  $('#title').classList.add('brandmark'); $('#title').insertAdjacentHTML('afterbegin', LOGO_SVG);
   const yr = residencyYear(new Date()), hr = new Date().getHours();
   const first = (D.settings.name || '').replace(/^Dr\.?\s+/i, '').split(/\s+/)[0];
   const hello = (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', Dr. ' + first : '');

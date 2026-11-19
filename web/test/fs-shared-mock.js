@@ -16,7 +16,7 @@ window.__installFsMock = (uid, email, name) => {
   const snapDoc = (k, v) => ({ id: k.split('/').pop(), ref: docRef(k.split('/')), exists: () => v !== undefined, data: () => v });
   const listDocs = q => { const pre = q.p.join('/') + '/', o = load(); let docs = Object.keys(o).filter(k => k.startsWith(pre) && !k.slice(pre.length).includes('/')).map(k => snapDoc(k, o[k]));
     for (const m of q.m || []) { if (m.op === '==') docs = docs.filter(d => d.data()[m.fld] === m.v); if (m.op === 'array-contains') docs = docs.filter(d => (d.data()[m.fld] || []).includes(m.v)); if (m.op === '>=') docs = docs.filter(d => d.data()[m.fld] >= m.v);
-      if (m.ob) { const v = d => d.data()[m.ob]; docs.sort((a, b) => (v(a) > v(b) ? 1 : v(a) < v(b) ? -1 : 0) * (m.dir === 'desc' ? -1 : 1)); } if (m.lim) docs = docs.slice(0, m.lim); }
+      if (m.ob) { const v = d => m.ob.split('.').reduce((o, k) => o == null ? undefined : o[k], d.data()); docs = docs.filter(d => v(d) !== undefined); docs.sort((a, b) => (v(a) > v(b) ? 1 : v(a) < v(b) ? -1 : 0) * (m.dir === 'desc' ? -1 : 1)); } if (m.lim) docs = docs.slice(0, m.lim); }
     return docs; };
   const f = {
     serverTimestamp: () => Date.now(), increment: n => ({ __inc: n }),

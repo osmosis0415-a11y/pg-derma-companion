@@ -128,10 +128,12 @@ function vAdmin() {
   if (tab === 'errors') return vAdminErrors();
   if (tab === 'batches') return vAdminBatches();
   if (tab === 'content') return vAdminContent();
+  if (tab === 'reports') return vAdminReports();
   main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === tab ? ' on' : ''}" href="#/admin?t=${k}">${l} <span id="cnt_${k}"></span></a>`).join('')}</div>
   <div id="alist" class="card"><p class="muted small">Loading…</p></div>
   <div class="card"><h3>Invite people</h3><p class="small muted">Share the app link. They sign in with Google and appear here for your approval.</p><button class="btn sm ghost" data-act="adminshare">Share app link</button></div>`;
   Cloud.init().then(() => {
+    if (ROUTE.q.dial && amAdmin()) { const id = ROUTE.q.dial, v = ROUTE.q.v === '1'; history.replaceState(null, '', '#/admin?t=approved'); Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'approvals', id)).then(d => { const x = d.data() || {}; Calls.call(id, x.name || x.email || 'Resident', v, true); }); }
     if (adminUnsub) adminUnsub();
     adminUnsub = Cloud.f.onSnapshot(Cloud.f.collection(Cloud.db, 'approvals'), snap => {
       if (ROUTE.path !== 'admin') return;
@@ -141,10 +143,11 @@ function vAdmin() {
       const list = all.filter(x => x.status === tab).sort((a, b) => ts(b.requestedAt) - ts(a.requestedAt));
       const el = $('#alist'); if (!el) return;
       el.innerHTML = list.map(x => `<div class="li"><div class="row" style="gap:10px">${x.photo ? `<img class="gav sm" src="${esc(x.photo)}" alt="" referrerpolicy="no-referrer">` : ''}<div><b>${esc(x.name || x.email)}</b><small>${esc(x.email)}${ts(x.requestedAt) ? ' · requested ' + fmt(new Date(ts(x.requestedAt)).toISOString()) : ''}</small></div></div>
-        <div class="btnrow" style="margin:0">${x.status !== 'approved' ? `<button class="btn xs" data-act="adminset" data-id="${x.id}" data-s="approved">Approve</button>` : ''}${x.status === 'pending' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Reject</button>` : ''}${x.status === 'approved' && !ADMIN_EMAILS.includes((x.email || '').toLowerCase()) ? `<button class="btn xs ${x.calls ? '' : 'ghost'}" data-act="admincalls" data-id="${x.id}" data-on="${x.calls ? 1 : 0}" title="Voice/video calls">${ic('phone')} Calls ${x.calls ? 'on' : 'off'}</button>` : ''}${x.status === 'approved' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Revoke</button>` : ''}${x.status === 'rejected' ? `<button class="btn xs ghost" data-act="admindel" data-id="${x.id}">Remove</button>` : ''}</div></div>`).join('') || `<p class="muted small">No ${tab} requests.</p>`;
+        <div class="btnrow" style="margin:0">${x.status !== 'approved' ? `<button class="btn xs" data-act="adminset" data-id="${x.id}" data-s="approved">Approve</button>` : ''}${x.status === 'pending' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Reject</button>` : ''}${x.status === 'approved' && !ADMIN_EMAILS.includes((x.email || '').toLowerCase()) ? `<button class="btn xs" data-act="admindial" data-id="${x.id}" data-n="${esc(x.name || x.email)}" data-v="0" aria-label="Voice call">${ic('phone')}</button><button class="btn xs" data-act="admindial" data-id="${x.id}" data-n="${esc(x.name || x.email)}" data-v="1" aria-label="Video call">${ic('video')}</button>` : ''}${x.status === 'approved' && !ADMIN_EMAILS.includes((x.email || '').toLowerCase()) ? `<button class="btn xs ${x.calls ? '' : 'ghost'}" data-act="admincalls" data-id="${x.id}" data-on="${x.calls ? 1 : 0}" title="Voice/video calls">${ic('phone')} Calls ${x.calls ? 'on' : 'off'}</button>` : ''}${x.status === 'approved' ? `<button class="btn xs ghost danger" data-act="adminset" data-id="${x.id}" data-s="rejected">Revoke</button>` : ''}${x.status === 'rejected' ? `<button class="btn xs ghost" data-act="admindel" data-id="${x.id}">Remove</button>` : ''}</div></div>`).join('') || `<p class="muted small">No ${tab} requests.</p>`;
     }, e => { const el = $('#alist'); if (el) el.innerHTML = `<p class="err">${esc(e.code || e.message)}</p>`; });
   }).catch(() => { $('#alist').innerHTML = '<p class="err">Could not reach Firebase.</p>'; });
 }
+ACT.admindial = el => Calls.call(el.dataset.id, el.dataset.n, el.dataset.v === '1', true);
 ACT.adminset = async el => {
   const s = el.dataset.s;
   if (s === 'rejected' && !(await uiConfirm(el.textContent === 'Revoke' ? 'Revoke access? They will be locked out of the app the next time it goes online.' : 'Reject this request?'))) return;
@@ -154,7 +157,7 @@ ACT.adminset = async el => {
 };
 ACT.adminshare = () => { const url = location.origin + location.pathname; const msg = `PG Derma Companion — app for DVL residents 🩺\n${url}\nOpen it, tap “Continue with Google”, and I'll approve you.`; if (navigator.share) navigator.share({ text: msg }).catch(() => {}); else window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };
 ACT.appsignout = () => Gate.signOut();
-const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['batches', 'Batches'], ['content', 'Content'], ['errors', 'Errors']];
+const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['batches', 'Batches'], ['content', 'Content'], ['reports', 'Reports'], ['errors', 'Errors']];
 ACT.admincalls = async el => {
   const on = el.dataset.on !== '1';
   if (on && !(await uiConfirm('Allow this person to make and receive voice/video calls with batchmates?', { ok: 'Allow calls' }))) return;

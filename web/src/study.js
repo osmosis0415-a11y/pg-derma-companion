@@ -55,7 +55,7 @@ const Study = {
   /* ---------- recording progress ---------- */
   touch(x, correct) {
     const s = this.st(), t = today();
-    s.seen[x.id] = 1;
+    s.seen[x.id] = 1; if (typeof Comm !== 'undefined') Comm.addXP(1);
     if (x.t === 'mcq' || x.t === 'spot') s.ans[x.id] = correct ? 1 : 0;
     const before = s.done[t] || 0; s.done[t] = before + 1;
     for (const d of Object.keys(s.done)) if (d < addDays(t, -60)) delete s.done[d];
@@ -212,6 +212,7 @@ const FEED_TINT = { mcq: 't-mcq', card: 't-card', spot: 't-spot', pearl: 't-pear
 const Feed = {
   q: [], n: 0, right: 0, answered: 0, io: null, viewT: {}, recent: [],
   next(k) {
+    if (typeof Rank !== 'undefined') return this.nextRanked(k);
     const s = Study.st(), all = Study.all(), out = [], used = new Set(this.recent.slice(-60));
     const pool = t => all.filter(x => x.t === t && !used.has(x.id));
     const due = Study.dueCards().filter(x => !used.has(x.id));
@@ -225,7 +226,29 @@ const Feed = {
     }
     return out;
   },
+  /* Ranked mix: spaced-repetition due cards first, then types/topics weighted by what you engage with and get wrong,
+     plus a peer case from the community every few cards (unseen, highest "for you" score). */
+  nextRanked(k) {
+    const used = new Set(this.recent.slice(-80)), all = Study.all().filter(x => !used.has(x.id)), weak = Rank.weak(), now = Date.now(), tw = Rank.typeWeights();
+    const due = Study.dueCards().filter(x => !used.has(x.id));
+    const scored = all.map(x => [x, Rank.itemScore(x, weak, now) * (tw[x.t] || 1)]).sort((a, b) => b[1] - a[1]).map(a => a[0]);
+    if (this.startId) { const f = Study.byId(this.startId); this.startId = null; if (f) scored.unshift(f); }
+    const peers = typeof Comm !== 'undefined' ? Rank.rankPosts(Comm.posts.filter(p => !Rank.aff().seenP[p.id] && !used.has('post:' + p.id))) : [];
+    const out = [];
+    for (let i = 0; i < k; i++) {
+      this.slot = (this.slot || 0) + 1;
+      let x = null;
+      if (this.slot % 6 === 0 && peers.length) { const p = peers.shift(); x = Object.assign({ t: 'post', id: 'post:' + p.id, top: (p.tags || [])[0] || POST_KINDS[p.kind] }, { post: p }); }
+      else if (due.length && this.slot % 3 === 1) x = due.shift();
+      else { const pool = scored.filter(y => !out.includes(y) && !used.has(y.id)); x = pool[Math.floor(Math.random() * Math.min(3, pool.length))]; }
+      if (!x) break; out.push(x); this.recent.push(x.id); used.add(x.id);
+    }
+    return out;
+  },
   cardHTML(x, i) {
+    if (x.t === 'post') { const p = x.post; return `<section class="fcard t-post" data-i="${i}" data-id="${esc(x.id)}"><div class="ftop"><span>Community</span><span>${esc(POST_KINDS[p.kind] || 'Post')}</span>${(p.tags || []).slice(0, 1).map(t => `<span>${esc(t)}</span>`).join('')}</div>
+      <div class="fbody"><div class="fwho"><span class="pav">${esc(initials(p.name))}</span><b>${esc(p.name)}</b><small>${esc(p.year || '')} · ${agoTxt(tsMs(p.createdAt))}</small></div>${p.img ? `<img class="fimg" src="${esc(p.img)}" alt="">` : ''}<p class="fptxt">${esc((p.text || '').slice(0, p.img ? 260 : 600))}</p><a class="ftap" href="#/post/${p.id}">${ic('chat')} ${p.comments || 0} · Join the discussion</a></div>
+      <div class="frail"><button data-flike="${p.id}" class="${Comm.liked[p.id] ? 'on' : ''}" aria-label="Like">${ic(Comm.liked[p.id] ? 'heartfill' : 'heart')}<small>${p.likes || 0}</small></button></div><i class="fburst">${ic('heartfill')}</i></section>`; }
     const s = Study.st(), sv = !!s.saved[x.id];
     let body = '';
     if (x.t === 'mcq') body = `<h2>${esc(x.q)}</h2><div class="fopts">${x.o.map((o, j) => `<button class="fopt" data-fa="${j}"><b>${'ABCDEF'[j]}</b>${esc(o)}</button>`).join('')}</div><div class="fexp" hidden><p>${esc(x.x || '')}</p>${x.r ? `<small>${esc(x.r)}</small>` : ''}</div>`;
@@ -235,7 +258,7 @@ const Feed = {
     return `<section class="fcard ${FEED_TINT[x.t]}" data-i="${i}" data-id="${esc(x.id)}">
       <div class="ftop"><span>${STUDY_TYPES[x.t]}</span><span>${esc(x.top)}</span>${x.src === 'bot' ? '<span>New</span>' : ''}${!s.seen[x.id] ? '<span class="fnew">First time</span>' : ''}</div>
       <div class="fbody">${body}</div>
-      <div class="frail"><button data-fsave="1" class="${sv ? 'on' : ''}" aria-label="Save">${ic(sv ? 'heartfill' : 'heart')}<small>Save</small></button><button data-fshare="1" aria-label="Share">${ic('send')}<small>Share</small></button></div>
+      <div class="frail"><button data-fsave="1" class="${sv ? 'on' : ''}" aria-label="Save">${ic(sv ? 'heartfill' : 'heart')}<small>Save</small></button><button data-fdisc="1" aria-label="Discuss">${ic('chat')}<small>Discuss</small></button><button data-fshare="1" aria-label="Share">${ic('send')}<small>Share</small></button></div>
       <div class="fhint">${i === 0 ? 'Swipe up for the next card' : ''}</div><i class="fburst">${ic('heartfill')}</i></section>`;
   },
   checkpointHTML() {
@@ -259,20 +282,22 @@ const Feed = {
     this.stat();
   },
   open() {
+    if (typeof Comm !== 'undefined' && Cloud.cfg()) Cloud.init().then(() => Comm.listen()).catch(() => {});
     $('#feedui')?.remove(); this.q = []; this.n = 0; this.right = 0; this.answered = 0; this.viewT = {};
     const ui = document.createElement('div'); ui.id = 'feedui';
-    ui.innerHTML = `<div class="fbar"><button class="fx" data-fclose="1" aria-label="Close">‹</button><b>Feed</b><div id="fstat"></div></div><div id="feedlist"></div>`;
+    ui.innerHTML = `<div class="fbar"><button class="fx" data-fclose="1" aria-label="Close">‹</button><b class="fbrand">${LOGO_SVG}Feed</b><div id="fstat"></div></div><div id="feedlist"></div>`;
     document.body.appendChild(ui); document.body.classList.add('feedon');
     this.io = new IntersectionObserver(es => es.forEach(e => {
       const el = e.target, id = el.dataset.id;
       if (e.isIntersecting && e.intersectionRatio > 0.6) {
         if (+el.dataset.i >= this.q.length - 4) this.append(10);
+        this.inT = this.inT || {}; this.inT[id] = Date.now();
         if (id && !el.dataset.counted) { const x = this.q[+el.dataset.i]; if (x && x.t === 'pearl') this.viewT[id] = setTimeout(() => { if (!el.dataset.counted) { el.dataset.counted = 1; this.count(x, true); } }, 1500); }
-      } else if (id) clearTimeout(this.viewT[id]);
+      } else if (id) { clearTimeout(this.viewT[id]); if (this.inT && this.inT[id] && typeof Rank !== 'undefined') { const ms = Date.now() - this.inT[id]; delete this.inT[id]; const x = this.q[+el.dataset.i]; if (x) { if (x.t === 'post') { Rank.dwell(Object.assign({ top: x.top, t: x.post.kind }, x.post), ms); if (ms > 1500) Rank.seenPost(x.post.id); } else Rank.dwell(x, ms); } } }
     }), { threshold: [0, 0.6, 1] });
     this.stat(); this.append(12);
     ui.addEventListener('click', e => this.click(e));
-    let lastTap = 0; ui.addEventListener('pointerup', e => { const c = e.target.closest('.fcard'); if (!c || e.target.closest('button')) return; const t = Date.now(); if (t - lastTap < 300) this.save(c, true); lastTap = t; });
+    let lastTap = 0; ui.addEventListener('pointerup', e => { const c = e.target.closest('.fcard'); if (!c || e.target.closest('button,a')) return; const t = Date.now(); if (t - lastTap < 300) { const lb = c.querySelector('[data-flike]'); if (lb) lb.click(); else this.save(c, true); } lastTap = t; });
   },
   close() { this.io && this.io.disconnect(); $('#feedui')?.remove(); document.body.classList.remove('feedon'); },
   save(c, only) {
@@ -285,7 +310,9 @@ const Feed = {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.fclose) return history.length > 1 ? history.back() : go('#/study');
     const c = b.closest('.fcard'); if (!c) return; const x = this.q[+c.dataset.i]; if (!x) return;
-    if (b.dataset.fsave) return this.save(c);
+    if (b.dataset.flike) { const p = Comm.posts.find(y => y.id === b.dataset.flike); if (p && !Comm.liked[p.id]) { Rank.liked(p); Comm.like(p.id); b.classList.add('on'); b.innerHTML = ic('heartfill') + `<small>${(p.likes || 0)}</small>`; c.classList.add('burst'); setTimeout(() => c.classList.remove('burst'), 700); } return; }
+    if (b.dataset.fsave) { if (typeof Rank !== 'undefined') Rank.bump('top', x.top, 2); return this.save(c); }
+    if (b.dataset.fdisc) return openCardThread(x.id, x.q || x.f || x.v || x.p || '');
     if (b.dataset.fshare) { const txt = x.t === 'mcq' ? `${x.q}\n${x.o.map((o, j) => 'ABCDEF'[j] + ') ' + o).join('\n')}\n\nAnswer in PG Derma` : x.t === 'card' ? `${x.f}\n\n${x.b}` : x.t === 'spot' ? `${x.v}\n\nDiagnosis? (answer in PG Derma)` : x.p;
       const full = txt + '\n' + location.origin + location.pathname; if (navigator.share) navigator.share({ text: full }).catch(() => {}); else window.open('https://wa.me/?text=' + encodeURIComponent(full), '_blank'); return; }
     if (b.dataset.fa != null && !c.dataset.counted) {

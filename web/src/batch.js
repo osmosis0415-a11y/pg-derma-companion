@@ -152,7 +152,7 @@ function paintBatch() {
 }
 function subscribeBatch() {
   Cloud.stop(); Chat.msgs = []; const f = Cloud.f, id = B().id, db = Cloud.db;
-  const err = e => { if (e.code === 'permission-denied') { toast('You are no longer a member of this batch'); Calls.stop(); D.batch = null; Store.save(); render(); } };
+  const err = e => { if (e.code === 'permission-denied') { toast('You are no longer a member of this batch'); Calls.stop(); D.batch = null; Store.save(); render(); Calls.start(); } };
   Cloud.unsubs.push(f.onSnapshot(f.query(f.collection(db, 'batches', id, 'events'), f.where('date', '>=', addDays(today(), -60)), f.orderBy('date')), s => { B().events = s.docs.map(d => Object.assign({ id: d.id }, d.data(), { createdAt: null })); Store.save(); if ((ROUTE.q.t || 'cal') === 'cal') paintBatch(); }, err));
   Cloud.unsubs.push(f.onSnapshot(f.collection(db, 'batches', id, 'members'), s => { B().members = s.docs.map(d => ({ id: d.id, name: d.data().name, year: d.data().year })); if (ROUTE.q.t === 'mem') paintBatch(); }, err));
   Cloud.unsubs.push(f.onSnapshot(f.collection(db, 'batches', id, 'logstats'), s => { B().stats = s.docs.map(d => ({ id: d.id, counts: d.data().counts || {} })); if (ROUTE.q.t === 'log') paintBatch(); }, err));
@@ -189,7 +189,7 @@ ACT.bevsave = async () => {
 ACT.bevdel = async el => { if (!(await uiConfirm('Delete this event for everyone?'))) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'batches', B().id, 'events', el.dataset.id)); } catch (e) { toast(e.code || e.message); } };
 ACT.bevics = () => { const ev = (B().events || []).filter(e => e.date >= today()).map(e => ({ id: 'b' + e.id, date: e.date, time: e.time, title: e.type + ': ' + e.title, desc: [e.presenter, e.venue, e.notes].filter(Boolean).join(' · ') })); if (!ev.length) return toast('No upcoming events'); download(makeICS(ev), 'batch-calendar.ics'); };
 ACT.bevwa = () => { const ev = (B().events || []).filter(e => e.date >= today() && e.date <= addDays(today(), 7)).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))); if (!ev.length) return toast('Nothing in the next 7 days'); const msg = `📅 ${B().name} — this week\n\n` + ev.map(e => `• ${fmt(e.date)}${e.time ? ' ' + e.time : ''} — ${e.type}: ${e.title}${e.presenter ? ' (' + e.presenter + ')' : ''}${e.venue ? ' @ ' + e.venue : ''}`).join('\n'); window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };
-ACT.bleave = async () => { if (!(await uiConfirm('Leave this batch? Your shared counts will be removed.'))) return; Calls.stop(); const f = Cloud.f, id = B().id, uid = Cloud.user.uid; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'presence', uid)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'logstats', uid)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'members', uid)); } catch (e) {} Cloud.stop(); D.batch = null; Store.save(); render(); };
+ACT.bleave = async () => { if (!(await uiConfirm('Leave this batch? Your shared counts will be removed.'))) return; Calls.stop(); const f = Cloud.f, id = B().id, uid = Cloud.user.uid; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'presence', uid)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'logstats', uid)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'members', uid)); } catch (e) {} Cloud.stop(); D.batch = null; Store.save(); render(); Calls.start(); };
 ACT.bkick = async el => { if (!(await uiConfirm('Remove this member?'))) return; const f = Cloud.f; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', B().id, 'logstats', el.dataset.id)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', B().id, 'members', el.dataset.id)); } catch (e) { toast(e.code || e.message); } };
 ACT.fbcfgclear = () => { delete D.settings.fbConfig; Store.save(); Cloud.ready = null; toast('Removed'); render(); };
 
@@ -228,7 +228,7 @@ async function clearBatchChat(id) {
 ACT.bdelete = async () => {
   const b = B(); if (!b || !bAdmin()) return;
   if (!(await uiType(`This permanently deletes "${b.name}" for everyone: chat, calendar, shared counts and members.`, 'DELETE'))) return;
-  try { Cloud.stop(); Calls.stop(); toast('Deleting…'); const n = await deleteBatchAll(b.id); D.batch = null; Store.save(); toast(`Batch deleted (${n} items)`); render(); }
+  try { Cloud.stop(); Calls.stop(); toast('Deleting…'); const n = await deleteBatchAll(b.id); D.batch = null; Store.save(); toast(`Batch deleted (${n} items)`); render(); Calls.start(); }
   catch (e) { toast('Could not delete: ' + (e.code || e.message)); subscribeBatch(); }
 };
 ACT.bclearchat = async () => {

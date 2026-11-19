@@ -8,11 +8,11 @@ const ROUTES = [
   [/^deid\/([\w-]+)$/, vDeid, 'vault', ['id']], [/^compare\/([\w-]+)$/, vCompare, 'vault', ['id']],
   [/^inv$/, vInv, 'more'], [/^cal$/, vCal, 'more'], [/^logbook$/, vLogbook, 'more'], [/^logadd$/, vLogAdd, 'more'], [/^targets$/, vTargets, 'more'],
   [/^thesis$/, vThesis, 'more'], [/^thesis-setup$/, vThesisSetup, 'more'], [/^analytics$/, vAnalytics, 'more'],
-  [/^formulary$/, vFormulary, 'more'], [/^checklists$/, vChecklists, 'more'], [/^more$/, vMore, 'more'], [/^settings$/, vSettings, 'more'], [/^batch$/, vBatch, 'batch'], [/^admin$/, vAdmin, 'more'], [/^study$/, vStudy, 'study'], [/^feed$/, vFeed, 'study'], [/^study-run$/, vStudyRun, 'study'], [/^study-set$/, vStudySet, 'study']
+  [/^formulary$/, vFormulary, 'more'], [/^checklists$/, vChecklists, 'more'], [/^more$/, vMore, 'more'], [/^settings$/, vSettings, 'more'], [/^batch$/, vBatch, 'community'], [/^admin$/, vAdmin, 'more'], [/^study$/, vStudy, 'study'], [/^feed$/, vFeed, 'study'], [/^community$/, vCommunity, 'community'], [/^compose$/, vCompose, 'community'], [/^post\/([\w-]+)$/, vPost, 'community', ['id']], [/^u\/([\w-]+)$/, vUser, 'community', ['id']], [/^study-run$/, vStudyRun, 'study'], [/^study-set$/, vStudySet, 'study']
 ];
 function render() {
   if (!D) return;
-  stopCam(); if (scanStream) ACT.scanstop(); closeSheet(); if (typeof Feed !== 'undefined' && $('#feedui')) Feed.close();
+  stopCam(); if (scanStream) ACT.scanstop(); closeSheet(); if (typeof Feed !== 'undefined' && $('#feedui')) Feed.close(); if (typeof threadUnsub !== 'undefined' && threadUnsub) { try { threadUnsub(); } catch (e) {} threadUnsub = null; }
   const h = location.hash.replace(/^#\/?/, '') || 'home';
   const [path, qs] = h.split('?');
   ROUTE = { path: path.split('/')[0], q: Object.fromEntries(new URLSearchParams(qs || '')) };
@@ -56,7 +56,7 @@ async function showLock() {
 }
 async function lockApp(skipFlush) {
   if (skipFlush !== true) await Store.flush().catch(() => {});
-  closeSheet(); await Session.clear(); Sync.stop(); Sync.set('off'); Calls.stop();
+  closeSheet(); await Session.clear(); Sync.stop(); Sync.set('off'); Calls.stop(); Comm.stop();
   stopCam(); Cloud.stop(); D = null; Vault.key = null;
   for (const u of urlCache.values()) URL.revokeObjectURL(u); urlCache.clear();
   $('#main').innerHTML = ''; showLock();
@@ -93,7 +93,7 @@ let lastW = innerWidth; addEventListener('resize', () => { if ((lastW >= 900) !=
 
 /* ---------- Boot ---------- */
 (async () => {
-  paintIcons();
+  paintIcons(); $$('.brandlogo').forEach(e => { e.innerHTML = LOGO_SVG; });
   if (!window.crypto?.subtle || !window.indexedDB) { document.body.innerHTML = '<p style="padding:24px">This browser does not support secure storage (needs HTTPS + IndexedDB + WebCrypto).</p>'; return; }
   try { await navigator.storage?.persist?.(); } catch (e) {}
   await IDB.open();

@@ -1,0 +1,52 @@
+// Admin direct call to a resident who is in no batch. Real WebRTC (fake camera/mic) signalled through a shared Firestore stand-in.
+import fs from 'fs';
+const MOCK = fs.readFileSync(new URL('./fs-shared-mock.js', import.meta.url), 'utf8');
+const DLG = fs.readFileSync(new URL('./dlg-auto.js', import.meta.url), 'utf8');
+const base = 'http://127.0.0.1:9335';
+const sleep = ms => new Promise(r => setTimeout(r, ms)); const chk = (n, c) => console.log((c ? 'PASS ' : 'FAIL ') + n);
+const page = async target => {
+  const ws = new WebSocket(target.webSocketDebuggerUrl); await new Promise(r => ws.onopen = r);
+  let id = 0; const pend = {}, errs = [];
+  ws.onmessage = m => { const d = JSON.parse(m.data); if (d.id && pend[d.id]) { pend[d.id](d); delete pend[d.id]; } if (d.method === 'Runtime.exceptionThrown') errs.push(d.params.exceptionDetails.exception?.description); };
+  const send = (method, params = {}) => new Promise(r => { const i = ++id; pend[i] = r; ws.send(JSON.stringify({ id: i, method, params })); });
+  const ev = async e => { const r = (await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true })).result; if (r.exceptionDetails) errs.push('EVAL: ' + (r.exceptionDetails.exception?.description || '').slice(0, 300)); return r.result?.value; };
+  await send('Runtime.enable'); await send('Page.enable');
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}});" + DLG + MOCK });
+  await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  return { send, ev, errs };
+};
+const shot = async (P, n) => { const r = await P.send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync('/tmp/' + n + '.png', Buffer.from(r.result.data, 'base64')); };
+const t1 = (await (await fetch(base + '/json')).json()).find(t => t.type === 'page');
+const t2 = await (await fetch(base + '/json/new?about:blank', { method: 'PUT' })).json();
+const A = await page(t1), B = await page(t2);
+await A.send('Page.navigate', { url: 'http://localhost:8765/' }); await sleep(1500);
+await A.ev(`localStorage.removeItem('fsmock'); $('#pin').value='1234';$('#pin2').value='1234';$('#unlock').click()`); await sleep(2000);
+await A.ev(`D.settings.name='Sriram'; D.batch=null; __installFsMock('uA','sriramdeverashetty@gmail.com','Sriram'); Calls.start()`); await sleep(800);
+await B.send('Page.navigate', { url: 'http://localhost:8765/' }); await sleep(1500);
+await B.ev(`$('#pin')&&($('#pin').value='1234',$('#unlock').click())`); await sleep(2000);
+await B.ev(`D.settings.name='Priya'; D.batch=null; __installFsMock('uB','priya@x.com','Priya'); Calls.start()`); await sleep(800);
+chk('resident has no calling permission', await B.ev(`!Calls.allowed`));
+await B.ev(`Calls.call('uA','Sriram',false,true)`); await sleep(400);
+chk('non-admin cannot make direct calls', await B.ev(`!Calls.cur`));
+await A.ev(`(()=>{const o=JSON.parse(localStorage.fsmock||'{}');o['approvals/uB']={email:'priya@x.com',name:'Priya',status:'approved'};localStorage.fsmock=JSON.stringify(o)})(); location.hash='#/admin?t=approved'`); await sleep(1500);
+chk('admin sees call buttons for approved user', await A.ev(`!!document.querySelector('[data-act=admindial][data-id=uB][data-v="1"]')`));
+await A.ev(`document.querySelector('[data-act=admindial][data-id=uB][data-v="1"]').click()`); await sleep(2500);
+chk('admin side ringing', (await A.ev(`$('#cstat')&&$('#cstat').textContent`)) === 'Ringing…');
+chk('resident (no batch) gets incoming call', (await B.ev(`$('#cstat')&&$('#cstat').textContent`) || '').includes('Incoming video call'));
+await B.ev(`document.querySelector('[data-call=accept-video]').click()`);
+let live = false; for (let i = 0; i < 30 && !live; i++) { await sleep(500); live = (await A.ev(`Calls.cur&&Calls.cur.status`)) === 'live' && (await B.ev(`Calls.cur&&Calls.cur.status`)) === 'live'; }
+chk('direct call connects', live);
+await sleep(2000);
+const fr = await B.ev(`(async()=>{const s=await Calls.cur.pc.getStats();let v=0;s.forEach(r=>{if(r.type==='inbound-rtp'&&r.kind==='video')v=r.framesDecoded||0});return v})()`);
+chk('resident receives admin video ' + fr, fr > 5);
+chk('signalling stored under dcalls', await A.ev(`Object.keys(JSON.parse(localStorage.fsmock)).some(k=>k.startsWith('dcalls/'))`));
+await A.ev(`document.querySelector('[data-call=end]').click()`); await sleep(1500);
+chk('call ends both sides', !(await A.ev(`!!Calls.cur`)) && !(await B.ev(`!!Calls.cur`)));
+// dial link from the admin console
+await A.ev(`location.hash='#/admin?t=approved&dial=uB&v=0'`); await sleep(2500);
+chk('console dial link starts a call', (await B.ev(`$('#cstat')&&$('#cstat').textContent`) || '').includes('Incoming voice call'));
+await B.ev(`document.querySelector('[data-call=decline]').click()`); await sleep(1500);
+chk('decline ends admin side', !(await A.ev(`!!Calls.cur`)));
+const errs = [...A.errs, ...B.errs].filter(e => e && !/getComputedStyle/.test(e));
+console.log('ERRORS', JSON.stringify(errs).slice(0, 800));
+process.exit(0);

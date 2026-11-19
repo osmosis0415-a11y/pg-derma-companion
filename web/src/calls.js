@@ -13,10 +13,17 @@ const Calls = {
   /* ---------- lifecycle ---------- */
   async start() {
     this.stop();
-    if (!D.batch || !Cloud.cfg()) return;
+    if (!Cloud.cfg()) return;
     try { await Cloud.init(); } catch (e) { return; }
-    if (!Cloud.user || !D.batch) return;
-    const f = Cloud.f, db = Cloud.db, b = D.batch.id, me = Cloud.user.uid;
+    if (!Cloud.user) return;
+    const f = Cloud.f, db = Cloud.db, b = D.batch && D.batch.id, me = Cloud.user.uid;
+    // Direct calls from the admin reach any approved resident, batch or not.
+    try {
+      this.unsubs.push(f.onSnapshot(f.query(f.collection(db, 'dcalls'), f.where('callee', '==', me), f.where('status', '==', 'ringing')), s => {
+        (s.docChanges ? s.docChanges().filter(ch => ch.type === 'added').map(ch => ch.doc) : s.docs).forEach(d => this.incoming(d.id, d.data(), true));
+      }, e => this.diag('dlisten', e)));
+    } catch (e) { this.diag('dlisten', e); }
+    if (!b) { if (isAdminUser(Cloud.user)) this.allowed = true; else this.unsubs.push(f.onSnapshot(f.doc(db, 'approvals', me), s => { let ok = false; try { ok = !!(s && s.exists() && s.data().calls === true); } catch (e) {} this.allowed = ok; }, () => {})); return; }
     const beat = () => f.setDoc(f.doc(db, 'batches', b, 'presence', me), { name: this.myName(), at: f.serverTimestamp(), calls: this.allowed }).catch(() => {});
     // Calling is off until the admin switches it on for this person (approvals/{uid}.calls). Watch it live.
     if (isAdminUser(Cloud.user)) {
@@ -67,13 +74,14 @@ const Calls = {
   },
 
   /* ---------- outgoing ---------- */
-  async call(uid, name, video) {
-    if (!this.allowed) return toast('Calling is not enabled for you yet — ask the admin');
+  async call(uid, name, video, direct) {
+    if (direct && !isAdminUser(Cloud.user) && !this.allowed) return toast('Calling is not enabled for you yet — ask the admin');
+    if (!direct && !this.allowed) return toast('Calling is not enabled for you yet — ask the admin');
     if (this.cur || Group.room) return toast('You are already on a call');
     if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) return toast('Calls are not supported in this browser');
-    const f = Cloud.f, db = Cloud.db, b = D.batch.id, me = Cloud.user.uid;
+    const f = Cloud.f, db = Cloud.db, me = Cloud.user.uid;
     let local; try { local = await this.media(video); } catch (e) { return toast(video ? 'Allow camera & microphone to call' : 'Allow microphone to call'); }
-    const ref = f.doc(f.collection(db, 'batches', b, 'calls'));
+    const ref = f.doc(direct ? f.collection(db, 'dcalls') : f.collection(db, 'batches', D.batch.id, 'calls'));
     const c = this.cur = { id: ref.id, ref, role: 'caller', peer: uid, peerName: name, video, local, unsubs: [], status: 'ringing' };
     this.screen();
     try {
@@ -89,16 +97,16 @@ const Calls = {
       this.listenCands(c, 'callee');
       this.tone('ringback');
       c.ringTimer = setTimeout(() => { if (this.cur === c && c.status === 'ringing') { f.updateDoc(ref, { status: 'missed', endedAt: f.serverTimestamp() }).catch(() => {}); this.finish('missed'); } }, CALL_RING_MS);
-    } catch (e) { this.diag('start', e); toast(e && e.code === 'permission-denied' ? 'Calling is not allowed for one of you — ask the admin' : 'Could not start the call'); this.hangup(true); }
+    } catch (e) { this.diag('start', e); toast(e && e.code === 'permission-denied' ? 'Calling is not switched on for one of you — ask the admin' : 'Could not start the call'); this.hangup(true); }
   },
 
   /* ---------- incoming ---------- */
   canCall(uid) { return this.allowed && this.callable[uid] === true; },
-  incoming(id, x) {
-    if (!x || x.status !== 'ringing' || !this.allowed) return;
+  incoming(id, x, direct) {
+    if (!x || x.status !== 'ringing' || (!direct && !this.allowed)) return;
     const age = x.createdAt && x.createdAt.toMillis ? Date.now() - x.createdAt.toMillis() : 0;
     if (age > CALL_RING_MS + 60000) return;
-    const f = Cloud.f, ref = f.doc(Cloud.db, 'batches', D.batch.id, 'calls', id);
+    const f = Cloud.f, ref = direct ? f.doc(Cloud.db, 'dcalls', id) : f.doc(Cloud.db, 'batches', D.batch.id, 'calls', id);
     if (this.cur || Group.room) { f.updateDoc(ref, { status: 'busy', endedAt: f.serverTimestamp() }).catch(() => {}); return; }
     const c = this.cur = { id, ref, role: 'callee', peer: x.caller, peerName: x.callerName, video: !!x.video, offer: x.offer, unsubs: [], status: 'incoming' };
     c.unsubs.push(f.onSnapshot(ref, s => { const y = s.data(); if (this.cur !== c || !y) return; if (['ended', 'missed'].includes(y.status) && c.status !== 'ended') this.finish(c.status === 'incoming' ? 'missed' : 'ended'); }));

@@ -56,6 +56,68 @@ service cloud.firestore {
         && request.resource.data.status in ['draft', 'live'];
       allow delete: if isAdminUser();
     }
+    // Direct calls (no batch needed): the admin can call any approved resident; residents can call each other when the admin has switched calling on for both. Media never touches Firestore.
+    match /dcalls/{c} {
+      function dparty() { return resource.data.caller == request.auth.uid || resource.data.callee == request.auth.uid; }
+      allow read: if signedIn() && dparty();
+      allow create: if (isAdminUser() || (canCall(request.auth.uid) && canCall(request.resource.data.callee))) && request.resource.data.caller == request.auth.uid
+        && request.resource.data.callee != request.auth.uid
+        && request.resource.data.status == 'ringing'
+        && request.resource.data.keys().hasOnly(['caller', 'callerName', 'callee', 'calleeName', 'video', 'status', 'offer', 'createdAt'])
+        && shortStr(request.resource.data.callerName, 80) && shortStr(request.resource.data.calleeName, 80);
+      allow update: if approved() && dparty()
+        && request.resource.data.caller == resource.data.caller && request.resource.data.callee == resource.data.callee
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answer', 'status', 'endedAt']);
+      allow delete: if isAdminUser();
+      match /cands/{x} {
+        function dinCall() { let call = get(/databases/$(database)/documents/dcalls/$(c)).data; return call.caller == request.auth.uid || call.callee == request.auth.uid; }
+        allow read: if signedIn() && dinCall();
+        allow create: if approved() && dinCall() && request.resource.data.keys().hasOnly(['from', 'c']) && request.resource.data.from in ['caller', 'callee'];
+        allow delete: if isAdminUser();
+      }
+    }
+    // Community (all approved users). Posts go live at once; anyone can report; the admin deletes or revokes.
+    function pkeys() { return ['uid', 'name', 'year', 'kind', 'text', 'tags', 'img', 'likes', 'comments', 'reports', 'createdAt']; }
+    function step(f) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly([f]) && (request.resource.data[f] == resource.data[f] + 1 || request.resource.data[f] == resource.data[f] - 1); }
+    match /posts/{p} {
+      allow read: if approved();
+      allow create: if approved() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(pkeys())
+        && request.resource.data.kind in ['case', 'question', 'pearl']
+        && request.resource.data.text is string && request.resource.data.text.size() >= 10 && request.resource.data.text.size() <= 3000
+        && request.resource.data.tags is list && request.resource.data.tags.size() <= 3
+        && (!('img' in request.resource.data) || (request.resource.data.img is string && request.resource.data.img.size() < 450000 && request.resource.data.img.matches('data:image/jpeg;base64,.*')))
+        && request.resource.data.likes == 0 && request.resource.data.comments == 0 && request.resource.data.reports == 0
+        && request.resource.data.createdAt == request.time && shortStr(request.resource.data.name, 80);
+      allow update: if approved() && (step('likes') || step('comments'));
+      allow delete: if isAdminUser() || (approved() && resource.data.uid == request.auth.uid);
+      match /likes/{u} {
+        allow read: if approved();
+        allow create, delete: if approved() && u == request.auth.uid;
+      }
+    }
+    match /threads/{t}/c/{c} {
+      allow read: if approved();
+      allow create: if approved() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'text', 'at'])
+        && request.resource.data.text is string && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 1000
+        && request.resource.data.at == request.time && shortStr(request.resource.data.name, 80);
+      allow delete: if isAdminUser() || (approved() && resource.data.uid == request.auth.uid);
+    }
+    match /reports/{r} {
+      allow create: if approved() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['post', 'uid', 'reason', 'at']) && shortStr(request.resource.data.reason, 300);
+      allow read, delete: if isAdminUser();
+    }
+    match /profiles/{u} {
+      allow read: if approved();
+      allow create, update: if approved() && u == request.auth.uid
+        && request.resource.data.keys().hasOnly(['name', 'year', 'college', 'bio', 'streak', 'best', 'total', 'xp', 'posts', 'updatedAt'])
+        && shortStr(request.resource.data.name, 80) && shortStr(request.resource.data.college, 80) && shortStr(request.resource.data.bio, 200)
+        && request.resource.data.xp is map && request.resource.data.xp.size() <= 4
+        && request.resource.data.total is int && request.resource.data.streak is int;
+      allow delete: if isAdminUser() || (signedIn() && u == request.auth.uid);
+    }
     // Study streak summary, so the reminder bot knows whom to nudge. No study answers or patient data.
     match /study/{u} {
       allow get: if signedIn() && (u == request.auth.uid || isAdminUser());

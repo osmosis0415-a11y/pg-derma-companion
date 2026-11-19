@@ -1,0 +1,95 @@
+// Two residents in the community: post, like, comment, badge, Feed-card discussion, leaderboard, report → admin delete.
+import fs from 'fs';
+const MOCK = fs.readFileSync(new URL('./fs-shared-mock.js', import.meta.url), 'utf8');
+const DLG = fs.readFileSync(new URL('./dlg-auto.js', import.meta.url), 'utf8');
+const base = 'http://127.0.0.1:9335';
+const sleep = ms => new Promise(r => setTimeout(r, ms)); const chk = (n, c) => console.log((c ? 'PASS ' : 'FAIL ') + n);
+const page = async target => {
+  const ws = new WebSocket(target.webSocketDebuggerUrl); await new Promise(r => ws.onopen = r);
+  let id = 0; const pend = {}, errs = [];
+  ws.onmessage = m => { const d = JSON.parse(m.data); if (d.id && pend[d.id]) { pend[d.id](d); delete pend[d.id]; } if (d.method === 'Runtime.exceptionThrown') errs.push(d.params.exceptionDetails.exception?.description); };
+  const send = (method, params = {}) => new Promise(r => { const i = ++id; pend[i] = r; ws.send(JSON.stringify({ id: i, method, params })); });
+  const ev = async e => { const r = (await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true })).result; if (r.exceptionDetails) errs.push('EVAL: ' + (r.exceptionDetails.exception?.description || '').slice(0, 300)); return r.result?.value; };
+  await send('Runtime.enable'); await send('Page.enable');
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}});" + DLG + MOCK });
+  await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  return { send, ev, errs };
+};
+const shot = async (P, n) => { await P.send('Page.bringToFront'); const r = await P.send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync('/tmp/' + n + '.png', Buffer.from(r.result.data, 'base64')); };
+const t1 = (await (await fetch(base + '/json')).json()).find(t => t.type === 'page');
+const t2 = await (await fetch(base + '/json/new?about:blank', { method: 'PUT' })).json();
+const A = await page(t1), B = await page(t2);
+await A.send('Page.navigate', { url: 'http://localhost:8765/' }); await sleep(1500);
+await A.ev(`localStorage.removeItem('fsmock'); $('#pin').value='1234';$('#pin2').value='1234';$('#unlock').click()`); await sleep(2000);
+await A.ev(`D.settings.name='Sriram'; __installFsMock('uA','sriramdeverashetty@gmail.com','Sriram'); Cloud.init()`); await sleep(300);
+await B.send('Page.navigate', { url: 'http://localhost:8765/' }); await sleep(1500);
+await B.ev(`$('#pin')&&($('#pin').value='1234',$('#unlock').click())`); await sleep(2000);
+await B.ev(`D.settings.name='Priya Rao'; __installFsMock('uB','priya@x.com','Priya Rao'); Cloud.init()`); await sleep(300);
+chk('Community tab in bottom bar', await A.ev(`!!document.querySelector('.nav.bottom a[href="#/community"]')`));
+await A.ev(`location.hash='#/community'`); await sleep(1200);
+chk('empty community invites first post', (await A.ev(`$('#plist').textContent`)).includes('Start the conversation'));
+await A.ev(`location.hash='#/compose'`); await sleep(600);
+await A.ev(`$('#c_text').value='Call me on 9876543210'; $('#c_text').dispatchEvent(new Event('input'))`); await sleep(100);
+chk('identifier warning shows', await A.ev(`!$('#c_warn').hidden`));
+await A.ev(`$('#c_text').value='35/M with annular scaly plaques on groin for 3 months, partial response to topical steroid-antifungal combo. Tinea incognito? Next step?'; $('#c_text').dispatchEvent(new Event('input'))`);
+await A.ev(`$('[data-act=cpost]').click()`); await sleep(400);
+chk('declaration required', await A.ev(`location.hash==='#/compose'`));
+await A.ev(`document.querySelector('#c_tags [data-tag]').click(); $('#c_ok').checked=true; $('[data-act=cpost]').click()`); await sleep(1500);
+chk('post published and listed', (await A.ev(`location.hash`)) === '#/community' && (await A.ev(`$$('.cpost').length`)) === 1);
+await shot(A, 'comm-feed');
+await B.ev(`location.hash='#/community'`); await sleep(1500);
+chk('other resident sees the post', (await B.ev(`$$('.cpost').length`)) === 1 && (await B.ev(`$('.cpost').textContent`)).includes('Tinea incognito'));
+await B.ev(`$('[data-act=plike]').click()`); await sleep(1200);
+chk('like counted', await B.ev(`$('[data-act=plike] b').textContent==='1'`) && await A.ev(`Comm.posts[0].likes===1`));
+const pid = await B.ev(`Comm.posts[0].id`);
+await B.ev(`location.hash='#/post/${pid}'`); await sleep(1200);
+await B.ev(`$('#tc_text').value='Stop the combo cream, KOH + itraconazole 4–6 weeks.'; $('[data-act=tcsend]').click()`); await sleep(1500);
+chk('comment appears in thread', (await B.ev(`$('#tl').textContent`)).includes('itraconazole'));
+await shot(B, 'comm-post');
+await A.ev(`render()`); await sleep(800);
+chk('author sees comment badge', (await A.ev(`(document.querySelector('.nav.bottom a[data-tab=community] .nb')||{}).textContent`)) === '1');
+await A.ev(`location.hash='#/post/${pid}'`); await sleep(1200);
+chk('badge clears after reading', await A.ev(`!document.querySelector('.nav.bottom a[data-tab=community] .nb')`));
+// Feed card discussion
+await B.ev(`location.hash='#/feed'`); await sleep(1000);
+await B.ev(`$('#feedlist .fcard [data-fdisc]').click()`); await sleep(1000);
+await B.ev(`$('#tc_text').value='Great pearl'; $('[data-act=tcsend]').click()`); await sleep(1200);
+chk('Feed card discussion works', (await B.ev(`$('#sthread #tl').textContent`)).includes('Great pearl'));
+await B.ev(`closeSheet(); $('[data-fclose]').click()`); await sleep(600);
+// Instagram mechanics + ranking
+await A.ev(`location.hash='#/community'`); await sleep(1200);
+chk('stories row shows recent poster', (await A.ev(`$$('#stories .story').length`)) >= 1);
+await A.ev(`$('#stories .story').click()`); await sleep(500);
+chk('story viewer opens', await A.ev(`!!$('#storyui .sbars')`));
+await shot(A, 'comm-story');
+await A.ev(`$('#storyui [data-sclose]').click()`); await sleep(300);
+chk('ranking score is a number', await A.ev(`typeof Rank.postScore(Comm.posts[0])==='number' && isFinite(Rank.postScore(Comm.posts[0]))`));
+await A.ev(`location.hash='#/community?t=explore'`); await sleep(1500);
+chk('explore grid has tiles', (await A.ev(`$$('.xgrid .xt').length`)) >= 5);
+
+await B.ev(`Rank.aff().seenP={}; Feed.recent=[]; location.hash='#/feed'`); await sleep(1200);
+await B.ev(`$('#feedlist').scrollTop=$('#feedlist').scrollHeight`); await sleep(900);
+chk('feed mixes in a community case', (await B.ev(`$$('#feedlist .t-post').length`)) >= 1);
+await B.ev(`$('[data-fclose]').click()`); await sleep(400);
+chk('dwell signals recorded', await B.ev(`Object.keys(Rank.aff().top).length>0`));
+// leaderboard
+await B.ev(`Comm.pushProfile()`); await A.ev(`Comm.pushProfile()`); await sleep(800);
+await A.ev(`location.hash='#/community?t=top'`); await sleep(1500);
+chk('leaderboard lists both residents', (await A.ev(`$$('#blist2 .rank').length`)) === 2);
+await shot(A, 'comm-board');
+// public profile
+await A.ev(`location.hash='#/u/uB'`); await sleep(1500);
+chk('public profile shows name', (await A.ev(`$('.uprof').textContent`)).includes('Priya Rao'));
+// report → admin deletes
+await B.ev(`location.hash='#/community'`); await sleep(1000);
+await B.ev(`$('[data-act=pmenu]').click()`); await sleep(300);
+await B.ev(`$('[data-act=preport]').click()`); await sleep(1500);
+chk('report filed', await B.ev(`Object.keys(JSON.parse(localStorage.fsmock)).some(k=>k.startsWith('reports/'))`));
+chk('non-owner has no delete option', await B.ev(`!document.querySelector('[data-act=pdel]')`));
+await A.ev(`location.hash='#/admin?t=reports'`); await sleep(1800);
+chk('admin sees reported post', (await A.ev(`$('#rlist').textContent`)).includes('report'));
+await A.ev(`$('[data-act=rdelpost]').click()`); await sleep(2000);
+chk('admin deleted post, comments and report', await A.ev(`(()=>{const k=Object.keys(JSON.parse(localStorage.fsmock));return !k.some(x=>x.startsWith('posts/'))&&!k.some(x=>x.startsWith('threads/p_'))&&!k.some(x=>x.startsWith('reports/'))})()`));
+const errs = [...A.errs, ...B.errs].filter(e => e && !/getComputedStyle/.test(e));
+console.log('ERRORS', JSON.stringify(errs).slice(0, 800));
+process.exit(0);

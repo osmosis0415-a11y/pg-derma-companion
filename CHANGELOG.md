@@ -2,6 +2,20 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 2026-11-20 — Community, new brand, admin console, admin calls
+- **New look:** a teal-to-coral brand, a new logo (a dermoscope lens over skin layers), new app icons, gradient story rings and gold streak flames.
+- **Community tab** (bottom bar) for every approved resident, no batch needed:
+  - Post cases, questions and pearls, with a de-identified photo if you want.
+  - Like (double-tap works), comment, share and report.
+  - **Stories** of anyone who posted in the last 48 hours.
+  - **Explore** grid that mixes peer cases with study cards.
+  - **Leaderboard** for this week, all time and streaks, plus public **profiles** with a photo grid and badges.
+- **"For you" ranking:** the app learns from what you spend time on, like, save, comment on and get wrong, and puts those topics first. Your Feed now mixes in peer cases. All of this is worked out on your phone.
+- **Discuss** button on every Feed card.
+- **Admin console:** a separate page at /admin.html. Sign in with the admin Google account, no PIN needed. Overview, users, study content, reports, posts, batches, study reminders, errors and links.
+- **Admin can call anyone** (voice or video) from Users, no batch needed. Residents with calling switched on can call each other from profiles.
+- The batch is optional; everything except batch chat and calendar works without one.
+
 ## 2026-11-19 — Study: daily streak, swipe feed and content bot
 - **New Study tab** (bottom bar). It comes with 154 dermatology PG items written from standard texts: 42 MCQs with explanations, 42 flashcards, 20 spot-diagnosis vignettes and 50 high-yield one-liners, across 20 topics.
 - **Feed**: an endless full-screen swipe-up feed, like Reels but all dermatology. Answer MCQs inline, tap to reveal flashcards and diagnoses, double-tap to save, share to WhatsApp, and see a checkpoint every 15 cards.
