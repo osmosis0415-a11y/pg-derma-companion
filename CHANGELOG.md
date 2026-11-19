@@ -2,6 +2,13 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 19 Nov 2026 (familiar layout)
+- **Layout people already know:** a quick-access row of circles at the top of Home (New case, Follow-ups, Thesis, Reports, Logbook, Photos, Formulary, and batchmates online), then **Recent cases** with each case's photo, scores and quick actions.
+- **Profile tab** replaces "More": your counts (patients, photos, procedures), Edit profile, circles for every tool, and a grid of your clinical photos.
+- The top bar has a 🔔 for due reminders and 💬 for batch discussion, each with a count. The bottom bar is Home · Patients · Add case · Photos · Profile.
+- Kept clean and clinical: one teal accent, no social-media styling.
+- **Calls:** fixed a timing issue that could stop a call from connecting on the receiver's side. Call problems now show up in Admin → Errors.
+
 ## 19 Nov 2026 (calls)
 - **1:1 voice & video calls** between batchmates: Batch hub → Members. A green dot shows who has the app open; tap 📞 or 🎥 to call. The call screen has ringing, answer (voice or video), mute, camera on/off, switch camera and a timer.
 - **Calling is off by default.** The admin switches it on per person in Access requests → Approved ("Calls on/off"), and the database rules enforce it.

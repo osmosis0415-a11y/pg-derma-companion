@@ -19,6 +19,7 @@ function render() {
   if (ROUTE.path !== 'batch' && typeof Cloud !== 'undefined') Cloud.stop();
   if (ROUTE.path !== 'admin' && adminUnsub) { adminUnsub(); adminUnsub = null; }
   const na = $('#navadmin'); if (na) na.hidden = !amAdmin();
+  const mv = $('#meav'); if (mv) mv.textContent = initials(D.settings.name || 'PG');
   for (const [re, fn, tab, keys] of ROUTES) {
     const m = path.match(re);
     if (m) { (keys || []).forEach((k, i) => ROUTE[k] = m[i + 1]); $$('.nav a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab)); window.scrollTo(0, 0); fn(); return; }

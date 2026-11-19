@@ -2,7 +2,7 @@
 const main = () => $('#main');
 let ROUTE = { path: '', q: {} };
 const go = h => { location.hash = h; };
-const setTitle = (t, back = true, actions = '') => { $('#title').textContent = t; $('#back').style.visibility = back ? 'visible' : 'hidden'; $('#topact').innerHTML = actions; };
+const setTitle = (t, back = true, actions = '') => { $('#title').textContent = t; $('#title').classList.remove('brandmark'); $('#back').style.visibility = back ? 'visible' : 'hidden'; $('#topact').innerHTML = actions; };
 const optList = (opts, sel) => opts.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}"${String(v) === String(sel) ? ' selected' : ''}>${esc(l)}</option>`; }).join('');
 const chips = (name, opts, sel, multi = false, cls = '') => `<div class="chips ${cls}" data-group="${name}" data-multi="${multi ? 1 : 0}">${opts.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; const on = multi ? (sel || []).includes(v) : sel === v; return `<button type="button" class="chip${on ? ' on' : ''}" data-v="${esc(v)}">${esc(l)}</button>`; }).join('')}</div>`;
 const getChips = (name, root = document) => { const g = $(`[data-group="${name}"]`, root); if (!g) return null; const on = $$('.chip.on', g).map(c => c.dataset.v); return g.dataset.multi === '1' ? on : (on[0] ?? ''); };
@@ -52,39 +52,53 @@ function dueItems(horizon = 0) {
 const dueBadge = d => { const k = daysBetween(today(), d); return k < 0 ? `<span class="badge red">${-k}d overdue</span>` : k === 0 ? '<span class="badge amber">Today</span>' : `<span class="badge">in ${k}d</span>`; };
 
 /* ---------- HOME ---------- */
+/* ---------- HOME: Instagram-style stories + feed ---------- */
+const initials = t => String(t || '?').replace(/^Dr\.?\s+/i, '').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
+const nbadge = n => n ? `<b class="nb">${n > 99 ? '99+' : n}</b>` : '';
 function vHome() {
-  setTitle('PG Derma', false, `<button class="icon" data-act="lock" aria-label="Lock">${ic('lock')}</button>`);
-  const items = dueItems(1);
-  const th = D.thesis, cases = D.patients.filter(p => p.arm === 'Case' && !p.dropout).length, ctrls = D.patients.filter(p => p.arm === 'Control' && !p.dropout).length;
-  const yr = residencyYear(new Date()), logY = D.logbook.filter(l => l.year === yr);
-  const perf = logY.filter(l => l.role === 'Performed').length;
-  const tgtTotal = PROCEDURES.reduce((a, p) => a + (+D.settings.procTargets[p[0]] || p[2]), 0) / 3;
-  const recent = [...D.visits].sort((a, b) => (b.created || b.date).localeCompare(a.created || a.date)).slice(0, 6);
-  const ring = (n, t, lbl, col) => { const pc = t ? Math.min(1, n / t) : 0, C = 2 * Math.PI * 34; return `<div class="ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" class="rbg"/><circle cx="40" cy="40" r="34" class="rfg" style="stroke:${col};stroke-dasharray:${C};stroke-dashoffset:${C * (1 - pc)}"/></svg><div><b>${n}</b><small>/${t || '—'}</small></div><span>${lbl}</span></div>`; };
-  main().innerHTML = `
-  <div class="hello">${D.settings.name ? 'Hi Dr. ' + esc(D.settings.name.split(' ')[0]) : 'Welcome'} · <span class="muted">${fmt(today())} · ${yr}</span></div>
+  const due = dueItems(0), unread = typeof Chat !== 'undefined' ? Chat.unread() : 0;
+  setTitle('PG Derma', false, `<a class="icon topic" href="#/cal" aria-label="Reminders due">${ic('bell')}${nbadge(due.length)}</a><a class="icon topic" href="#/batch?t=chat" aria-label="Batch discussion">${ic('chat')}${nbadge(unread)}</a>`);
+  $('#title').classList.add('brandmark'); $('#title').insertAdjacentHTML('afterbegin', ic('steth'));
+  const yr = residencyYear(new Date());
+  const cases = D.patients.filter(p => p.arm && !p.dropout).length;
+  const thesisDue = due.filter(d => d.kind === 'thesis').length;
+  const invOpen = D.inv.filter(i => i.status !== 'correlated').length;
+  const st = [
+    { href: '#/add', label: 'New case', icon: 'plus', add: true },
+    { href: '#/cal', label: 'Follow-ups', icon: 'calendar', n: due.length, ring: due.length > 0 },
+    { href: '#/thesis', label: 'Thesis', icon: 'grad', n: thesisDue, ring: thesisDue > 0, sub: D.thesis ? cases + ' enrolled' : '' },
+    { href: '#/inv', label: 'Reports', icon: 'flask', n: invOpen, ring: invOpen > 0 },
+    { href: '#/logbook', label: 'Logbook', icon: 'book' },
+    { href: '#/vault', label: 'Photos', icon: 'image' },
+    { href: '#/formulary', label: 'Formulary', icon: 'pill' }
+  ];
+  if (D.batch && typeof Calls !== 'undefined') for (const m of (D.batch.members || [])) {
+    if (m.id === Cloud.user?.uid || !Calls.isOnline(m.id)) continue;
+    st.push({ href: '#/batch?t=mem', label: (m.name || 'Batchmate').split(' ')[0], txt: initials(m.name), ring: true, live: true });
+  }
+  const story = x => `<a class="story${x.ring ? ' hot' : ''}${x.live ? ' live' : ''}${x.add ? ' add' : ''}" href="${x.href}"><span class="sav">${x.txt ? esc(x.txt) : ic(x.icon)}${x.add ? '<i class="splus">+</i>' : ''}</span>${x.n ? `<b class="sn">${x.n}</b>` : ''}<small>${esc(x.label)}</small></a>`;
+  const recent = [...D.visits].sort((a, b) => (b.created || b.date).localeCompare(a.created || a.date)).slice(0, 12);
+  const post = v => {
+    const p = P(v.pid); if (!p) return '';
+    const ph = D.photos.filter(x => x.vid === v.id), sc = D.scores.filter(s => s.vid === v.id), dx = (v.dx || []).join(', ') || (p.dx || []).join(', ');
+    const media = ph.length ? `<a class="pmedia" href="#/visit/${v.id}"><img data-pid="${ph[ph.length - 1].id}" data-thumb="1" alt="">${ph.length > 1 ? `<span class="pcount">${ph.length} photos</span>` : ''}</a>`
+      : sc.length ? `<a class="pmedia pscore" href="#/visit/${v.id}">${sc.slice(0, 3).map(x => `<div><b>${esc(String(x.total))}</b><small>${esc(x.scale)}</small></div>`).join('')}</a>` : '';
+    const note = (v.notes || '').replace(/\s+/g, ' ').trim();
+    return `<article class="post">
+      <header><a class="pav${p.arm ? ' hot' : ''}" href="#/patient/${p.id}">${esc(initials(p.name || p.uhid))}</a><a class="pwho" href="#/patient/${p.id}"><b>${esc(ptLabel(p))}</b><small>${esc(dx || v.label || '')}</small></a><a class="icon" href="#/visit/${v.id}" aria-label="Open visit">${ic('more')}</a></header>
+      ${media}
+      <div class="pact"><a class="icon" href="#/cam/${p.id}" aria-label="Add photo">${ic('camera')}</a><a class="icon" href="#/visit/${v.id}" aria-label="Scores and notes">${ic('chart')}</a><a class="icon" href="#/wa/${p.id}" aria-label="Patient instructions (WhatsApp)">${ic('chat')}</a><span class="sp"></span>${(p.buckets || []).length ? `<span class="ptag">${esc(p.buckets[0])}</span>` : ''}</div>
+      <p class="pcap"><b>${esc(v.label || 'Visit')}</b> ${esc(note.slice(0, 140))}${note.length > 140 ? '… <a class="muted" href="#/visit/' + v.id + '">more</a>' : ''}</p>
+      <small class="pdate">${fmt(v.date)}${sc.length ? ' · ' + sc.map(x => x.scale + ' ' + x.total).join(' · ') : ''}</small>
+    </article>`;
+  };
+  main().innerHTML = `<div class="stories" aria-label="Quick access">${st.map(story).join('')}</div>
   ${!D.settings.lastBackup || daysBetween(ymd(D.settings.lastBackup), today()) > 7 ? `<a class="warn" href="#/settings">⚠️ No backup in the last 7 days — tap to back up</a>` : ''}
-  <div class="card">
-    <div class="row between"><h3>Thesis recruitment</h3><a href="#/thesis" class="link">Open ›</a></div>
-    ${th ? `<div class="rings">${ring(cases, D.settings.sampleCase, 'Cases', 'var(--acc)')}${ring(ctrls, D.settings.sampleControl, 'Controls', 'var(--acc2)')}</div><p class="muted small">${esc(th.title || 'Thesis')}</p>` : `<p class="muted">Set up your thesis CRF to track recruitment and follow-ups.</p><a class="btn sm" href="#/thesis-setup">Set up thesis</a>`}
-  </div>
-  <div class="card">
-    <div class="row between"><h3>Today's actions</h3><a href="#/cal" class="link">Calendar ›</a></div>
-    <div class="strip">${items.length ? items.map(i => `<a class="due ${i.kind}" href="${i.href}"><div class="row between"><b>${esc(i.title)}</b>${dueBadge(i.date)}</div><small>${esc(i.sub)}</small></a>`).join('') : '<p class="muted">Nothing due today 🎉</p>'}</div>
-  </div>
-  <div class="card">
-    <div class="row between"><h3>NMC logbook · ${yr}</h3><a href="#/logbook" class="link">Logbook ›</a></div>
-    <div class="bar"><i style="width:${Math.min(100, tgtTotal ? perf / tgtTotal * 100 : 0)}%"></i></div>
-    <p class="small muted">${logY.length} entries this year · ${perf} performed</p>
-  </div>
-  <div class="tiles">
-    <a href="#/add" class="tile">${ic('plus')}<span>Quick add</span></a><a href="#/vault" class="tile">${ic('image')}<span>Photo vault</span></a>
-    <a href="#/inv" class="tile">${ic('flask')}<span>Investigations</span></a><a href="#/formulary" class="tile">${ic('pill')}<span>Formulary</span></a>
-    <a href="#/checklists" class="tile">${ic('check')}<span>OT checklists</span></a><a href="#/analytics" class="tile">${ic('chart')}<span>Analytics</span></a>
-  </div>
-  <div class="card"><h3>Recent visits</h3>${recent.length ? recent.map(v => { const p = P(v.pid); return p ? `<a class="li" href="#/visit/${v.id}"><div><b>${esc(ptLabel(p))}</b><small>${esc((v.dx || []).join(', ') || v.label)}</small></div><small class="muted">${fmt(v.date)}</small></a>` : ''; }).join('') : '<p class="muted">No patients yet — tap ＋ to add your first case.</p>'}</div>`;
+  <div class="row between feedhead"><h3>Recent cases</h3><a class="link" href="#/patients">All patients ›</a></div>
+  <div class="feed">${recent.length ? recent.map(post).join('') : `<div class="card empty-feed"><div class="sav big">${ic('plus')}</div><h3>No cases yet</h3><p class="muted small">Add your first OPD case. Its photos, scores and notes appear here for quick review.</p><a class="btn" href="#/add">Add a case</a></div>`}</div>
+  <p class="muted small center" style="margin:18px 0 6px">${yr} · ${D.patients.length} patients · ${D.visits.length} visits</p>`;
+  hydrateImgs();
 }
-
 /* ---------- PATIENTS LIST ---------- */
 function patientListHTML(q = '', bucket = '') {
   const s = q.toLowerCase();

@@ -467,11 +467,24 @@ ACT.chk = el => { const C = CHECKLISTS[+(ROUTE.q.k || 0)]; const st = D.checks[C
 ACT.chkreset = () => { delete D.checks[CHECKLISTS[+(ROUTE.q.k || 0)].name]; Store.save(); render(); };
 
 /* ---------- MORE & SETTINGS ---------- */
+/* ---------- PROFILE (Instagram-style; replaces "More") ---------- */
 function vMore() {
-  setTitle('More', false);
-  const t = [['#/batch', 'users', 'Batch hub'], ['#/logbook', 'book', 'NMC Logbook'], ['#/thesis', 'grad', 'Thesis tracker'], ['#/inv', 'flask', 'Investigations'], ['#/cal', 'calendar', 'Follow-ups'], ['#/analytics', 'chart', 'Analytics'], ['#/formulary', 'pill', 'Formulary & calculators'], ['#/checklists', 'check', 'OT checklists'], ['#/vault', 'image', 'Photo vault'], ['#/settings', 'settings', 'Settings & backup']];
-  if (amAdmin()) t.unshift(['#/admin', 'shield', 'Access requests']);
-  main().innerHTML = `<div class="tiles">${t.map(([h, i, l]) => `<a class="tile" href="${h}">${ic(i)}<span>${l}</span></a>`).join('')}</div>`;
+  const s = D.settings, name = s.name || 'Your profile', yr = residencyYear(new Date());
+  setTitle(name, false, `<button class="icon" data-act="lock" aria-label="Lock app">${ic('lock')}</button><a class="icon" href="#/settings" aria-label="Settings">${ic('menu')}</a>`);
+  const perf = D.logbook.filter(l => l.role === 'Performed').length;
+  const t = [['#/batch', 'users', 'Batch'], ['#/logbook', 'book', 'Logbook'], ['#/thesis', 'grad', 'Thesis'], ['#/inv', 'flask', 'Reports'], ['#/cal', 'calendar', 'Follow-ups'], ['#/analytics', 'chart', 'Analytics'], ['#/formulary', 'pill', 'Formulary'], ['#/checklists', 'check', 'OT lists'], ['#/settings', 'settings', 'Settings']];
+  if (amAdmin()) t.unshift(['#/admin', 'shield', 'Admin']);
+  const ph = [...D.photos].sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+  main().innerHTML = `<section class="prof">
+    <div class="phead"><div class="pbig hot">${esc(initials(s.name || 'PG'))}</div>
+      <div class="pstats"><a href="#/patients"><b>${D.patients.length}</b><small>patients</small></a><a href="#/vault"><b>${D.photos.length}</b><small>photos</small></a><a href="#/logbook"><b>${perf}</b><small>procedures</small></a></div></div>
+    <div class="pbio"><b>${esc(s.name ? 'Dr. ' + s.name : 'Add your name in Settings')}</b><span>MD Dermatology, Venereology & Leprosy · ${esc(yr)}</span>${s.inst || s.unit ? `<span class="muted">${esc([s.inst, s.unit].filter(Boolean).join(' · '))}</span>` : ''}</div>
+    <div class="pbtns"><a class="btn ghost sm" href="#/settings">Edit profile</a><a class="btn ghost sm" href="#/batch">Batch hub</a></div>
+    <div class="highlights">${t.map(([h, i, l]) => `<a class="tile hl" href="${h}"><span class="sav">${ic(i)}</span><span>${l}</span></a>`).join('')}</div>
+    <div class="ptabs"><span class="on" aria-label="Photos">${ic('grid')}</span></div>
+    <div class="pgrid">${ph.length ? ph.map(x => `<a href="#/photo/${x.id}"><img data-pid="${x.id}" data-thumb="1" alt=""></a>`).join('') : `<p class="muted small center" style="grid-column:1/-1;padding:24px 0">Your clinical photos appear here — encrypted, only on your devices and your Drive.</p>`}</div>
+  </section>`;
+  hydrateImgs();
 }
 function vSettings() {
   setTitle('Settings', false);
