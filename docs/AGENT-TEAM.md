@@ -28,6 +28,17 @@ Sriram — Owner / Chief Medical Reviewer
     └── docs-release           CHANGELOG, README, roadmap, PR text, message draft
 ```
 
+## Outside AI tools and GitHub (used when they help)
+
+| Tool | Used by | For |
+|---|---|---|
+| **GitHub Copilot code review** (`request_copilot_review` on each PR) | lead-architect | A third, outside AI reviewer. Advisory: the Lead triages each comment (fix / reply / dismiss with reason). Skip if Copilot review isn't enabled on the account. |
+| **PubMed connector** | clinical-content, thesis-biostat | Find and cite guidelines, validation studies for scales, and references for REVIEW.md and the thesis reference manager. |
+| **ICD-10 connector** | clinical-content | Attach a validated ICD-10 code to every diagnosis in a pack. |
+| **GitHub Actions — PR checks** (`.github/workflows/pr-checks.yml`) | everyone | Build + syntax + unit tests on every PR, independent of the session's own test run. Must be green to merge. |
+| **GitHub Issues & Milestones** | lead-architect, Sriram | One issue per week (#2–#15) with a checklist, milestone due on its Saturday. Bugs use `dept:<id>` labels; `needs-sriram` for decisions, `blocked` for stoppers. |
+| **PR template** (`.github/pull_request_template.md`) | docs-release | Sriram's review checklist and the team gates on every PR. |
+
 ## Who decides
 
 | Question | Decides | Escalate to |
