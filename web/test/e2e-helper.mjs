@@ -41,6 +41,7 @@ await A.ev(MOCK); await A.ev(HELPER);
 await A.ev(`D.patients.push({id:'p1',uhid:'A-1',name:'Asha',buckets:['Routine']}); location.hash='#/settings'`); await sleep(500);
 await A.ev(`ACT.driveconnect()`); await sleep(3000);
 chk('code exchanged via helper', await A.ev(`__ex===1 && Drive.token==='AT-ex'`));
+for (let i=0;i<12 && !(await A.ev(`Sync.state==='ok'`));i++) await sleep(500);
 chk('synced', await A.ev(`Sync.state==='ok'`));
 chk('refresh token stored encrypted', await A.ev(`IDB.get('kv','drt').then(x=>!!x && !JSON.stringify([...new Uint8Array(x.data)]).includes('RT-secret'))`));
 await A.ev(`(async()=>{ Drive.exp=0; await IDB.del('meta','dtoken'); D.patients.push({id:'p2',uhid:'A-2',buckets:['Routine']}); Sync.quiet=true; await Store.flush(); Sync.quiet=false; await Sync.run(); })()`); await sleep(2000);

@@ -30,12 +30,12 @@ function render() {
 async function showLock() {
   const auth = await IDB.get('meta', 'auth');
   $('#app').hidden = true; $('#lock').hidden = false;
-  $('#lock').innerHTML = `<div class="lockbox"><div class="logo">🩺</div><h1>PG Derma Companion</h1><p class="muted small">MD Dermatology, Venereology & Leprosy</p>
+  $('#lock').innerHTML = `<div class="lockbox"><div class="logo">${ic('steth')}</div><h1>PG Derma Companion</h1><p class="muted small">MD Dermatology, Venereology & Leprosy</p>
   ${auth ? `<input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Enter PIN"><button class="btn" id="unlock">Unlock</button><p id="lerr" class="err"></p>`
     : `<p class="small">Create a PIN to encrypt all patient data and photos on this device (AES-256). There is no PIN recovery — keep backups.</p>
     <input id="pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="New PIN (min 4)"><input id="pin2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="Confirm PIN"><button class="btn" id="unlock">Create vault</button><p id="lerr" class="err"></p>`}
   ${!auth ? '<button class="btn ghost" id="restorebtn" style="width:100%;margin-top:10px">☁️ Restore from Google Drive (new phone)</button>' : ''}
-  <p class="tiny muted">🔒 Works offline · encrypted on this device</p></div>`;
+  <p class="tiny muted">Works offline · encrypted on this device</p></div>`;
   $('#restorebtn')?.addEventListener('click', restoreFlow);
   const pin = $('#pin'); pin.focus();
   const go2 = async () => {
@@ -92,6 +92,7 @@ let lastW = innerWidth; addEventListener('resize', () => { if ((lastW >= 900) !=
 
 /* ---------- Boot ---------- */
 (async () => {
+  paintIcons();
   if (!window.crypto?.subtle || !window.indexedDB) { document.body.innerHTML = '<p style="padding:24px">This browser does not support secure storage (needs HTTPS + IndexedDB + WebCrypto).</p>'; return; }
   try { await navigator.storage?.persist?.(); } catch (e) {}
   await IDB.open();

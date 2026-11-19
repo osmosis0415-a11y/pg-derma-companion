@@ -33,7 +33,7 @@ const dueBadge = d => { const k = daysBetween(today(), d); return k < 0 ? `<span
 
 /* ---------- HOME ---------- */
 function vHome() {
-  setTitle('PG Derma', false, `<button class="icon" data-act="lock" aria-label="Lock">🔒</button>`);
+  setTitle('PG Derma', false, `<button class="icon" data-act="lock" aria-label="Lock">${ic('lock')}</button>`);
   const items = dueItems(1);
   const th = D.thesis, cases = D.patients.filter(p => p.arm === 'Case' && !p.dropout).length, ctrls = D.patients.filter(p => p.arm === 'Control' && !p.dropout).length;
   const yr = residencyYear(new Date()), logY = D.logbook.filter(l => l.year === yr);
@@ -58,9 +58,9 @@ function vHome() {
     <p class="small muted">${logY.length} entries this year · ${perf} performed</p>
   </div>
   <div class="tiles">
-    <a href="#/add" class="tile">➕<span>Quick add</span></a><a href="#/vault" class="tile">🖼️<span>Photo vault</span></a>
-    <a href="#/inv" class="tile">🧪<span>Investigations</span></a><a href="#/formulary" class="tile">💊<span>Formulary</span></a>
-    <a href="#/checklists" class="tile">✅<span>OT checklists</span></a><a href="#/analytics" class="tile">📊<span>Analytics</span></a>
+    <a href="#/add" class="tile">${ic('plus')}<span>Quick add</span></a><a href="#/vault" class="tile">${ic('image')}<span>Photo vault</span></a>
+    <a href="#/inv" class="tile">${ic('flask')}<span>Investigations</span></a><a href="#/formulary" class="tile">${ic('pill')}<span>Formulary</span></a>
+    <a href="#/checklists" class="tile">${ic('check')}<span>OT checklists</span></a><a href="#/analytics" class="tile">${ic('chart')}<span>Analytics</span></a>
   </div>
   <div class="card"><h3>Recent visits</h3>${recent.length ? recent.map(v => { const p = P(v.pid); return p ? `<a class="li" href="#/visit/${v.id}"><div><b>${esc(ptLabel(p))}</b><small>${esc((v.dx || []).join(', ') || v.label)}</small></div><small class="muted">${fmt(v.date)}</small></a>` : ''; }).join('') : '<p class="muted">No patients yet — tap ＋ to add your first case.</p>'}</div>`;
 }
@@ -159,7 +159,7 @@ function patientDetailHTML(p) {
   const flags = [...(p.flags || []), ...(p.allergies || []).filter(a => a !== 'None known').map(a => 'Allergy: ' + a), p.allergyOther && 'Allergy: ' + p.allergyOther].filter(Boolean);
   return `<div class="card phead">
     <div class="row between"><div><h2>${esc(p.uhid)}</h2><div class="muted">${esc([p.name, p.age && p.age + ' y', p.sex, p.fst && 'FST ' + p.fst].filter(Boolean).join(' · '))}</div></div>
-    <button class="icon" data-act="editpt" data-id="${p.id}">✏️</button></div>
+    <button class="icon" data-act="editpt" data-id="${p.id}" aria-label="Edit patient">${ic('edit')}</button></div>
     ${flags.length ? `<div class="flags">${flags.map(f => `<span class="flag">${esc(f)}</span>`).join('')}</div>` : ''}
     <div>${(p.buckets || []).map(b => `<span class="tag">${esc(b)}</span>`).join('')} ${p.arm ? `<span class="tag strong">${esc(p.studyId || '')} · ${esc(p.arm)}</span>` : ''}</div>
     ${(p.dx || []).length ? `<p class="small"><b>Dx:</b> ${esc(p.dx.join(', '))}</p>` : ''}

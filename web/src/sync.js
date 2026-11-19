@@ -313,7 +313,7 @@ ACT.drivewipe = async () => {
 /* ---------- Restore on a new device (from the lock screen, before a vault exists) ---------- */
 async function restoreFlow() {
   const box = $('.lockbox');
-  box.innerHTML = `<div class="logo">☁️</div><h1>Restore from Google Drive</h1><p class="small muted">Connect the Google account you used for Cloud sync.</p><div id="rbody"><button class="btn" id="rg" style="width:100%">Connect Google Drive</button><p id="lerr" class="err"></p></div><button class="btn ghost" id="rback" style="width:100%">Back</button>`;
+  box.innerHTML = `<div class="logo">${ic('cloud')}</div><h1>Restore from Google Drive</h1><p class="small muted">Connect the Google account you used for Cloud sync.</p><div id="rbody"><button class="btn" id="rg" style="width:100%">Connect Google Drive</button><p id="lerr" class="err"></p></div><button class="btn ghost" id="rback" style="width:100%">Back</button>`;
   $('#rback').onclick = () => showLock();
   Drive.loadGis().catch(() => {});
   $('#rg').onclick = async () => {

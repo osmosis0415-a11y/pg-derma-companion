@@ -46,7 +46,7 @@ const Gate = {
   },
   box(html) {
     $('#app').hidden = true; const l = $('#lock'); l.hidden = false;
-    l.innerHTML = `<div class="lockbox"><div class="logo">🩺</div><h1>PG Derma Companion</h1><p class="muted small">MD Dermatology, Venereology & Leprosy</p>${html}</div>`;
+    l.innerHTML = `<div class="lockbox"><div class="logo">${ic('steth')}</div><h1>PG Derma Companion</h1><p class="muted small">MD Dermatology, Venereology & Leprosy</p>${html}</div>`;
   },
   retry(msg) { this.box(`<p class="err">${esc(msg)}</p><button class="btn" id="gretry" style="width:100%">Try again</button>`); $('#gretry').onclick = () => this.screen(); },
   async screen() {

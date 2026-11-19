@@ -469,9 +469,9 @@ ACT.chkreset = () => { delete D.checks[CHECKLISTS[+(ROUTE.q.k || 0)].name]; Stor
 /* ---------- MORE & SETTINGS ---------- */
 function vMore() {
   setTitle('More', false);
-  const t = [['#/batch', '🧑‍🤝‍🧑', 'Batch hub'], ['#/logbook', '📒', 'NMC Logbook'], ['#/thesis', '🎓', 'Thesis tracker'], ['#/inv', '🧪', 'Investigations'], ['#/cal', '📅', 'Follow-ups'], ['#/analytics', '📊', 'Analytics'], ['#/formulary', '💊', 'Formulary & calculators'], ['#/checklists', '✅', 'OT checklists'], ['#/vault', '🖼️', 'Photo vault'], ['#/settings', '⚙️', 'Settings & backup']];
-  if (amAdmin()) t.unshift(['#/admin', '🛡️', 'Access requests']);
-  main().innerHTML = `<div class="tiles">${t.map(([h, i, l]) => `<a class="tile" href="${h}">${i}<span>${l}</span></a>`).join('')}</div>`;
+  const t = [['#/batch', 'users', 'Batch hub'], ['#/logbook', 'book', 'NMC Logbook'], ['#/thesis', 'grad', 'Thesis tracker'], ['#/inv', 'flask', 'Investigations'], ['#/cal', 'calendar', 'Follow-ups'], ['#/analytics', 'chart', 'Analytics'], ['#/formulary', 'pill', 'Formulary & calculators'], ['#/checklists', 'check', 'OT checklists'], ['#/vault', 'image', 'Photo vault'], ['#/settings', 'settings', 'Settings & backup']];
+  if (amAdmin()) t.unshift(['#/admin', 'shield', 'Access requests']);
+  main().innerHTML = `<div class="tiles">${t.map(([h, i, l]) => `<a class="tile" href="${h}">${ic(i)}<span>${l}</span></a>`).join('')}</div>`;
 }
 function vSettings() {
   setTitle('Settings', false);

@@ -2,6 +2,10 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 19 Nov 2026 (new look)
+- **Cleaner, more professional design** (from the Canva "UI v3" mockup): white cards with thin borders, one teal accent, quieter chips and tags, and outline icons instead of emoji in the menus, tiles and sign-in screen.
+- Dark mode updated to match.
+
 ## 19 Nov 2026 (admin bot, Drive stays connected, error reports)
 - **Google Drive stays connected.** No more "reconnect" bar every hour; the app renews access silently in the background.
 - **Sign-in fixed for the installed app** (home-screen icon): Google sign-in now uses a popup that works inside installed apps.
