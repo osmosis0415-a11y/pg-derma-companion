@@ -2,6 +2,9 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 19 Nov 2026 (later)
+- **Email sign-in for Cloud sync:** create an account, sign in or reset your password with email, right in Settings → Cloud sync (Google sign-in still works).
+
 ## 19 Nov 2026
 - **Cloud sync (end-to-end encrypted):** patients, visits, scores, logbook, thesis data and photos stay in sync across your phone, iPad and laptop. Everything is encrypted with your PIN before upload. (Settings → Cloud sync)
 - **Restore on a new phone:** "Restore from cloud" on the first screen.

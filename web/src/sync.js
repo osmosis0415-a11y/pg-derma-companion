@@ -164,7 +164,12 @@ function syncCardHTML() {
   if (!Cloud.cfg()) return '';
   return `<div class="card"><h3>☁️ Cloud sync <small class="muted">end-to-end encrypted</small></h3>
   <p class="small muted">Keeps your patients, visits, scores, logbook, thesis data${s.photos === false ? '' : ' and photos'} in sync across your phone, iPad and laptop, and lets you restore on a new phone. Everything is encrypted with your PIN <b>before</b> upload — Firebase only stores unreadable data.</p>
-  ${!signed ? `<div class="btnrow"><button class="btn sm" data-act="syncgoogle">Sign in with Google</button><a class="btn sm ghost" href="#/batch">Email sign-in</a></div>`
+  ${!signed ? `<div class="btnrow"><button class="btn sm" data-act="syncgoogle">Continue with Google</button></div>
+      <div class="form"><p class="small muted center">or use email</p>
+      <label>Email<input id="sy_email" type="email" autocomplete="email" inputmode="email"></label>
+      <label>Password<input id="sy_pw" type="password" autocomplete="current-password" placeholder="min 6 characters"></label>
+      <div class="actions"><button class="btn ghost" data-act="syncemail" data-mode="up">Create account</button><button class="btn" data-act="syncemail" data-mode="in">Sign in</button></div>
+      <button class="btn xs ghost" data-act="syncemail" data-mode="reset">Forgot password?</button></div>`
     : s.on ? `<p class="small"><span class="sdot" data-s="${Sync.state}"></span> <b id="syncstat">${esc(syncLabel())}</b> · ${esc(Cloud.user.email || '')}</p>
       <label class="row small"><input type="checkbox" data-act="syncphotos" ${s.photos === false ? '' : 'checked'}> Also sync photos (uses more of the free cloud space)</label>
       <div class="btnrow"><button class="btn sm" data-act="syncnow">↻ Sync now</button><button class="btn sm ghost" data-act="syncoff">Turn off on this device</button></div>`
@@ -172,6 +177,19 @@ function syncCardHTML() {
   </div>`;
 }
 ACT.syncgoogle = async () => { try { await Cloud.init(); } catch (e) { return toast('Could not reach Firebase'); } await ACT.gsign(); setTimeout(() => ROUTE.path === 'settings' && render(), 1500); };
+ACT.syncemail = async el => {
+  const email = val('sy_email'), pw = ($('#sy_pw') || {}).value || '', mode = el.dataset.mode;
+  if (!email) return toast('Enter your email');
+  if (mode !== 'reset' && pw.length < 6) return toast('Password must be at least 6 characters');
+  try { await Cloud.init(); } catch (e) { return toast('Could not reach Firebase — check your internet'); }
+  const f = Cloud.f;
+  try {
+    if (mode === 'reset') { await f.sendPasswordResetEmail(Cloud.auth, email); return toast('Password reset link sent to ' + email, 4000); }
+    if (mode === 'up') await f.createUserWithEmailAndPassword(Cloud.auth, email, pw); else await f.signInWithEmailAndPassword(Cloud.auth, email, pw);
+    toast('Signed in as ' + email);
+    const c = $('#synccard'); if (c) c.innerHTML = syncCardHTML();
+  } catch (e) { toast(authMsg(e), 3500); }
+};
 ACT.syncon = async () => {
   await Cloud.init();
   const m = (await Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'users', Cloud.user.uid))).data(), auth = await IDB.get('meta', 'auth');
