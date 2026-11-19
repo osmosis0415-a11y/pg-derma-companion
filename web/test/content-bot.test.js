@@ -24,7 +24,7 @@ const g = {
   UrlFetchApp: { fetch: (url, o = {}) => {
     if (url.includes('generativelanguage')) {
       if (url.includes('/models?')) return resp(200, { models: modelList });
-      geminiCalls.push(url); if (url.includes('gemini-2.5-flash:') && modelList) return resp(404, 'gone');
+      geminiCalls.push(url); if (url.includes('gemini-2.5-flash:') && modelList) return resp(404, 'gone'); if (url.includes('gemini-omni-9.5-flash:')) return resp(429, 'quota 0');
       return resp(200, { candidates: [{ content: { parts: [{ text: geminiText }] } }] });
     }
     const path = url.split('/documents')[1];
@@ -62,9 +62,9 @@ const tag = store['content/' + mcqId].tag, A = Object.fromEntries(new URL(B.link
 ok('publish-all page counts drafts', B.doGet({ parameter: A }).h.includes('Publish 2 drafted'));
 ok('publish all', B.cdecide(tag, 'capproveall', A.s).includes('Published 2') && Object.entries(store).filter(([k, v]) => k.startsWith('content/') && v.status === 'live').length === 3);
 // retired model → falls back to listed flash model
-modelList = [{ name: 'models/gemini-9.0-flash', supportedGenerationMethods: ['generateContent'] }, { name: 'models/gemini-9.0-flash-lite', supportedGenerationMethods: ['generateContent'] }];
+modelList = [{ name: 'models/gemini-omni-9.5-flash', supportedGenerationMethods: ['generateContent'] }, { name: 'models/gemini-9.0-flash', supportedGenerationMethods: ['generateContent'] }, { name: 'models/gemini-9.0-flash-lite', supportedGenerationMethods: ['generateContent'] }, { name: 'models/gemini-9.0-flash-preview', supportedGenerationMethods: ['generateContent'] }];
 geminiCalls = []; B.makeContent('Psoriasis');
-ok('falls back to newest stable flash model', P.GEMINI_MODEL === 'gemini-9.0-flash' && geminiCalls.some(u => u.includes('gemini-9.0-flash:')));
+ok('skips no-quota (429) model, falls back to next free flash model', P.GEMINI_MODEL === 'gemini-9.0-flash' && geminiCalls.some(u => u.includes('gemini-9.0-flash:')));
 // nudges
 const hr = +new Date(Date.now() + 5.5 * 36e5).toISOString().slice(11, 13), today = new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10), yest = new Date(Date.now() + 5.5 * 36e5 - 864e5).toISOString().slice(0, 10);
 store['study/a'] = { remind: true, hour: hr, last: yest, streak: 6, email: 'a@x.com', name: 'Asha K', goal: 10 };

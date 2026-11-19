@@ -236,21 +236,32 @@ function query_(coll, field, op, value, limit) {
 /* ---- Gemini ---- */
 function gemini_(prompt) {
   var key = props_().getProperty('GEMINI_KEY'); if (!key) throw new Error('Add Script property GEMINI_KEY (free key from aistudio.google.com).');
-  var model = props_().getProperty('GEMINI_MODEL') || 'gemini-2.5-flash';
   var call = function (m) {
     return UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', { method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': key },
       payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.4, responseMimeType: 'application/json' } }) });
   };
-  var r = call(model);
-  if (r.getResponseCode() === 404) { // model retired — pick the newest stable "flash" model that can generate content
-    var list = JSON.parse(UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key }, muteHttpExceptions: true }).getContentText()).models || [];
-    var pick = list.filter(function (m) { return /flash/.test(m.name) && !/lite|preview|exp|image|tts|live|audio/.test(m.name) && (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0; }).map(function (m) { return m.name.replace('models/', ''); }).sort().pop();
-    if (!pick) throw new Error('No Gemini flash model available');
-    props_().setProperty('GEMINI_MODEL', pick); model = pick; r = call(pick);
+  // Try the model that worked last time, then every other text "flash" model (newest first) until one is free and answers.
+  var first = props_().getProperty('GEMINI_MODEL') || 'gemini-2.5-flash', tried = [], r = null, lastErr = '';
+  var list = null, candidates = function () {
+    if (!list) {
+      var j = JSON.parse(UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key }, muteHttpExceptions: true }).getContentText());
+      var num = function (n) { var m = n.match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
+      list = (j.models || []).filter(function (m) { return /flash/.test(m.name) && !/preview|exp|image|tts|live|audio|thinking|embed/.test(m.name) && (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0; })
+        .map(function (m) { return m.name.replace('models/', ''); })
+        .sort(function (a, b) { return (num(b) - num(a)) || ((/lite/.test(a) ? 1 : 0) - (/lite/.test(b) ? 1 : 0)) || a.length - b.length; });
+    }
+    return list;
+  };
+  var queue = [first];
+  while (queue.length && tried.length < 8) {
+    var m = queue.shift(); if (tried.indexOf(m) >= 0) continue; tried.push(m);
+    r = call(m); var code = r.getResponseCode();
+    if (code < 300) { props_().setProperty('GEMINI_MODEL', m); var j2 = JSON.parse(r.getContentText()), t = (((j2.candidates || [])[0] || {}).content || {}).parts; return { model: m, text: (t || []).map(function (p) { return p.text || ''; }).join('') }; }
+    lastErr = m + ' → ' + code + ': ' + r.getContentText().slice(0, 200);
+    if (code === 404 || code === 429 || code === 403 || code === 400) { if (!queue.length) queue = candidates().filter(function (x) { return tried.indexOf(x) < 0; }); continue; }
+    break;
   }
-  if (r.getResponseCode() >= 300) throw new Error('Gemini ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 300));
-  var j = JSON.parse(r.getContentText()), t = (((j.candidates || [])[0] || {}).content || {}).parts;
-  return { model: model, text: (t || []).map(function (p) { return p.text || ''; }).join('') };
+  throw new Error('Gemini: no free model answered. Last: ' + lastErr);
 }
 function clip_(s, n) { s = String(s == null ? '' : s).trim(); return s.length > n ? s.slice(0, n) : s; }
 function cleanItem_(x, topic) {
