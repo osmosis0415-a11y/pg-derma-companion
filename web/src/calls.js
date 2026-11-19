@@ -38,7 +38,7 @@ const Calls = {
       this.unsubs.push(f.onSnapshot(f.query(f.collection(db, 'batches', b, 'calls'), f.where('callee', '==', me), f.where('status', '==', 'ringing')), s => {
         s.docChanges ? s.docChanges().forEach(ch => { if (ch.type === 'added') this.incoming(ch.doc.id, ch.doc.data()); })
           : s.docs.forEach(d => this.incoming(d.id, d.data()));
-      }, () => {}));
+      }, e => { this.diag('ringlisten', e); clearTimeout(this._retry); this._retry = setTimeout(() => this.start(), 15000); }));
     } catch (e) { ErrLog.capture('calls', String(e && e.message || e), e && e.stack); }
   },
   stop() {
@@ -81,13 +81,13 @@ const Calls = {
       c.flush();
       c.unsubs.push(f.onSnapshot(ref, s => {
         const x = s.data(); if (!x || this.cur !== c) return;
-        if (x.answer && !pc.currentRemoteDescription) pc.setRemoteDescription(x.answer).catch(() => {});
+        if (x.answer && !pc.currentRemoteDescription && !c.settingAnswer) { c.settingAnswer = true; pc.setRemoteDescription(x.answer).then(() => this.flushHeld(c)).catch(e => this.diag('answer', e)); }
         if (x.status !== c.status) { c.status = x.status; if (['declined', 'ended', 'missed', 'busy'].includes(x.status)) this.finish(x.status); else this.screen(); }
       }));
       this.listenCands(c, 'callee');
       this.tone('ringback');
       c.ringTimer = setTimeout(() => { if (this.cur === c && c.status === 'ringing') { f.updateDoc(ref, { status: 'missed', endedAt: f.serverTimestamp() }).catch(() => {}); this.finish('missed'); } }, CALL_RING_MS);
-    } catch (e) { toast('Could not start the call'); ErrLog.capture('calls', String(e && e.message || e), e && e.stack); this.hangup(true); }
+    } catch (e) { this.diag('start', e); toast(e && e.code === 'permission-denied' ? 'Calling is not allowed for one of you — ask the admin' : 'Could not start the call'); this.hangup(true); }
   },
 
   /* ---------- incoming ---------- */
@@ -95,7 +95,7 @@ const Calls = {
   incoming(id, x) {
     if (!x || x.status !== 'ringing' || !this.allowed) return;
     const age = x.createdAt && x.createdAt.toMillis ? Date.now() - x.createdAt.toMillis() : 0;
-    if (age > CALL_RING_MS) return;
+    if (age > CALL_RING_MS + 60000) return;
     const f = Cloud.f, ref = f.doc(Cloud.db, 'batches', D.batch.id, 'calls', id);
     if (this.cur) { f.updateDoc(ref, { status: 'busy', endedAt: f.serverTimestamp() }).catch(() => {}); return; }
     const c = this.cur = { id, ref, role: 'callee', peer: x.caller, peerName: x.callerName, video: !!x.video, offer: x.offer, unsubs: [], status: 'incoming' };
@@ -113,11 +113,12 @@ const Calls = {
     try {
       c.local = await this.media(withVideo);
       const pc = await this.peer(c);
-      await pc.setRemoteDescription(c.offer);
+      await pc.setRemoteDescription(c.offer); this.flushHeld(c);
+      this.attach();
       const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
       await f.updateDoc(c.ref, { answer: { type: ans.type, sdp: ans.sdp }, status: 'accepted' });
       this.listenCands(c, 'caller');
-    } catch (e) { toast(e && e.name === 'NotAllowedError' ? 'Allow microphone/camera to answer' : 'Could not answer the call'); this.hangup(); }
+    } catch (e) { this.diag('accept', e); toast(e && e.name === 'NotAllowedError' ? 'Allow microphone/camera to answer' : (e && e.name === 'NotReadableError' ? 'Camera is busy in another app' : 'Could not answer the call')); this.hangup(); }
   },
   decline() { const c = this.cur; if (!c) return; Cloud.f.updateDoc(c.ref, { status: 'declined', endedAt: Cloud.f.serverTimestamp() }).catch(() => {}); this.finish('declined', true); },
 
@@ -138,7 +139,7 @@ const Calls = {
     pc.onconnectionstatechange = () => {
       const s = pc.connectionState;
       if (s === 'connected' && c.status !== 'live') { c.status = 'live'; c.started = Date.now(); clearTimeout(c.ringTimer); this.tone(null); this.screen(); this.routeCheck(c); }
-      if (s === 'failed') { toast('Connection failed — network blocked the call'); this.hangup(); }
+      if (s === 'failed') { this.diag('failed', 'connection failed'); toast('Connection failed — network blocked the call'); this.hangup(); }
       if (s === 'disconnected') { clearTimeout(c.dropTimer); c.dropTimer = setTimeout(() => { if (this.cur === c && pc.connectionState !== 'connected') { toast('Call dropped'); this.hangup(); } }, 12000); }
     };
     return pc;
@@ -148,9 +149,16 @@ const Calls = {
     c.unsubs.push(f.onSnapshot(f.query(f.collection(c.ref, 'cands'), f.where('from', '==', from)), s => {
       (s.docChanges ? s.docChanges().filter(ch => ch.type === 'added').map(ch => ch.doc) : s.docs).forEach(d => {
         if (!c.seen) c.seen = new Set(); if (c.seen.has(d.id)) return; c.seen.add(d.id);
-        c.pc && c.pc.addIceCandidate(d.data().c).catch(() => {});
+        // A candidate can arrive before the answer/offer is applied; hold it until then or it is lost.
+        if (c.pc && c.pc.remoteDescription) c.pc.addIceCandidate(d.data().c).catch(e => this.diag('cand', e));
+        else (c.held = c.held || []).push(d.data().c);
       });
     }));
+  },
+  flushHeld(c) { const h = (c.held || []).splice(0); h.forEach(x => c.pc.addIceCandidate(x).catch(e => this.diag('cand', e))); },
+  diag(where, e, extra) {
+    const c = this.cur, pc = c && c.pc;
+    try { ErrLog.capture('calls', `${where}: ${(e && (e.name || '')) + ' ' + (e && e.message || e)} | role=${c && c.role} video=${c && c.video} status=${c && c.status} conn=${pc && pc.connectionState} ice=${pc && pc.iceConnectionState} relay=${!!(this.ice && this.ice.length)}${extra ? ' ' + extra : ''}`, e && e.stack); } catch (x) {}
   },
   async routeCheck(c) {
     try {

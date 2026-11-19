@@ -67,6 +67,14 @@ chk('mute disables mic', await A.ev(`Calls.cur.local.getAudioTracks().every(t=>!
 await B.ev(`document.querySelector('[data-call=end]').click()`); await sleep(1500);
 chk('call ended both sides', !(await A.ev(`!!Calls.cur`)) && !(await B.ev(`!!Calls.cur`)) && !(await A.ev(`!!$('#callui')`)));
 chk('A camera released', await A.ev(`!document.querySelector('video')`));
+// race: the answer is applied late, after the callee's network candidates have arrived
+await A.ev(`document.querySelector('[data-act=bcall][data-id=uB][data-v="1"]').click()`); await sleep(2000);
+await A.ev(`(()=>{const pc=Calls.cur.pc,o=pc.setRemoteDescription.bind(pc);pc.setRemoteDescription=d=>new Promise(r=>setTimeout(r,2500)).then(()=>o(d));})()`);
+await B.ev(`document.querySelector('[data-call=accept-video]').click()`);
+let live2 = false; for (let i = 0; i < 40 && !live2; i++) { await sleep(500); live2 = (await A.ev(`Calls.cur&&Calls.cur.status`)) === 'live' && (await B.ev(`Calls.cur&&Calls.cur.status`)) === 'live'; }
+chk('connects even when answer arrives late', live2);
+chk('held candidates were applied', await A.ev(`Calls.cur && (Calls.cur.held||[]).length===0`));
+await A.ev(`document.querySelector('[data-call=end]').click()`); await sleep(1500);
 // decline flow (voice)
 await A.ev(`document.querySelector('[data-act=bcall][data-id=uB][data-v="0"]').click()`); await sleep(2000);
 chk('B rings for voice call', (await B.ev(`$('#cstat')&&$('#cstat').textContent`) || '').includes('Incoming voice call'));
