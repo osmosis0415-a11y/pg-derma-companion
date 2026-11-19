@@ -1,0 +1,78 @@
+name: Site monitor
+# Watchdog: every 30 minutes checks the live app, the deploy, the Apps Script helpers and Firebase.
+# Self-heals what it safely can (re-deploys a stale/failed Pages build once) and opens a
+# "site-down" issue (GitHub emails the owner) when something is broken; closes it on recovery.
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+  issues: write
+concurrency:
+  group: site-monitor
+  cancel-in-progress: false
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Run checks
+        run: MAIN_SHA=$(git rev-parse --short=7 HEAD) node tools/site-monitor.mjs
+
+      - name: Self-heal — re-deploy if the live site is stale or the last deploy failed
+        run: |
+          set -e
+          stale=$(node -p "require('./monitor-result.json').stale")
+          last=$(gh run list -R "$REPO" -w pages.yml -b main -L 1 --json databaseId,status,conclusion,createdAt,attempt -q '.[0]')
+          echo "last pages run: $last"
+          status=$(echo "$last" | node -pe "JSON.parse(require('fs').readFileSync(0)).status")
+          concl=$(echo "$last" | node -pe "JSON.parse(require('fs').readFileSync(0)).conclusion")
+          id=$(echo "$last" | node -pe "JSON.parse(require('fs').readFileSync(0)).databaseId")
+          attempt=$(echo "$last" | node -pe "JSON.parse(require('fs').readFileSync(0)).attempt")
+          age=$(echo "$last" | node -pe "Math.round((Date.now()-Date.parse(JSON.parse(require('fs').readFileSync(0)).createdAt))/60000)")
+          if [ "$status" != "completed" ]; then echo "Deploy in progress — nothing to do."; exit 0; fi
+          if [ "$concl" = "failure" ] && [ "$attempt" = "1" ]; then
+            echo "Last deploy failed — retrying it once."; gh run rerun "$id" -R "$REPO" --failed; echo "HEALED=retried failed deploy $id" >> $GITHUB_ENV
+          elif [ "$stale" = "true" ] && [ "$age" -gt 20 ]; then
+            echo "Live build is stale — triggering a fresh deploy."; gh workflow run pages.yml -R "$REPO" --ref main; echo "HEALED=re-deployed stale site" >> $GITHUB_ENV
+          else echo "No healing needed."; fi
+
+      - name: Open, update or close the site-down issue
+        if: always()
+        run: |
+          set -e
+          gh label create site-down -R "$REPO" -c B60205 -d "Opened automatically by the site monitor" 2>/dev/null || true
+          open=$(gh issue list -R "$REPO" -l site-down -s open -L 1 --json number -q '.[0].number')
+          ok=$(node -p "const r=require('./monitor-result.json'); r.ok" 2>/dev/null || echo false)
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "$ok" = "true" ]; then
+            if [ -n "$open" ]; then gh issue close "$open" -R "$REPO" -r completed -c "🟢 Recovered — all checks pass again ($run_url)."; fi
+            exit 0
+          fi
+          body=$(node -e "
+            let r; try { r=require('./monitor-result.json') } catch { r={problems:['The monitor itself crashed — see the run log.'],warnings:[]} }
+            const L=['**What is broken**',...r.problems.map(p=>'- '+p)];
+            if (r.warnings.length) L.push('','**Warnings**',...r.warnings.map(p=>'- '+p));
+            if (process.env.HEALED) L.push('','**Auto-fix tried:** '+process.env.HEALED);
+            L.push('','Checked '+(r.checkedAt||new Date().toISOString())+' · live build '+(r.liveBuild||'?')+' · [run log]($run_url)');
+            L.push('','The daily Claude health check reads this issue and fixes code problems. Apps Script / Firebase problems may need you — see the run log.');
+            console.log(L.join('\n'))")
+          if [ -n "$open" ]; then
+            # Comment at most every 6 hours so the owner isn't spammed while it stays broken.
+            lastc=$(gh issue view "$open" -R "$REPO" --json comments,createdAt -q '(.comments|last|.createdAt) // .createdAt')
+            mins=$(node -pe "Math.round((Date.now()-Date.parse('$lastc'))/60000)")
+            gh issue edit "$open" -R "$REPO" --body "$body"
+            if [ "$mins" -gt 360 ]; then gh issue comment "$open" -R "$REPO" -b "🔴 Still broken. $run_url"; fi
+          else
+            gh issue create -R "$REPO" -l site-down -t "🔴 PG Derma site problem detected" -b "$body"
+          fi
