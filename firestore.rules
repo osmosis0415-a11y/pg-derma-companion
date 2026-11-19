@@ -2,7 +2,7 @@ rules_version = '2';
 // PG Derma Companion — security rules.
 // Access is by Google sign-in + manual approval by the admin. Patient data is never stored here
 // (cloud sync goes, encrypted, to each user's own Google Drive). Firestore holds only:
-//   approvals/{uid}  — access requests;  batches/** — batch calendar, member names, anonymous procedure counts.
+//   approvals/{uid}  — access requests;  batches/** — batch calendar, group chat, member names, anonymous procedure counts.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
@@ -72,6 +72,19 @@ service cloud.firestore {
           && shortStr(request.resource.data.time, 5) && shortStr(request.resource.data.presenter, 80)
           && shortStr(request.resource.data.venue, 80) && shortStr(request.resource.data.notes, 300);
         allow delete: if isMember(b) && (resource.data.createdBy == request.auth.uid || isAdmin(b));
+        allow update: if false;
+      }
+
+      // Batch group chat. Members only; you post as yourself; delete your own (admin: any); no edits.
+      match /messages/{m} {
+        allow read: if isMember(b);
+        allow create: if isMember(b)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'text', 'at'])
+          && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 1000
+          && shortStr(request.resource.data.name, 80)
+          && request.resource.data.at == request.time;
+        allow delete: if isMember(b) && (resource.data.uid == request.auth.uid || isAdmin(b));
         allow update: if false;
       }
 

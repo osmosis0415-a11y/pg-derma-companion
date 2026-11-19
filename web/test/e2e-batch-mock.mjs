@@ -17,7 +17,7 @@ await ev(`(()=>{
  const notify=()=>subs.forEach(s=>s.fire());
  const f={
   serverTimestamp:()=>'TS', doc:(db,...p)=>({p}), collection:(db,...p)=>({p,c:true}),
-  where:(fld,op,v)=>({fld,op,v}), orderBy:(fld)=>({ob:fld}), query:(c,...m)=>({p:c.p,m}),
+  where:(fld,op,v)=>({fld,op,v}), orderBy:(fld)=>({ob:fld}), limit:n=>({lim:n}), query:(c,...m)=>({p:c.p,m}),
   setDoc:async(d,v)=>{store.set(key(d.p),JSON.parse(JSON.stringify(v)));notify()},
   addDoc:async(c,v)=>{const k=key(c.p)+'/'+Math.random().toString(36).slice(2,8);store.set(k,JSON.parse(JSON.stringify(v)));notify();return{id:k}},
   getDoc:async d=>({exists:()=>store.has(key(d.p)),data:()=>store.get(key(d.p))}),

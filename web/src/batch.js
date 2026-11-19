@@ -112,11 +112,12 @@ ACT.bsignout = async () => { Cloud.stop(); Sync.stop(); await Cloud.f.signOut(Cl
 function batchTabsHTML() {
   const t = ROUTE.q.t || 'cal';
   return `<div class="row between"><div><b>${esc(B().name)}</b><div class="small muted">Code ${esc(B().id)}</div></div><button class="btn sm ghost" data-act="binvite">Invite</button></div>
-  <div class="chips">${[['cal', '📅 Calendar'], ['log', '📊 Logbook comparison'], ['mem', '👥 Members']].map(([k, l]) => `<a class="chip${k === t ? ' on' : ''}" href="#/batch?t=${k}">${l}</a>`).join('')}</div><div id="bpane"></div>`;
+  <div class="chips">${[['chat', 'Chat' + chatUnreadBadge()], ['cal', 'Calendar'], ['log', 'Logbook comparison'], ['mem', 'Members']].map(([k, l]) => `<a class="chip${k === t ? ' on' : ''}" href="#/batch?t=${k}">${l}</a>`).join('')}</div><div id="bpane"></div>`;
 }
 function paintBatch() {
   const el = $('#bpane'); if (!el || !B()) return;
   const t = ROUTE.q.t || 'cal';
+  if (t === 'chat') return paintChat(el);
   if (t === 'cal') {
     const up = (B().events || []).filter(e => e.date >= today()).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
     const past = (B().events || []).filter(e => e.date < today()).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
@@ -146,11 +147,17 @@ function paintBatch() {
   }
 }
 function subscribeBatch() {
-  Cloud.stop(); const f = Cloud.f, id = B().id, db = Cloud.db;
+  Cloud.stop(); Chat.msgs = []; const f = Cloud.f, id = B().id, db = Cloud.db;
   const err = e => { if (e.code === 'permission-denied') { toast('You are no longer a member of this batch'); D.batch = null; Store.save(); render(); } };
   Cloud.unsubs.push(f.onSnapshot(f.query(f.collection(db, 'batches', id, 'events'), f.where('date', '>=', addDays(today(), -60)), f.orderBy('date')), s => { B().events = s.docs.map(d => Object.assign({ id: d.id }, d.data(), { createdAt: null })); Store.save(); if ((ROUTE.q.t || 'cal') === 'cal') paintBatch(); }, err));
   Cloud.unsubs.push(f.onSnapshot(f.collection(db, 'batches', id, 'members'), s => { B().members = s.docs.map(d => ({ id: d.id, name: d.data().name, year: d.data().year })); if (ROUTE.q.t === 'mem') paintBatch(); }, err));
   Cloud.unsubs.push(f.onSnapshot(f.collection(db, 'batches', id, 'logstats'), s => { B().stats = s.docs.map(d => ({ id: d.id, counts: d.data().counts || {} })); if (ROUTE.q.t === 'log') paintBatch(); }, err));
+  try {
+  Cloud.unsubs.push(f.onSnapshot(f.query(f.collection(db, 'batches', id, 'messages'), f.orderBy('at', 'desc'), f.limit(150)), s => {
+    Chat.msgs = s.docs.map(d => { const x = d.data(); return { id: d.id, uid: x.uid, name: x.name, text: x.text, at: x.at && x.at.toMillis ? x.at.toMillis() : (typeof x.at === 'number' ? x.at : Date.now()) }; }).reverse();
+    if (ROUTE.q.t === 'chat') { paintChatList(); Chat.markRead(); } else { const c = $('#chatbadge'); if (c) c.outerHTML = chatUnreadBadge(); }
+  }, err));
+  } catch (e) { ErrLog.capture('chat', String(e && e.message || e), e && e.stack); }
 }
 async function publishStats() { const f = Cloud.f; await f.setDoc(f.doc(Cloud.db, 'batches', B().id, 'logstats', Cloud.user.uid), { counts: myCounts(), updatedAt: f.serverTimestamp() }); }
 ACT.bpub = () => { if (!B().shareStats) return toast('Turn on sharing first'); publishStats().then(() => toast('Counts updated'), e => toast(e.code || e.message)); };
@@ -181,3 +188,47 @@ ACT.bevwa = () => { const ev = (B().events || []).filter(e => e.date >= today() 
 ACT.bleave = async () => { if (!confirm('Leave this batch? Your shared counts will be removed.')) return; const f = Cloud.f, id = B().id, uid = Cloud.user.uid; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'logstats', uid)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'members', uid)); } catch (e) {} Cloud.stop(); D.batch = null; Store.save(); render(); };
 ACT.bkick = async el => { if (!confirm('Remove this member?')) return; const f = Cloud.f; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', B().id, 'logstats', el.dataset.id)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', B().id, 'members', el.dataset.id)); } catch (e) { toast(e.code || e.message); } };
 ACT.fbcfgclear = () => { delete D.settings.fbConfig; Store.save(); Cloud.ready = null; toast('Removed'); render(); };
+
+/* ---------- Batch group chat ----------
+   batches/{id}/messages/{m} = { uid, name, text, at }. Only members can read or post; you can delete your own
+   messages and the batch admin can delete any. The last 150 messages are kept in memory only (not in backups). */
+const Chat = {
+  msgs: [],
+  lastRead() { return (D.batch && D.batch.chatRead) || 0; },
+  unread() { const me = Cloud.user?.uid, lr = this.lastRead(); return this.msgs.filter(m => m.uid !== me && m.at > lr).length; },
+  markRead() { const last = this.msgs.length ? this.msgs[this.msgs.length - 1].at : 0; if (D.batch && last > this.lastRead()) { D.batch.chatRead = last; Store.save(); } }
+};
+const chatUnreadBadge = () => { const n = Chat.unread(); return n && ROUTE.q.t !== 'chat' ? `<span id="chatbadge" class="badge red" style="margin-left:6px">${n > 99 ? '99+' : n}</span>` : '<span id="chatbadge"></span>'; };
+const PHI_RE = /(\b[6-9]\d{9}\b)|(\bUHID\b)|(\b(?:OPD|IP|MRD)\s*(?:no|#|:)?\s*\d{3,}\b)|(\b\d{4}[-/]\d{4,}\b)/i;
+function paintChat(el) {
+  el.innerHTML = `<div class="chatwarn small">Messages are visible to everyone in this batch. Avoid patient names, UHIDs and phone numbers — de-identify photos before sharing.</div>
+  <div id="chatlist" class="chatlist"></div>
+  <form id="chatform" class="chatbar" autocomplete="off"><textarea id="chatin" rows="1" maxlength="1000" placeholder="Message ${esc(B().name)}"></textarea><button class="btn chatsend" aria-label="Send">${ic('send')}</button></form>`;
+  const ta = $('#chatin');
+  ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; });
+  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer:coarse)').matches) { e.preventDefault(); sendChat(); } });
+  $('#chatform').addEventListener('submit', e => { e.preventDefault(); sendChat(); });
+  paintChatList(true); Chat.markRead();
+}
+function paintChatList(force) {
+  const box = $('#chatlist'); if (!box) return;
+  const near = force || box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+  const me = Cloud.user?.uid; let day = '', prev = null;
+  box.innerHTML = Chat.msgs.length ? Chat.msgs.map(m => {
+    const d = new Date(m.at), dk = d.toDateString(); let h = '';
+    if (dk !== day) { day = dk; prev = null; h += `<div class="chatday">${fmt(d.toISOString().slice(0, 10))}</div>`; }
+    const mine = m.uid === me, cont = prev && prev.uid === m.uid && m.at - prev.at < 5 * 60e3; prev = m;
+    const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return h + `<div class="msg${mine ? ' me' : ''}${cont ? ' cont' : ''}">${!mine && !cont ? `<b>${esc(m.name || 'Member')}</b>` : ''}<p>${esc(m.text).replace(/\n/g, '<br>')}</p><small>${t}${mine || B().admin ? ` · <button type="button" class="linkbtn" data-act="chatdel" data-id="${m.id}">delete</button>` : ''}</small></div>`;
+  }).join('') : '<p class="empty">No messages yet. Say hi to your batch 👋</p>';
+  if (near) box.scrollTop = box.scrollHeight;
+}
+async function sendChat() {
+  const ta = $('#chatin'), text = ta.value.trim(); if (!text) return;
+  if (PHI_RE.test(text) && !confirm('This message may contain patient identifiers (UHID / phone / OPD number). Everyone in the batch will see it. Send anyway?')) return;
+  const f = Cloud.f, me = (B().members || []).find(m => m.id === Cloud.user.uid);
+  ta.value = ''; ta.style.height = 'auto';
+  try { await f.addDoc(f.collection(Cloud.db, 'batches', B().id, 'messages'), { uid: Cloud.user.uid, name: (me && me.name) || D.settings.name || Cloud.user.displayName || 'Member', text, at: f.serverTimestamp() }); }
+  catch (e) { ta.value = text; toast(e.code === 'permission-denied' ? 'You are not a member of this batch' : 'Could not send — check your internet'); }
+}
+ACT.chatdel = async el => { if (!confirm('Delete this message for everyone?')) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'batches', B().id, 'messages', el.dataset.id)); } catch (e) { toast('Could not delete'); } };

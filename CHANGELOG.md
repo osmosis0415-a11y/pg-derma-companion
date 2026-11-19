@@ -2,6 +2,10 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 19 Nov 2026 (batch chat)
+- **Batch group chat:** Batch hub → **Chat**. Message your whole batch inside the app. Unread messages show as a red count on the Chat tab. Delete your own messages; the batch admin can delete any.
+- A reminder sits above the chat, and you're asked to confirm before sending anything that looks like a UHID, OPD number or phone number.
+
 ## 19 Nov 2026 (new look)
 - **Cleaner, more professional design** (from the Canva "UI v3" mockup): white cards with thin borders, one teal accent, quieter chips and tags, and outline icons instead of emoji in the menus, tiles and sign-in screen.
 - Dark mode updated to match.
