@@ -37,6 +37,15 @@ for gradle in [root / 'android/app/build.gradle.kts', root / 'android/app/build.
 -keep class com.google.mlkit.** { *; }
 """)
 
+# Android lint crashes analysing camera_android_camerax (a lint bug, not our code), which fails
+# assembleRelease. Skip the release-time "lintVital" check in every module.
+for rootgradle in [root / 'android/build.gradle.kts', root / 'android/build.gradle']:
+    if rootgradle.exists():
+        rg = rootgradle.read_text()
+        if 'lintVital' not in rg:
+            rg += '\nsubprojects {\n    tasks.matching { it.name.contains("lintVital") }.configureEach { enabled = false }\n}\n'
+            rootgradle.write_text(rg)
+
 # local_auth needs FlutterFragmentActivity
 for act in root.glob('android/app/src/main/kotlin/**/MainActivity.kt'):
     a = act.read_text()
