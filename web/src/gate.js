@@ -38,7 +38,7 @@ async function googleSignIn() {
 /* Referral: ?ref=CODE in an invite link is remembered until sign-up. A person's code = first 8 characters of their uid. */
 (() => { try { const r = new URLSearchParams(location.search).get('ref'); if (r && /^[A-Za-z0-9]{4,20}$/.test(r)) localStorage.setItem('pgd_ref', r); } catch (e) {} })();
 const myRefCode = () => (Cloud.user?.uid || (Gate.cached || {}).uid || '').slice(0, 8);
-const inviteLink = () => location.origin + location.pathname + '?ref=' + myRefCode();
+const inviteLink = () => location.origin + location.pathname.replace(/[^/]*$/, '') + 'site/?ref=' + myRefCode();
 const AUTH_SLIDES = [['reels', 'Swipe to learn', 'An endless feed of MCQs, spots, pearls and flashcards, made for MD DVL.'], ['users', 'Your residency community', 'Share cases, ask doubts, follow seniors, message and call batchmates.'], ['book', 'Log everything', 'Encrypted case logbook, photos, scores and thesis tracking, all on your phone.'], ['flame', 'Build a daily streak', 'Five minutes a day, reminders that work, and a weekly leaderboard.']];
 const Gate = {
   cached: null, _done: null, unsub: null,

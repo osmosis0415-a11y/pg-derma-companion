@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PG Derma — learn dermatology every day, together</title>
+<meta name="description" content="The free app for MD Dermatology, Venereology & Leprosy residents in India: a swipe-up study feed, a community of residents, daily streaks and an encrypted case logbook.">
+<meta name="theme-color" content="#0B7A75">
+<meta property="og:title" content="PG Derma — the app for MD DVL residents"><meta property="og:description" content="Swipe-up study feed, resident community, streaks and an encrypted logbook. Free.">
+<meta property="og:image" content="https://osmosis0415-a11y.github.io/pg-derma-companion/icon-512.png"><meta property="og:type" content="website">
+<link rel="icon" href="../icon.svg">
+<style>
+:root{--t1:#0B7A75;--t2:#14A3A0;--coral:#F2735B;--gold:#F5A524;--ink:#0F1B2D;--mut:#5b6b78;--line:#e4eaee;--bg:#F7FAFA;--grad:linear-gradient(135deg,#0B7A75 0%,#14A3A0 55%,#F2735B 100%)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font:16px/1.6 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:#fff}
+a{color:inherit}img{max-width:100%;display:block}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+nav{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:16px;height:64px}.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;text-decoration:none}.brand img{width:34px;height:34px;border-radius:9px}
+nav .links{margin-left:auto;display:flex;gap:22px;align-items:center}nav .links a{text-decoration:none;color:var(--mut);font-weight:600;font-size:15px}nav .links a:hover{color:var(--t1)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 24px;border-radius:14px;font-weight:700;text-decoration:none;font-size:16px;transition:transform .15s,box-shadow .15s;border:0;cursor:pointer}
+.btn.p{background:var(--grad);color:#fff;box-shadow:0 10px 28px rgba(11,122,117,.32)}.btn.p:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(11,122,117,.4)}
+.btn.g{background:#fff;color:var(--t1);border:1.5px solid var(--line)}.btn.sm{padding:9px 16px;font-size:14px;border-radius:11px}
+/* hero */
+.hero{position:relative;overflow:hidden;background:linear-gradient(135deg,#0A6E69 0%,#0B7A75 40%,#14A3A0 100%);color:#fff}
+.hero h1{color:#fff}.hero h1 span{background:linear-gradient(90deg,#FFD9CF,#F5A524);-webkit-background-clip:text;background-clip:text;color:transparent}.hero .lead{color:rgba(255,255,255,.88)}.hero .trust{color:rgba(255,255,255,.8)}.hero .trust b{color:#fff}
+.hero .btn.p,.btn.coral{background:#F2735B;box-shadow:0 10px 28px rgba(242,115,91,.4)}.hero .btn.g{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.6)}
+.hero .pill{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);color:#fff}
+.hero .blob{position:absolute;border-radius:50%;filter:blur(60px);opacity:.35;animation:fl 14s ease-in-out infinite}.b1{width:420px;height:420px;background:#5eead4;top:-120px;right:-80px}.b2{width:320px;height:320px;background:#F2735B;bottom:-120px;left:-80px;animation-delay:-6s}
+@keyframes fl{50%{transform:translate(-30px,30px) scale(1.1)}}
+.hero .wrap{position:relative;display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding-top:64px;padding-bottom:72px}
+.pill{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:13.5px;font-weight:600;color:var(--t1)}
+.pill i{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.18)}
+h1{font-size:clamp(36px,5.4vw,60px);line-height:1.07;letter-spacing:-.03em;margin:18px 0 16px;font-weight:850}
+h1 span{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{font-size:clamp(17px,1.6vw,20px);color:var(--mut);max-width:560px;margin:0 0 28px}
+.ctas{display:flex;gap:12px;flex-wrap:wrap}.trust{display:flex;gap:18px;flex-wrap:wrap;margin-top:22px;color:var(--mut);font-size:14px}.trust b{color:var(--ink)}
+.phones{position:relative;height:560px}
+.phone{position:absolute;width:250px;border-radius:34px;padding:9px;background:#0F1B2D;box-shadow:0 30px 70px rgba(15,27,45,.28)}.phone img{border-radius:26px;width:100%}
+.phone.a{right:150px;top:30px;transform:rotate(-6deg);animation:bob 6s ease-in-out infinite}.phone.b{right:0;top:0;transform:rotate(5deg);animation:bob 6s ease-in-out infinite -3s;z-index:2}
+@keyframes bob{50%{translate:0 -12px}}
+/* sections */
+section{padding:84px 0}.eyebrow{font-weight:800;color:var(--coral);letter-spacing:.08em;text-transform:uppercase;font-size:13px}
+h2{font-size:clamp(28px,3.6vw,42px);letter-spacing:-.02em;line-height:1.15;margin:8px 0 14px}.sub{color:var(--mut);max-width:640px;font-size:18px;margin:0 0 40px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:24px;transition:transform .2s,box-shadow .2s}.card:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(15,27,45,.08)}
+.card .ic{width:50px;height:50px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--grad);color:#fff;margin-bottom:14px}
+.card h3{margin:0 0 6px;font-size:19px}.card p{margin:0;color:var(--mut);font-size:15px}
+.alt{background:var(--bg)}
+.show{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;align-items:start}.show figure{margin:0;text-align:center}.show img{border-radius:24px;border:8px solid #0F1B2D;box-shadow:0 18px 40px rgba(15,27,45,.18)}.show figcaption{margin-top:10px;font-weight:700}.show small{display:block;color:var(--mut);font-weight:400}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;counter-reset:s}.step{position:relative;padding:22px;border-radius:20px;background:#fff;border:1px solid var(--line)}
+.step::before{counter-increment:s;content:counter(s);display:flex;width:38px;height:38px;border-radius:50%;background:var(--grad);color:#fff;font-weight:800;align-items:center;justify-content:center;margin-bottom:12px}.step h3{margin:0 0 4px;font-size:17px}.step p{margin:0;color:var(--mut);font-size:14.5px}
+.privacy{background:#0F1B2D;color:#e2e8f0;border-radius:30px;padding:48px;display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:center}.privacy h2{color:#fff}.privacy ul{margin:0;padding:0;list-style:none;display:grid;gap:12px}.privacy li{display:flex;gap:12px;align-items:flex-start}.privacy li b{color:#fff}.privacy li span:first-child{font-size:20px}
+.invite{background:linear-gradient(135deg,#0B7A75,#14A3A0);color:#fff;border-radius:30px;padding:48px;text-align:center}.invite h2{color:#fff}.invite p{opacity:.92;max-width:560px;margin:0 auto 24px}.invite .btn.g{border:0}
+footer{padding:36px 0 46px;color:var(--mut);font-size:14px;border-top:1px solid var(--line)}footer .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center}footer .r{margin-left:auto;display:flex;gap:16px}
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .7s,transform .7s}.reveal.in{opacity:1;transform:none}
+.mbar{display:none}
+@media (max-width:900px){.hero .wrap{grid-template-columns:1fr;padding-top:36px}.phones{height:440px;max-width:420px;margin:0 auto;width:100%}.phone{width:200px}.phone.a{right:auto;left:10px}.grid,.show{grid-template-columns:1fr 1fr}.steps{grid-template-columns:1fr 1fr}.privacy{grid-template-columns:1fr;padding:32px}nav .links a.hide{display:none}}
+@media (max-width:560px){.grid{grid-template-columns:1fr}.show{grid-template-columns:1fr 1fr;gap:10px}.show img{border-width:5px;border-radius:16px}section{padding:60px 0}.invite,.privacy{padding:28px 20px;border-radius:22px}
+ .mbar{display:flex;position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:30}.mbar .btn{flex:1}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}}
+</style></head>
+<body>
+<nav><div class="wrap"><a class="brand" href="#top"><img src="../icon.svg" alt="">PG Derma</a>
+  <div class="links"><a class="hide" href="#features">Features</a><a class="hide" href="#how">How it works</a><a class="hide" href="#privacy">Privacy</a><a class="btn p sm join coral" href="../">Join PG Derma</a></div></div></nav>
+
+<header class="hero" id="top"><i class="blob b1"></i><i class="blob b2"></i><div class="wrap">
+  <div><span class="pill"><i></i> Free · for MD DVL residents in India</span>
+    <h1>Learn dermatology every day. <span>Together.</span></h1>
+    <p class="lead">A swipe-up study feed, a community of residents, daily streaks and your encrypted case logbook, all in one app built for MD Dermatology, Venereology &amp; Leprosy.</p>
+    <div class="ctas"><a class="btn p join" href="../">Join PG Derma</a><a class="btn g" href="#features">See features</a></div>
+    <div class="trust"><span>✔ <b>No password</b>, sign in with Google</span><span>✔ <b>Patient data</b> stays on your phone</span><span>✔ <b>Works offline</b></span></div></div>
+  <div class="phones"><div class="phone a"><img src="shot-community.jpg" alt="PG Derma community timeline" width="390" height="844"></div><div class="phone b"><img src="shot-feed.jpg" alt="PG Derma swipe-up study feed with an MCQ" width="390" height="844"></div></div>
+</div></header>
+
+<section id="features"><div class="wrap">
+  <div class="eyebrow reveal">Everything a derma PG needs</div><h2 class="reveal">Study, discuss and log your residency in one place</h2><p class="sub reveal">Built by a resident, for residents: the habit of a social app, aimed at your exams and your OPD.</p>
+  <div class="grid">
+    <div class="card reveal"><div class="ic">📚</div><h3>Swipe-to-learn Feed</h3><p>Endless full-screen cards: MCQs with explanations, spot diagnoses, high-yield pearls and flashcards that come back just before you'd forget.</p></div>
+    <div class="card reveal"><div class="ic">💬</div><h3>Resident community</h3><p>Post de-identified cases and doubts. Follow, like, comment, message and share. Twitter-style timeline, Instagram-style stories with polls and quizzes.</p></div>
+    <div class="card reveal"><div class="ic">🔥</div><h3>Daily streaks</h3><p>Set a daily goal, keep your streak alive, climb the weekly leaderboard, and get a gentle reminder when you haven't studied.</p></div>
+    <div class="card reveal"><div class="ic">🔒</div><h3>Encrypted logbook</h3><p>Cases, photos, severity scores, procedures and thesis follow-ups, AES-256 encrypted on your phone, with backup to your own Google Drive.</p></div>
+    <div class="card reveal"><div class="ic">📞</div><h3>Calls with batchmates</h3><p>Free voice and video calls, one-to-one or up to four people, for case discussions and revision.</p></div>
+    <div class="card reveal"><div class="ic">✨</div><h3>Fresh content daily</h3><p>New dermatology items every morning on a rotating syllabus topic, reviewed by the admin before anyone sees them.</p></div>
+  </div></div></section>
+
+<section class="alt"><div class="wrap">
+  <div class="eyebrow reveal">Inside the app</div><h2 class="reveal">Feels like the apps you already use, built for dermatology</h2><p class="sub reveal">Screens from the real app.</p>
+  <div class="show">
+    <figure class="reveal"><img src="shot-feed.jpg" alt="Swipe feed" loading="lazy" width="390" height="844"><figcaption>Swipe feed<small>Learn in 5-minute bursts</small></figcaption></figure>
+    <figure class="reveal"><img src="shot-study.jpg" alt="Study hub with streak" loading="lazy" width="390" height="844"><figcaption>Streaks &amp; goals<small>Topic-wise progress</small></figcaption></figure>
+    <figure class="reveal"><img src="shot-story.jpg" alt="Story quiz" loading="lazy" width="390" height="844"><figcaption>Story quizzes<small>"What's the diagnosis?"</small></figcaption></figure>
+    <figure class="reveal"><img src="shot-dm.jpg" alt="Direct messages" loading="lazy" width="390" height="844"><figcaption>Messages<small>Private 1:1 chats</small></figcaption></figure>
+  </div></div></section>
+
+<section id="how"><div class="wrap">
+  <div class="eyebrow reveal">Get started in a minute</div><h2 class="reveal">How it works</h2><p class="sub reveal">Open it on any phone. Add it to your Home Screen and it works like an app.</p>
+  <div class="steps">
+    <div class="step reveal"><h3>Sign in with Google</h3><p>No new password to remember.</p></div>
+    <div class="step reveal"><h3>Tell us about you</h3><p>Your name, college and year (JR1–JR3, SR, faculty).</p></div>
+    <div class="step reveal"><h3>Get approved</h3><p>The admin approves residents, so the community stays real.</p></div>
+    <div class="step reveal"><h3>Start your streak</h3><p>Swipe your first cards and follow your batchmates.</p></div>
+  </div></div></section>
+
+<section id="privacy" style="padding-top:0"><div class="wrap"><div class="privacy reveal">
+  <div><div class="eyebrow">Privacy first</div><h2>Patient data never leaves your phone</h2><p>Your logbook is locked with your PIN and encrypted on the device. The community only ever sees what you choose to post, and the app helps you remove identifiers first.</p></div>
+  <ul><li><span>🔐</span><span><b>AES-256 encryption</b> on your phone, plus an encrypted backup in your own Google Drive.</span></li>
+    <li><span>🫥</span><span><b>De-identification tools</b> and identifier warnings before anything is posted.</span></li>
+    <li><span>🛡️</span><span><b>Approved members only</b>, with reporting and admin moderation.</span></li>
+    <li><span>📴</span><span><b>Works offline</b> in the ward and OPD.</span></li></ul></div></div></section>
+
+<section style="padding-top:0"><div class="wrap"><div class="invite reveal">
+  <h2>Bring your batch along</h2><p>Learning is easier together. Share your invite link from Profile → Invite batchmates, and you'll get credit when they join.</p>
+  <a class="btn p join coral" href="../">Join PG Derma — free</a></div></div></section>
+
+<footer><div class="wrap"><span>© PG Derma · Made by Dr. Sriram for residents</span><div class="r"><a href="../">Open the app</a><a href="#privacy">Privacy</a><a href="https://www.instagram.com/_theclinicalclue/" target="_blank" rel="noopener">@_theclinicalclue</a></div></div></footer>
+<div class="mbar"><a class="btn p join" href="../">Join PG Derma, free</a></div>
+<script>
+// Keep invite codes: /site/?ref=CODE → app sign-up with the same code
+(() => { const r = new URLSearchParams(location.search).get('ref'); if (r && /^[A-Za-z0-9]{4,20}$/.test(r)) document.querySelectorAll('a.join').forEach(a => a.href = '../?ref=' + r); })();
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .12 });
+document.querySelectorAll('.reveal').forEach((el, i) => { el.style.transitionDelay = (i % 4) * 70 + 'ms'; io.observe(el); });
+</script>
+</body></html>

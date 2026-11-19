@@ -2,6 +2,13 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+
+## 2026-11-20 — Public website
+- **Landing page:** https://osmosis0415-a11y.github.io/pg-derma-companion/site/ — designed in Canva, built as a fast real page.
+  - Teal hero, real app screenshots, features, how it works, privacy and invite sections.
+  - **Join PG Derma** buttons open the app sign-up.
+- Invite links now open this page first, so friends see what PG Derma is, and the referral code still carries through to sign-up.
+
 ## 2026-11-20 — Find people, Twitter/X look by default
 - **Find people:** a 🔍 search icon on Community (and a search bar on Explore). Search residents by name, college or level, with "Suggested for you" (your college first, then the most active) and Follow buttons in the list.
 - **Every resident gets a public profile** as soon as they sign in, so everyone can find, view, follow and message each other.

@@ -11,6 +11,8 @@ pathlib.Path(OUT/'index.html').write_text(html)
 (OUT/'bundle-check.js').write_text(js)
 import shutil
 (OUT/'admin.html').write_text((S/'admin.html').read_text().replace('/*CONFIG*/', (S/'firebase-config.js').read_text()))
+(OUT/'site').mkdir(exist_ok=True)
+for f in (S/'site').iterdir(): shutil.copy(f, OUT/'site'/f.name)
 for f in ['manifest.webmanifest','icon.svg','icon-192.png','icon-512.png']: shutil.copy(S/f,OUT/f)
 (OUT/'sw.js').write_text((S/'sw.js').read_text().replace('__BUILD__', BUILD))
 print(len(html)//1024, 'KB', 'build', BUILD)
