@@ -285,7 +285,7 @@ const Feed = {
     if (typeof Comm !== 'undefined' && Cloud.cfg()) Cloud.init().then(() => Comm.listen()).catch(() => {});
     $('#feedui')?.remove(); this.q = []; this.n = 0; this.right = 0; this.answered = 0; this.viewT = {};
     const ui = document.createElement('div'); ui.id = 'feedui';
-    ui.innerHTML = `<div class="fbar"><button class="fx" data-fclose="1" aria-label="Close">‹</button><b class="fbrand">${LOGO_SVG}Feed</b><div id="fstat"></div></div><div id="feedlist"></div>`;
+    ui.innerHTML = `<div class="fbar"><button class="fx" data-fclose="1" aria-label="Close">‹</button><b class="fbrand">${logoSvg()}Feed</b><div id="fstat"></div></div><div id="feedlist"></div>`;
     document.body.appendChild(ui); document.body.classList.add('feedon');
     this.io = new IntersectionObserver(es => es.forEach(e => {
       const el = e.target, id = el.dataset.id;

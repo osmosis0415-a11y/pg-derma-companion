@@ -49,6 +49,12 @@ await R.ev(`Cloud.f.updateDoc({p:['approvals','U-resident@gmail.com']},{status:'
 chk('rejected screen live', (await R.ev(`$('#lock').textContent`)).includes('not approved'));
 await R.ev(`Cloud.f.updateDoc({p:['approvals','U-resident@gmail.com']},{status:'approved'})`); await sleep(1200);
 chk('approval opens PIN setup', await R.ev(`!!document.getElementById('pin2')`));
+await R.ev(`__fs.set('vaults/U-resident@gmail.com',{drive:true}); showLock()`); await sleep(800);
+chk('same account on a new phone: just enter PIN (no new account)', (await R.ev(`$('#lock').textContent`)).includes('Welcome back') && await R.ev(`!!$('#pin') && !$('#pin2') && !!$('#fresh')`));
+await R.send('Page.captureScreenshot', { format: 'png' }).then(r => __wf('/tmp/auth-returning.png', Buffer.from(r.result.data, 'base64')));
+await R.ev(`window.__dlgDefault=true; $('#fresh').click()`); await sleep(800);
+chk('start fresh falls back to creating a PIN', await R.ev(`!!document.getElementById('pin2')`));
+await R.ev(`__fs.delete('vaults/U-resident@gmail.com')`);
 await R.ev(`$('#pin').value='12';$('#pin').dispatchEvent(new Event('input'))`); await sleep(100);
 chk('PIN dots fill as you type', (await R.ev(`$$('#pdots i.on').length`)) === 2);
 await R.send('Page.captureScreenshot', { format: 'png' }).then(r => __wf('/tmp/auth-pin.png', Buffer.from(r.result.data, 'base64')));

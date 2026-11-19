@@ -58,7 +58,7 @@ const nbadge = n => n ? `<b class="nb">${n > 99 ? '99+' : n}</b>` : '';
 function vHome() {
   const due = dueItems(0), unread = typeof Chat !== 'undefined' ? Chat.unread() : 0, t = today();
   setTitle('PG Derma', false, `<a class="icon topic" href="#/cal" aria-label="Reminders due">${ic('bell')}${nbadge(due.length)}</a><a class="icon topic" href="#/batch?t=chat" aria-label="Batch discussion">${ic('chat')}${nbadge(unread)}</a>`);
-  $('#title').classList.add('brandmark'); $('#title').insertAdjacentHTML('afterbegin', LOGO_SVG);
+  $('#title').classList.add('brandmark'); $('#title').insertAdjacentHTML('afterbegin', logoSvg());
   const yr = residencyYear(new Date()), hr = new Date().getHours();
   const first = (D.settings.name || '').replace(/^Dr\.?\s+/i, '').split(/\s+/)[0];
   const hello = (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', Dr. ' + first : '');
@@ -76,9 +76,10 @@ function vHome() {
   const online = D.batch && typeof Calls !== 'undefined' ? (D.batch.members || []).filter(m => m.id !== Cloud.user?.uid && Calls.isOnline(m.id)) : [];
   const recent = [...D.visits].sort((a, b) => (b.created || b.date).localeCompare(a.created || a.date)).slice(0, 4);
   const sd = typeof Study !== 'undefined' ? { n: Study.doneToday(), g: Study.st().goal, k: Study.streakNow(), due: Study.dueCards().length } : null;
-  main().innerHTML = `<section class="hello"><h2>${esc(hello)}</h2><p class="muted small">${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })} · ${esc(yr)}</p></section>
+  main().innerHTML = `<section class="ahero"><i class="hb1"></i><i class="hb2"></i><span class="hpill"><i></i>${esc(yr)} · ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</span><h2>${esc(hello)}</h2><p>${due.length ? `<b>${due.length}</b> thing${due.length > 1 ? 's' : ''} due today` : 'All clear today'}${sd ? ` · <b>${sd.n}/${sd.g}</b> study cards` : ''}</p>
+  ${sd ? `<a class="card studyhome" href="#/study"><div class="flame${sd.k ? ' on' : ''}">${ic('flame')}<b>${sd.k}</b></div><div class="sh"><b>${sd.n >= sd.g ? 'Goal done — streak safe' : sd.k ? 'Keep your ' + sd.k + '-day streak' : 'Today\'s study set'}</b><small class="muted">${sd.n}/${sd.g} done${sd.due ? ' · ' + sd.due + ' flashcards due' : ''}</small><span class="bar"><i style="width:${Math.min(100, Math.round(sd.n / sd.g * 100))}%" class="${sd.n >= sd.g ? 'ok' : ''}"></i></span></div><span class="btn sm">${sd.n >= sd.g ? 'Bonus' : sd.n ? 'Continue' : 'Start'}</span></a><a class="feedcta sm" href="#/feed"><span>${ic('reels')}</span><div><b>Scroll the feed</b><small>Swipe-up dermatology cards</small></div>›</a>` : ''}</section>
   ${!D.settings.lastBackup || daysBetween(ymd(D.settings.lastBackup), t) > 7 ? `<a class="warn" href="#/settings">No backup in the last 7 days — tap to back up</a>` : ''}
-  ${sd ? `<a class="card studyhome" href="#/study"><div class="flame${sd.k ? ' on' : ''}">${ic('flame')}<b>${sd.k}</b></div><div class="sh"><b>${sd.n >= sd.g ? 'Goal done — streak safe' : sd.k ? 'Keep your ' + sd.k + '-day streak' : 'Today\'s study set'}</b><small class="muted">${sd.n}/${sd.g} done${sd.due ? ' · ' + sd.due + ' flashcards due' : ''}</small><span class="bar"><i style="width:${Math.min(100, Math.round(sd.n / sd.g * 100))}%" class="${sd.n >= sd.g ? 'ok' : ''}"></i></span></div><span class="btn sm">${sd.n >= sd.g ? 'Bonus' : sd.n ? 'Continue' : 'Start'}</span></a><a class="feedcta sm" href="#/feed"><span>${ic('reels')}</span><div><b>Scroll the feed</b><small>Swipe-up dermatology cards</small></div>›</a>` : ''}
+  ${Gate.cached && !(D.sync && D.sync.on) && !D.settings.backupNudgeOff ? `<div class="card backupnudge"><span class="bi">${ic('cloud')}</span><div><b>Log in on any phone with just your PIN</b><small class="muted">Turn on the encrypted Google Drive backup. On a new phone, enter your PIN and everything comes back.</small><div class="btnrow"><button class="btn sm" data-act="driveconnect">Turn on backup</button><button class="btn sm ghost" data-act="nudgeoff">Later</button></div></div></div>` : ''}
   <section class="card today"><div class="row between"><h3>Today</h3><a class="link" href="#/cal">See all ›</a></div>
     ${due.length ? `<p class="small muted">${due.length} due${overdue ? ` · <b class="od">${overdue} overdue</b>` : ''}</p><div class="tlist">${due.slice(0, 4).map(d => `<a class="ti" href="${d.href}"><span class="tic k-${d.kind}">${ic(kindIc[d.kind] || 'calendar')}</span><span class="tib"><b>${esc(d.title)}</b><small>${esc(d.sub || '')}</small></span><small class="${d.date < t ? 'od' : 'muted'}">${d.date < t ? fmt(d.date) : 'Today'}</small></a>`).join('')}</div>`
       : `<p class="muted small">Nothing due today. Follow-ups, thesis visits and report tracing show up here.</p>`}</section>
@@ -386,3 +387,5 @@ ACT.wasend = () => {
   const p = P(ROUTE.id); if (p && !p.phone) p.phone = val('wa_ph'); Store.save();
   window.open('https://wa.me/' + ph + '?text=' + encodeURIComponent(val('wa_txt')), '_blank');
 };
+
+ACT.nudgeoff = () => { D.settings.backupNudgeOff = true; Store.save(); render(); };

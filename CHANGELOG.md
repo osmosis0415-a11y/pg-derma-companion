@@ -3,6 +3,16 @@
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
 
+
+## 2026-11-20 — Website look in the app; PIN-only login on a new phone
+- **The app now looks like the website:**
+  - Teal hero on Today with your greeting, what's due and your study streak, plus a coral "Scroll the feed" button.
+  - Gradient icon tiles, rounder cards, bolder headings, a blurred top bar and gentle fade-in animations on every screen.
+  - The Study hub's streak card is now a teal hero too.
+- **One Gmail = one account.** Signing in with the same Google account anywhere always opens the same account; nobody can create a second one with that email.
+- **New phone? Just your PIN.** If your encrypted backup is on in Google Drive, a new phone shows "Welcome back, Dr. Name — enter your PIN". Your data comes back, with no new account and no new PIN. "Start fresh" is still there if you want an empty phone.
+- **Backup reminder on Today:** "Log in on any phone with just your PIN — Turn on backup" (one tap, or Later).
+
 ## 2026-11-20 — Public website
 - **Landing page:** https://osmosis0415-a11y.github.io/pg-derma-companion/site/ — designed in Canva, built as a fast real page.
   - Teal hero, real app screenshots, features, how it works, privacy and invite sections.

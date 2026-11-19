@@ -172,6 +172,7 @@ const Sync = {
     if (!this.on()) { this.set('off'); return; }
     if (!DEVICE) { DEVICE = await IDB.get('meta', 'device'); if (!DEVICE) { DEVICE = uid(); await IDB.put('meta', 'device', DEVICE); } }
     Drive.loadGis().catch(() => {});
+    if (!this._marked) { this._marked = 1; Cloud.cfg() && Cloud.init().then(() => markVault(true)).catch(() => {}); }
     clearInterval(this._poll);
     this._poll = setInterval(() => { if (!document.hidden && navigator.onLine && Drive.valid()) this.poll(); }, 60000);
     await this.run();
@@ -293,7 +294,7 @@ ACT.driveconnect = async () => {
       }
       D.sync = { on: true, photos: true, email };
     } else if (email) D.sync.email = email;
-    await Store.flush(); toast('Google Drive connected'); Sync.start(); render();
+    await Store.flush(); toast('Google Drive connected — you can now log in on any phone with just your PIN', 4000); Sync.start(); render(); Cloud.cfg() && Cloud.init().then(() => markVault(true)).catch(() => {});
   } catch (e) { toast(e.message || 'Could not connect Google Drive', 4000); }
 };
 ACT.syncoff = async () => { if (!(await uiConfirm('Stop syncing this device? Your Drive backup stays.'))) return; D.sync.on = false; Sync.stop(); await Drive.forget(); Store.save(); Sync.set('off'); render(); };
@@ -305,14 +306,35 @@ ACT.drivewipe = async () => {
     if (!Drive.valid()) await Drive.connect(D.sync && D.sync.email);
     Sync.stop(); const files = await Drive.list();
     for (const name of Object.keys(files)) await Drive.del(name);
-    D.sync.on = false; await IDB.del('kv', 'syncbase'); await IDB.put('kv', 'psynced', []); Store.save(); Sync.set('off');
+    D.sync.on = false; await IDB.del('kv', 'syncbase'); await IDB.put('kv', 'psynced', []); Store.save(); Sync.set('off'); markVault(false);
     toast('Drive backup deleted'); render();
   } catch (e) { toast(e.message, 4000); }
 };
 
 /* ---------- Restore on a new device (from the lock screen, before a vault exists) ---------- */
+/* Restore this account's encrypted vault from its Google Drive backup using the PIN (new phone / reinstall). */
+async function restoreWithPin(pin, m) {
+  const salt = unb64(m.salt), k = await Vault.derive(pin, salt, m.iter), check = { iv: unb64(m.check.iv), data: unb64(m.check.data).buffer };
+  try { if ((await Vault.decJSON(check, k)) !== 'PGDERMA-OK') throw 0; } catch (e) { throw new Error('Incorrect PIN'); }
+  Vault.key = k;
+  const blob = await Sync.getBlob('db'); if (!blob) throw new Error('Backup is incomplete');
+  const remote = await Vault.decJSON(blob);
+  const about = await Drive.about().catch(() => ({}));
+  await IDB.put('meta', 'auth', { salt, iter: m.iter, check });
+  await IDB.put('kv', 'db', blob);
+  await IDB.put('kv', 'syncbase', { v: m.v, h: await sha(JSON.stringify(remote)), enc: await Vault.encJSON(remote) });
+  await IDB.put('kv', 'psynced', []);
+  await Store.load(); D.sync = { on: true, photos: true, email: about.user && about.user.emailAddress }; await Store.flush(); await Session.save(); await Drive.persistPending();
+  $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); toast('Welcome back — your data is restored. Photos download in the background.', 4500); Sync.start();
+  Calls.start(); Cloud.cfg() && Cloud.init().then(() => { Study.pull(); Social.start(); }).catch(() => {});
+}
+/* Tell the account (not the data) that a Drive backup exists, so a new phone asks only for the PIN. */
+function markVault(on) { try { if (!Cloud.cfg() || !Cloud.user || !Cloud.f) return; Cloud.f.setDoc(Cloud.f.doc(Cloud.db, 'vaults', Cloud.user.uid), { drive: !!on, updatedAt: Cloud.f.serverTimestamp() }).catch(() => {}); } catch (e) {} }
+async function hasDriveVault() {
+  try { if (!Cloud.cfg()) return false; await Cloud.init(); if (!Cloud.user) return false; const d = await Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'vaults', Cloud.user.uid)); return d.exists() && d.data().drive === true; } catch (e) { return false; }
+}
 async function restoreFlow() {
-  const box = $('.lockbox');
+  const box = $('.authcard') || $('.lockbox');
   box.innerHTML = `<div class="logo">${ic('cloud')}</div><h1>Restore from Google Drive</h1><p class="small muted">Connect the Google account you used for Cloud sync.</p><div id="rbody"><button class="btn" id="rg" style="width:100%">Connect Google Drive</button><p id="lerr" class="err"></p></div><button class="btn ghost" id="rback" style="width:100%">Back</button>`;
   $('#rback').onclick = () => showLock();
   Drive.loadGis().catch(() => {});
@@ -323,20 +345,8 @@ async function restoreFlow() {
     $('#rbody').innerHTML = `<p class="small">Backup found${m.at ? ' (last saved ' + esc(fmt(m.at)) + ')' : ''}. Enter the PIN you use on your other device.</p><input id="pin" type="password" inputmode="numeric" placeholder="PIN"><button class="btn" id="rgo" style="width:100%">Restore</button><p id="lerr" class="err"></p>`;
     const go2 = async () => {
       const pin = $('#pin').value; $('#rgo').disabled = true; $('#rgo').textContent = 'Restoring…';
-      try {
-        const salt = unb64(m.salt), k = await Vault.derive(pin, salt, m.iter), check = { iv: unb64(m.check.iv), data: unb64(m.check.data).buffer };
-        try { if ((await Vault.decJSON(check, k)) !== 'PGDERMA-OK') throw 0; } catch (e) { throw new Error('Incorrect PIN'); }
-        Vault.key = k;
-        const blob = await Sync.getBlob('db'); if (!blob) throw new Error('Backup is incomplete');
-        const remote = await Vault.decJSON(blob);
-        const about = await Drive.about().catch(() => ({}));
-        await IDB.put('meta', 'auth', { salt, iter: m.iter, check });
-        await IDB.put('kv', 'db', blob);
-        await IDB.put('kv', 'syncbase', { v: m.v, h: await sha(JSON.stringify(remote)), enc: await Vault.encJSON(remote) });
-        await IDB.put('kv', 'psynced', []);
-        await Store.load(); D.sync = { on: true, photos: true, email: about.user && about.user.emailAddress }; await Store.flush(); await Session.save(); await Drive.persistPending();
-        $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); toast('Restored — downloading photos in the background', 4000); Sync.start();
-      } catch (e) { Vault.key = null; $('#lerr').textContent = e.message; $('#rgo').disabled = false; $('#rgo').textContent = 'Restore'; }
+      try { await restoreWithPin(pin, m); }
+      catch (e) { Vault.key = null; $('#lerr').textContent = e.message; $('#rgo').disabled = false; $('#rgo').textContent = 'Restore'; }
     };
     $('#rgo').onclick = go2; $('#pin').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go2(); } });
   };

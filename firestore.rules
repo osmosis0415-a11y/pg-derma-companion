@@ -171,6 +171,11 @@ service cloud.firestore {
         allow create: if approved() && u == request.auth.uid && request.resource.data.keys().hasOnly(['o', 'at']) && request.resource.data.o is int;
       }
     }
+    // Marks that this account has an encrypted Drive backup (no data here), so a new phone asks only for the PIN.
+    match /vaults/{u} {
+      allow read: if signedIn() && u == request.auth.uid;
+      allow write: if signedIn() && u == request.auth.uid && request.resource.data.keys().hasOnly(['drive', 'updatedAt']) && request.resource.data.drive is bool;
+    }
     match /pushTokens/{u} {
       allow read, write: if signedIn() && u == request.auth.uid;
     }

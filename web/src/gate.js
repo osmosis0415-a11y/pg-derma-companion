@@ -174,7 +174,7 @@ function steps(n) {
   return `<div class="steps">${L.map(([t, i], k) => `<span class="${n < 0 && k === 2 ? 'bad' : k < n || (n === 3) ? 'done' : k === n ? 'cur' : ''}"><i>${ic(i)}</i><small>${t}</small></span>`).join('<b></b>')}</div>`;
 }
 function authShell(html, hero) {
-  return `<div class="authbg"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i></div><div class="authcard${hero ? ' hero' : ''}"><div class="alogo">${LOGO_SVG}</div><h1>PG Derma</h1><p class="atag">${hero ? '<span class="rot"><span>Learn daily.</span><span>Discuss cases.</span><span>Log your residency.</span></span>' : 'MD Dermatology, Venereology & Leprosy'}</p>${html}</div>`;
+  return `<div class="authbg"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i></div><div class="authcard${hero ? ' hero' : ''}"><div class="alogo">${logoSvg()}</div><h1>PG Derma</h1><p class="atag">${hero ? '<span class="rot"><span>Learn daily.</span><span>Discuss cases.</span><span>Log your residency.</span></span>' : 'MD Dermatology, Venereology & Leprosy'}</p>${html}</div>`;
 }
 /* ---------- Invite card (Profile) ---------- */
 function inviteCardHTML() {

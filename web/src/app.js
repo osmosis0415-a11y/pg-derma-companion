@@ -28,8 +28,32 @@ function render() {
 }
 
 /* ---------- Lock screen ---------- */
+/* Same account on a new phone: just the PIN (data comes back from the account's encrypted Google Drive backup). */
+async function showReturning() {
+  const g = Gate.cached || {}, first = (g.name || '').replace(/^Dr\.?\s+/i, '').split(' ')[0];
+  $('#app').hidden = true; $('#lock').hidden = false;
+  $('#lock').innerHTML = authShell(`<h2 class="ah">Welcome back${first ? ', Dr. ' + esc(first) : ''}</h2><p class="small muted">New phone? Enter your PIN, and your data comes back from your Google Drive backup. No new account needed.</p>
+    <div class="who">${g.photo ? `<img src="${esc(g.photo)}" alt="" referrerpolicy="no-referrer">` : `<span>${esc(initials(g.name || g.email))}</span>`}<div><b>${esc(g.name || '')}</b><small>${esc(g.email || '')}</small></div></div>
+    <div class="pindots" id="pdots"></div><input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Your PIN"><button class="btn abtn" id="unlock">Unlock</button><p id="lerr" class="err"></p>
+    <p class="tiny muted">Google may ask once to let PG Derma open its backup folder in your Drive.</p>
+    <button class="link small" id="fresh">Start fresh on this phone instead</button>`);
+  const pin = $('#pin'), dots = () => { const n = pin.value.length; $('#pdots').innerHTML = Array.from({ length: Math.max(4, Math.min(8, n)) }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join(''); };
+  pin.addEventListener('input', dots); dots(); pin.focus(); Drive.loadGis().catch(() => {});
+  const go2 = async () => {
+    const v = pin.value; $('#lerr').textContent = ''; if (v.length < 4) return $('#lerr').textContent = 'Enter your PIN';
+    $('#unlock').disabled = true; $('#unlock').textContent = 'Restoring…';
+    try {
+      await Drive.connect(g.email, '');
+      const m = await Drive.manifest(); if (!m) throw new Error('No backup found in this Google Drive. Tap "Start fresh" or turn on backup on your old phone.');
+      await restoreWithPin(v, m);
+    } catch (e) { Vault.key = null; $('#lerr').textContent = e.message || 'Could not restore'; const pd = $('#pdots'); pd.classList.remove('shake'); void pd.offsetWidth; pd.classList.add('shake'); $('#unlock').disabled = false; $('#unlock').textContent = 'Unlock'; pin.select(); }
+  };
+  $('#unlock').onclick = go2; pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go2(); } });
+  $('#fresh').onclick = async () => { if (await uiConfirm('Start an empty vault on this phone? Your Drive backup stays safe, and you can link it later from Settings → Cloud sync.', { ok: 'Start fresh' })) { Gate._fresh = true; showLock(); } };
+}
 async function showLock() {
   const auth = await IDB.get('meta', 'auth');
+  if (!auth && Gate.cached && !Gate._fresh && navigator.onLine && await hasDriveVault()) return showReturning();
   $('#app').hidden = true; $('#lock').hidden = false;
   const gname = ((Gate.signup || {}).name || (Gate.cached || {}).name || '').replace(/^Dr\.?\s+/i, '').split(' ')[0];
   $('#lock').innerHTML = authShell(`${auth ? `<h2 class="ah">${gname ? 'Welcome back, Dr. ' + esc(gname) : 'Welcome back'}</h2><p class="small muted">Enter your PIN to unlock</p><div class="pindots" id="pdots"></div><input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN"><button class="btn abtn" id="unlock">Unlock</button><p id="lerr" class="err"></p>`
@@ -97,7 +121,7 @@ let lastW = innerWidth; addEventListener('resize', () => { if ((lastW >= 900) !=
 
 /* ---------- Boot ---------- */
 (async () => {
-  paintIcons(); $$('.brandlogo').forEach(e => { e.innerHTML = LOGO_SVG; });
+  paintIcons(); $$('.brandlogo').forEach(e => { e.innerHTML = logoSvg(); });
   if (!window.crypto?.subtle || !window.indexedDB) { document.body.innerHTML = '<p style="padding:24px">This browser does not support secure storage (needs HTTPS + IndexedDB + WebCrypto).</p>'; return; }
   try { await navigator.storage?.persist?.(); } catch (e) {}
   await IDB.open();
