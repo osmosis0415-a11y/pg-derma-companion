@@ -20,7 +20,7 @@
 <body>
 <div id="lock" hidden></div>
 <div id="app" hidden>
-  <header id="top"><button id="back" aria-label="Back">‹</button><h1 id="title">PG Derma</h1><div id="topact"></div></header>
+  <header id="top"><button id="back" aria-label="Back">‹</button><h1 id="title">PG Derma</h1><a href="#/settings" id="syncdot" class="sdot" data-s="off" title="Cloud sync off" aria-label="Cloud sync status"></a><div id="topact"></div></header>
   <nav class="nav side">
     <div class="brand">🩺 PG Derma</div>
     <a href="#/home" data-tab="home">🏠 Home</a><a href="#/patients" data-tab="patients">👥 Patients</a><a href="#/add" data-tab="add">➕ Quick add</a>
@@ -37,9 +37,11 @@
   </nav>
 </div>
 <div id="sheet" class="sheet"><div class="sheet-body"></div></div>
+<button id="updbar" hidden>✨ New version available — tap to update</button>
 <div id="toast"></div>
 <div id="print"></div>
 <script>
+const APP_VERSION = "__BUILD__";
 /*JS*/
 </script>
 </body>

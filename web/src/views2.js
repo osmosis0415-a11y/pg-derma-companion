@@ -475,11 +475,11 @@ function vMore() {
 function vSettings() {
   setTitle('Settings', false);
   const s = D.settings;
-  main().innerHTML = `<div class="form card"><h3>Profile</h3>
+  main().innerHTML = `<div id="synccard">${syncCardHTML()}</div><div class="form card"><h3>Profile</h3>
   <label>Your name<input id="s_name" value="${esc(s.name)}"></label><label>Institution<input id="s_inst" value="${esc(s.inst || '')}"></label>
   <div class="grid2"><label>Unit<input id="s_unit" value="${esc(s.unit)}"></label><label>Residency start date<input id="s_start" type="date" value="${esc(s.residencyStart)}"></label></div>
   <label>Default patient language${chips('s_lang', [['en', 'English'], ['hi', 'हिन्दी'], ['te', 'తెలుగు']], s.lang)}</label>
-  <label>Auto-lock after (minutes)<input id="s_lock" type="number" min="1" max="60" value="${s.lockMin}"></label>
+  <label>Auto-lock after inactivity (a refresh keeps you signed in until then)<select id="s_lock">${optList([['3', '3 minutes'], ['5', '5 minutes'], ['15', '15 minutes'], ['30', '30 minutes'], ['60', '1 hour'], ['240', '4 hours'], ['720', '12 hours']], String(s.lockMin))}</select></label>
   <button class="btn sm" data-act="ssave">Save</button></div>
   <div class="card"><h3>Backup & restore</h3><p class="small muted">Backups stay encrypted with your PIN. Save the .pgbak file to Google Drive / iCloud / email. Last backup: <b>${s.lastBackup ? fmt(s.lastBackup) : 'never'}</b></p>
   <div class="btnrow wrap"><button class="btn" data-act="backup">⬇ Export encrypted backup</button><label class="btn ghost filebtn">⬆ Restore<input type="file" id="restore" accept=".pgbak,application/octet-stream,application/json" hidden></label></div></div>
@@ -488,10 +488,11 @@ function vSettings() {
   <div class="card"><h3>Batch hub</h3><p class="small muted">Shared batch calendar and anonymous logbook comparison (Firebase). ${D.batch ? 'Member of <b>' + esc(D.batch.name) + '</b>.' : 'Not joined.'}</p><a class="btn sm ghost" href="#/batch">Open batch hub</a> ${D.settings.fbConfig ? '<button class="btn sm ghost" data-act="fbcfgclear">Remove custom Firebase config</button>' : ''}</div>
   <div class="card"><h3>Install on your phone</h3><p class="small">Android (Chrome): ⋮ menu → <b>Install app</b> / Add to Home screen.<br>iPhone / iPad (Safari): Share → <b>Add to Home Screen</b>.<br>Once installed, the app works fully offline.</p></div>
   <div class="card"><h3>Danger zone</h3><button class="btn sm danger" data-act="wipe">Erase all data on this device</button></div>
-  <p class="small muted center">PG Derma Companion v1.0 · storage ${D.photos.length} photos · ${D.patients.length} patients</p>`;
+  <p class="small muted center">PG Derma Companion · version ${esc(APP_VERSION)} · <a class="link" href="https://github.com/osmosis0415-a11y/pg-derma-companion/blob/main/CHANGELOG.md" target="_blank" rel="noopener">What's new</a> · storage ${D.photos.length} photos · ${D.patients.length} patients</p>`;
+  if (Cloud.cfg() && !Cloud.ready && navigator.onLine) Cloud.init().then(() => { const c = $('#synccard'); if (c && ROUTE.path === 'settings') c.innerHTML = syncCardHTML(); }).catch(() => {});
   $('#restore').onchange = async e => { const f = e.target.files[0]; if (!f || !confirm('Restore will REPLACE all data on this device with the backup. Continue?')) return; try { await importBackup(f); toast('Restored — unlock with the backup PIN'); lockApp(true); } catch (er) { alert('Restore failed: ' + er.message); } };
 }
-ACT.ssave = () => { Object.assign(D.settings, { name: val('s_name'), inst: val('s_inst'), unit: val('s_unit'), residencyStart: val('s_start'), lang: getChips('s_lang'), lockMin: Math.max(1, +val('s_lock') || 3) }); Store.save(); toast('Saved'); };
+ACT.ssave = () => { Object.assign(D.settings, { name: val('s_name'), inst: val('s_inst'), unit: val('s_unit'), residencyStart: val('s_start'), lang: getChips('s_lang'), lockMin: Math.max(1, +val('s_lock') || 15) }); Store.save(); Session.save(); toast('Saved'); };
 ACT.backup = () => exportBackup().then(() => toast('Backup downloaded'));
-ACT.chpin = async () => { const o = prompt('Current PIN'); if (!o) return; const n1 = prompt('New PIN (min 4 characters)'); if (!n1 || n1.length < 4) return toast('PIN too short'); if (prompt('Confirm new PIN') !== n1) return toast('PINs do not match'); toast('Re-encrypting…', 6000); toast(await Vault.changePin(o, n1) ? 'PIN changed' : 'Current PIN incorrect'); };
+ACT.chpin = async () => { const o = prompt('Current PIN'); if (!o) return; const n1 = prompt('New PIN (min 4 characters)'); if (!n1 || n1.length < 4) return toast('PIN too short'); if (prompt('Confirm new PIN') !== n1) return toast('PINs do not match'); toast('Re-encrypting…', 6000); const ok = await Vault.changePin(o, n1); toast(ok ? 'PIN changed' : 'Current PIN incorrect'); if (ok) { await Session.save(); if (Sync.on()) { await IDB.put('kv', 'psynced', []); Sync.forcePush = true; Sync.run(); toast('PIN changed — re-uploading your encrypted cloud copy. Use the new PIN on your other devices.', 5000); } } };
 ACT.wipe = async () => { if (prompt('Type ERASE to delete all data on this device') !== 'ERASE') return; await IDB.clear('photos'); await IDB.clear('kv'); await IDB.clear('meta'); location.reload(); };

@@ -1,5 +1,3 @@
-// End-to-end smoke test via Chrome DevTools Protocol.
-// Usage: serve dist/ on :8765, start chrome --headless=new --remote-debugging-port=9333, then: node web/test/e2e-chrome.mjs
 import fs from 'fs';
 const list = await (await fetch('http://127.0.0.1:9333/json')).json();
 const ws = new WebSocket(list.find(t=>t.type==='page').webSocketDebuggerUrl);

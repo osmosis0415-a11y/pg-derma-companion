@@ -8,6 +8,12 @@ service cloud.firestore {
     function isAdmin(b) { return signedIn() && request.auth.uid in get(/databases/$(database)/documents/batches/$(b)).data.admins; }
     function shortStr(v, n) { return v is string && v.size() <= n; }
 
+    // Personal encrypted vault for Cloud sync. Contents are AES-256-GCM ciphertext made on the device;
+    // only the signed-in owner can read or write their own subtree.
+    match /users/{uid}/{doc=**} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
     match /batches/{b} {
       // The batch ID is the secret invite code (DVL-XXXX-XXXX). Signed-in users may look up a code they know,
       // but nobody can list batches.

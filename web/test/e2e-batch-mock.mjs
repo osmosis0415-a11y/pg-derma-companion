@@ -55,6 +55,6 @@ await ev(`$('#b_code')||1`);
 // bad code
 await ev(`D.batch=null; location.hash='#/batch'`); await sleep(400); await ev(`$('#b_code').value='DVL-ZZZZ-ZZZZ';ACT.bjoin()`); await sleep(300); chk('bad code rejected', await ev(`D.batch===null`));
 // setup screen when no config
-await ev(`delete D.settings.fbConfig; Cloud.ready=null; location.hash='#/home'; location.hash='#/batch'`); await sleep(400);
+await ev(`delete D.settings.fbConfig; window.FIREBASE_CONFIG=null; Cloud.ready=null; location.hash='#/home'; location.hash='#/batch'`); await sleep(400);
 await ev(`$('#fbcfg').value='const firebaseConfig = {\\n  apiKey: \"AIza\",\\n  authDomain: \"x.firebaseapp.com\",\\n  projectId: \"pgx\",\\n  appId: \"1:2:web:3\",\\n};'; ACT.fbcfgsave()`); chk('config pasted from JS object', await ev(`D.settings.fbConfig&&D.settings.fbConfig.projectId==='pgx'`));
 console.log('ERRORS', JSON.stringify(errs)); process.exit(0);

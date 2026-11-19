@@ -6,6 +6,12 @@ An offline-first, encrypted companion app for **MD Dermatology, Venereology & Le
 
 Open it on your phone and install it to the home screen (Android Chrome: ⋮ → *Install app*; iPhone/iPad Safari: Share → *Add to Home Screen*). After the first load it works fully offline.
 
+## Cloud sync & updates
+
+- **Cloud sync (end-to-end encrypted):** Settings → Cloud sync → sign in with Google. Your data is encrypted on the device with your PIN-derived AES-256 key *before* upload to Firestore (`users/{uid}`), so Firebase stores only ciphertext. Edits from several devices are merged record by record (three-way merge). On a new phone, use **Restore from cloud** on the first screen.
+- **Refresh-safe:** reloading keeps the app unlocked until the auto-lock time (default 15 min).
+- **OTA updates:** every push to `main` deploys a new build, and installed apps show *"New version available — tap to update"*. See [CHANGELOG.md](CHANGELOG.md).
+
 ## Privacy model
 
 - All patient data and photos stay **on your device only**, in IndexedDB, encrypted with **AES-256-GCM**. The key is derived from your PIN with PBKDF2-SHA256 (310,000 iterations), and the PIN itself is never stored.

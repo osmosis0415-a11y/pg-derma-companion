@@ -76,7 +76,7 @@ const Vault = {
 let D = null;
 const EMPTY_DB = () => ({
   v: 1,
-  settings: { name: '', residencyStart: '', unit: '', lang: 'en', lockMin: 3, procTargets: {}, sampleCase: 30, sampleControl: 30 },
+  settings: { name: '', residencyStart: '', unit: '', lang: 'en', lockMin: 15, procTargets: {}, sampleCase: 30, sampleControl: 30 },
   patients: [], visits: [], scores: [], pins: [], photos: [], logbook: [], inv: [], reminders: [],
   formulary: [], templates: {}, checks: {},
   thesis: null
@@ -85,7 +85,7 @@ const Store = {
   _t: null,
   async load() { const o = await IDB.get('kv', 'db'); D = o ? await Vault.decJSON(o) : EMPTY_DB(); const e = EMPTY_DB(); for (const k in e) if (D[k] === undefined) D[k] = e[k]; for (const k in e.settings) if (D.settings[k] === undefined) D.settings[k] = e.settings[k]; },
   save() { clearTimeout(this._t); this._t = setTimeout(() => this.flush(), 300); },
-  async flush() { clearTimeout(this._t); if (!D || !Vault.key) return; await IDB.put('kv', 'db', await Vault.encJSON(D)); }
+  async flush() { clearTimeout(this._t); if (!D || !Vault.key) return; await IDB.put('kv', 'db', await Vault.encJSON(D)); if (typeof Sync !== 'undefined' && !Sync.quiet && Sync.on()) Sync.schedule(); }
 };
 const P = id => D.patients.find(p => p.id === id);
 const V = id => D.visits.find(v => v.id === id);

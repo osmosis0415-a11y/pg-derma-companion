@@ -32,7 +32,10 @@ async function showLock() {
   ${auth ? `<input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Enter PIN"><button class="btn" id="unlock">Unlock</button><p id="lerr" class="err"></p>`
     : `<p class="small">Create a PIN to encrypt all patient data and photos on this device (AES-256). There is no PIN recovery — keep backups.</p>
     <input id="pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="New PIN (min 4)"><input id="pin2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="Confirm PIN"><button class="btn" id="unlock">Create vault</button><p id="lerr" class="err"></p>`}
-  <p class="tiny muted">🔒 Offline · on-device encryption · no server</p></div>`;
+  ${!auth && window.FIREBASE_CONFIG ? '<button class="btn ghost" id="restorebtn" style="width:100%;margin-top:10px">☁️ Restore from cloud (new phone)</button>' : ''}
+  <p class="tiny muted">🔒 Works offline · encrypted on this device</p></div>`;
+  $('#restorebtn')?.addEventListener('click', restoreFlow);
+  if (!auth && sessionStorage.getItem('pgRestore')) { restoreFlow(); return; }
   const pin = $('#pin'); pin.focus();
   const go2 = async () => {
     const v = pin.value; $('#lerr').textContent = '';
@@ -41,9 +44,9 @@ async function showLock() {
     try {
       if (!auth) { if (v !== $('#pin2').value) throw new Error('PINs do not match'); await Vault.setup(v); }
       else if (!(await Vault.unlock(v))) throw new Error('Incorrect PIN');
-      await Store.load(); await Store.flush();
+      await Store.load(); await Store.flush(); await Session.save();
       $('#lock').hidden = true; $('#app').hidden = false; pin.value = '';
-      lastAct = Date.now(); render(); checkNotify();
+      lastAct = Date.now(); render(); checkNotify(); Sync.start();
     } catch (e) { $('#lerr').textContent = e.message; $('#unlock').disabled = false; $('#unlock').textContent = auth ? 'Unlock' : 'Create vault'; pin.select(); }
   };
   $('#unlock').onclick = go2; pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); if (auth) go2(); else $('#pin2').focus(); } });
@@ -51,18 +54,19 @@ async function showLock() {
 }
 async function lockApp(skipFlush) {
   if (skipFlush !== true) await Store.flush().catch(() => {});
-  closeSheet();
+  closeSheet(); await Session.clear(); Sync.stop(); Sync.set('off');
   stopCam(); Cloud.stop(); D = null; Vault.key = null;
   for (const u of urlCache.values()) URL.revokeObjectURL(u); urlCache.clear();
   $('#main').innerHTML = ''; showLock();
 }
 ACT.lock = lockApp;
 let lastAct = Date.now(), hiddenAt = 0;
-['pointerdown', 'keydown', 'scroll'].forEach(e => addEventListener(e, () => lastAct = Date.now(), { passive: true }));
-setInterval(() => { if (D && Date.now() - lastAct > (D.settings.lockMin || 3) * 60000) lockApp(); }, 15000);
+['pointerdown', 'keydown', 'scroll'].forEach(e => addEventListener(e, () => { lastAct = Date.now(); Session.touch(); }, { passive: true }));
+setInterval(() => { if (D && Date.now() - lastAct > (D.settings.lockMin || 15) * 60000) lockApp(); }, 15000);
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { hiddenAt = Date.now(); Store.flush(); }
-  else if (D && hiddenAt && Date.now() - hiddenAt > (D.settings.lockMin || 3) * 60000) lockApp();
+  if (document.hidden) { hiddenAt = Date.now(); Store.flush(); Session.save().catch(() => {}); }
+  else if (D && hiddenAt && Date.now() - hiddenAt > (D.settings.lockMin || 15) * 60000) lockApp();
+  else if (D && Sync.on()) Sync.run();
 });
 addEventListener('pagehide', () => Store.flush());
 
@@ -90,6 +94,20 @@ let lastW = innerWidth; addEventListener('resize', () => { if ((lastW >= 900) !=
   if (!window.crypto?.subtle || !window.indexedDB) { document.body.innerHTML = '<p style="padding:24px">This browser does not support secure storage (needs HTTPS + IndexedDB + WebCrypto).</p>'; return; }
   try { await navigator.storage?.persist?.(); } catch (e) {}
   await IDB.open();
-  showLock();
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  if (await Session.resume()) {
+    try { await Store.load(); $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); checkNotify(); Sync.start(); }
+    catch (e) { Vault.key = null; D = null; await Session.clear(); showLock(); }
+  } else showLock();
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    /* OTA updates: a new deploy installs in the background; the user taps the bar to switch (stays unlocked). */
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      const ask = w => { const b = $('#updbar'); b.hidden = false; b.onclick = () => { b.textContent = 'Updating…'; Store.flush().finally(() => w.postMessage('skip')); }; };
+      if (reg.waiting && navigator.serviceWorker.controller) ask(reg.waiting);
+      reg.addEventListener('updatefound', () => { const w = reg.installing; w && w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) ask(w); }); });
+      const check = () => reg.update().catch(() => {});
+      setInterval(check, 30 * 60000); document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+    }).catch(() => {});
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloading) { reloading = true; location.reload(); } });
+  }
 })();
