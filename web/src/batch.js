@@ -24,8 +24,21 @@ const Cloud = {
   },
   stop() { this.unsubs.forEach(u => { try { u(); } catch (e) {} }); this.unsubs = []; }
 };
-const authMsg = e => ({ 'auth/invalid-credential': 'Wrong email or password', 'auth/wrong-password': 'Wrong email or password', 'auth/user-not-found': 'No account with this email', 'auth/email-already-in-use': 'Account exists — sign in instead', 'auth/weak-password': 'Password must be at least 6 characters', 'auth/invalid-email': 'Invalid email address', 'auth/network-request-failed': 'No internet connection', 'auth/popup-closed-by-user': 'Sign-in cancelled', 'auth/unauthorized-domain': 'This site is not authorised in Firebase → Authentication → Settings → Authorised domains', 'auth/too-many-requests': 'Too many attempts — try again later' }[e.code] || e.message || 'Something went wrong');
+const authMsg = e => ({ 'auth/invalid-credential': 'Wrong email or password', 'auth/wrong-password': 'Wrong email or password', 'auth/user-not-found': 'No account with this email', 'auth/email-already-in-use': 'Account exists — sign in instead', 'auth/weak-password': 'Password must be at least 6 characters', 'auth/invalid-email': 'Invalid email address', 'auth/network-request-failed': 'No internet connection', 'auth/popup-closed-by-user': 'Sign-in cancelled', 'auth/unauthorized-domain': 'This site is not authorised in Firebase → Authentication → Settings → Authorised domains', 'auth/too-many-requests': 'Too many attempts — try again later', 'auth/requires-recent-login': 'For security, sign in again and then retry', 'auth/missing-password': 'Enter your password' }[e.code] || e.message || 'Something went wrong');
 const B = () => D.batch || null;
+/* Email/password accounts must verify their address before using sync or the batch hub (also enforced in firestore.rules). */
+const needsVerify = () => { const u = Cloud.user; return !!(u && !u.emailVerified && (u.providerData || []).some(p => p.providerId === 'password')); };
+async function sendVerify() { try { await Cloud.f.sendEmailVerification(Cloud.user); toast('Verification link sent to ' + Cloud.user.email + ' — check inbox and spam', 4500); } catch (e) { toast(authMsg(e), 3500); } }
+async function checkVerified() {
+  try { await Cloud.user.reload(); Cloud.user = Cloud.auth.currentUser; if (Cloud.user.emailVerified) { await Cloud.user.getIdToken(true); toast('Email verified ✓'); return true; } toast('Not verified yet — open the link in the email first', 3500); } catch (e) { toast(authMsg(e)); }
+  return false;
+}
+function verifyHTML() {
+  return `<div class="card"><h3>📧 Verify your email</h3><p class="small">We sent a link to <b>${esc(Cloud.user.email)}</b>. Open it (check spam too), then tap “I've verified”.</p>
+  <div class="btnrow"><button class="btn sm" data-act="vcheck">I've verified</button><button class="btn sm ghost" data-act="vresend">Resend link</button><button class="btn sm ghost" data-act="acctsignout">Use another account</button></div></div>`;
+}
+ACT.vresend = () => sendVerify();
+ACT.vcheck = async () => { if (await checkVerified()) render(); };
 const randCode = () => { const a = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789', r = crypto.getRandomValues(new Uint8Array(8)); return 'DVL-' + [...r].map(x => a[x % a.length]).join('').replace(/(.{4})/, '$1-'); };
 const myCounts = () => { const c = {}; for (const l of D.logbook) { const k = l.proc; c[k] = c[k] || {}; const y = c[k][l.year] = c[k][l.year] || { P: 0, A: 0, O: 0 }; y[l.role[0]]++; } return c; };
 
@@ -40,6 +53,7 @@ async function vBatch() {
   try { await Cloud.init(); } catch (e) { main().innerHTML = e.message === 'nocfg' ? batchSetupHTML() : `<p class="warn">Could not load Firebase: ${esc(e.message)}</p>` + (B() ? batchTabsHTML() : ''); if (B()) paintBatch(); return; }
   if (ROUTE.path !== 'batch') return;
   if (!Cloud.user) { main().innerHTML = signInHTML(); return; }
+  if (needsVerify()) { main().innerHTML = verifyHTML(); return; }
   if (!B()) { main().innerHTML = joinHTML(); return; }
   main().innerHTML = batchTabsHTML();
   paintBatch(); subscribeBatch();
@@ -65,7 +79,7 @@ function signInHTML() {
 }
 ACT.gsign = async () => { const f = Cloud.f, pr = new f.GoogleAuthProvider(); const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone; try { if (standalone) await f.signInWithRedirect(Cloud.auth, pr); else await f.signInWithPopup(Cloud.auth, pr); } catch (e) { if (e.code === 'auth/popup-blocked') await f.signInWithRedirect(Cloud.auth, pr); else toast(authMsg(e)); } };
 ACT.esignin = async () => { try { await Cloud.f.signInWithEmailAndPassword(Cloud.auth, val('b_email'), $('#b_pw').value); } catch (e) { toast(authMsg(e)); } };
-ACT.esignup = async () => { try { await Cloud.f.createUserWithEmailAndPassword(Cloud.auth, val('b_email'), $('#b_pw').value); } catch (e) { toast(authMsg(e)); } };
+ACT.esignup = async () => { try { await Cloud.f.createUserWithEmailAndPassword(Cloud.auth, val('b_email'), $('#b_pw').value); Cloud.user = Cloud.auth.currentUser; await sendVerify(); render(); } catch (e) { toast(authMsg(e)); } };
 ACT.ereset = async () => { if (!val('b_email')) return toast('Enter your email first'); try { await Cloud.f.sendPasswordResetEmail(Cloud.auth, val('b_email')); toast('Reset link sent to your email'); } catch (e) { toast(authMsg(e)); } };
 function joinHTML() {
   const nm = D.settings.name || Cloud.user.displayName || '';

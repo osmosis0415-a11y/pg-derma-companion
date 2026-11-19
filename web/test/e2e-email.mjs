@@ -6,10 +6,10 @@ const ev=async e=>{const r=(await send('Runtime.evaluate',{expression:e,returnBy
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)); const chk=(n,c)=>console.log((c?'PASS ':'FAIL ')+n);
 await send('Runtime.enable'); await send('Page.navigate',{url:'http://localhost:8765/'}); await sleep(1500);
 await ev(`$('#pin').value='1234';$('#pin2').value='1234';$('#unlock').click()`); await sleep(2500);
-await ev(`(()=>{ const users={}; window.__sent=[]; const f={ signInWithEmailAndPassword:async(a,e,p)=>{ if(users[e]!==p){const x=new Error('bad');x.code='auth/invalid-credential';throw x} Cloud.user={uid:'U-'+e,email:e} },
- createUserWithEmailAndPassword:async(a,e,p)=>{ if(users[e]){const x=new Error();x.code='auth/email-already-in-use';throw x} users[e]=p; Cloud.user={uid:'U-'+e,email:e} },
+await ev(`(()=>{ const users={}; window.__sent=[]; const f={ signInWithEmailAndPassword:async(a,e,p)=>{ if(users[e]!==p){const x=new Error('bad');x.code='auth/invalid-credential';throw x} window.__auth.currentUser={uid:'U-'+e,email:e} },
+ createUserWithEmailAndPassword:async(a,e,p)=>{ if(users[e]){const x=new Error();x.code='auth/email-already-in-use';throw x} users[e]=p; window.__auth.currentUser={uid:'U-'+e,email:e} },
  sendPasswordResetEmail:async(a,e)=>{window.__sent.push(e)}, doc:()=>({}), getDoc:async()=>({data:()=>undefined}) };
- Cloud.init=function(){this.f=f;this.auth={};this.db={};this.ready=Promise.resolve();return this.ready}; Cloud.user=null; })()`);
+ window.__auth={}; Cloud.init=function(){this.f=f;this.auth=window.__auth;this.db={};this.ready=Promise.resolve();return this.ready}; Cloud.user=null; })()`);
 await ev(`location.hash='#/settings'`); await sleep(500);
 chk('email fields shown', await ev(`!!$('#sy_email') && !!$('#sy_pw') && !!$('[data-act=syncemail][data-mode=up]')`));
 await ev(`ACT.syncemail({dataset:{mode:'in'}})`); await sleep(300); chk('empty email rejected', await ev(`$('#toast').textContent==='Enter your email'`));

@@ -74,6 +74,7 @@ const Sync = {
     if (!navigator.onLine) { this.set('offline', 'Offline — will sync when back online'); return; }
     try { await Cloud.init(); } catch (e) { this.set('error', 'Could not reach Firebase'); return; }
     if (!Cloud.user) { this.set('error', 'Signed out — sign in under Settings → Cloud sync'); return; }
+    if (needsVerify()) { this.set('error', 'Verify your email under Settings → Cloud sync'); return; }
     if (!DEVICE) { DEVICE = await IDB.get('meta', 'device'); if (!DEVICE) { DEVICE = uid(); await IDB.put('meta', 'device', DEVICE); } }
     if (this.unsub) this.unsub();
     this.unsub = Cloud.f.onSnapshot(Cloud.f.doc(Cloud.db, 'users', Cloud.user.uid), s => { const m = s.data(); if (m && m.device !== DEVICE) IDB.get('kv', 'syncbase').then(b => { if (!b || b.v !== m.v) this.run(); }); }, () => {});
@@ -162,6 +163,7 @@ function syncLabel() {
 function syncCardHTML() {
   const s = D.sync || {}, signed = Cloud.user;
   if (!Cloud.cfg()) return '';
+  if (signed && needsVerify()) return verifyHTML();
   return `<div class="card"><h3>☁️ Cloud sync <small class="muted">end-to-end encrypted</small></h3>
   <p class="small muted">Keeps your patients, visits, scores, logbook, thesis data${s.photos === false ? '' : ' and photos'} in sync across your phone, iPad and laptop, and lets you restore on a new phone. Everything is encrypted with your PIN <b>before</b> upload — Firebase only stores unreadable data.</p>
   ${!signed ? `<div class="btnrow"><button class="btn sm" data-act="syncgoogle">Continue with Google</button></div>
@@ -174,8 +176,34 @@ function syncCardHTML() {
       <label class="row small"><input type="checkbox" data-act="syncphotos" ${s.photos === false ? '' : 'checked'}> Also sync photos (uses more of the free cloud space)</label>
       <div class="btnrow"><button class="btn sm" data-act="syncnow">↻ Sync now</button><button class="btn sm ghost" data-act="syncoff">Turn off on this device</button></div>`
     : `<p class="small">Signed in as <b>${esc(Cloud.user.email || '')}</b></p><button class="btn sm" data-act="syncon">Turn on cloud sync</button>`}
-  </div>`;
+  </div>${signed ? accountHTML() : ''}`;
 }
+function accountHTML() {
+  const u = Cloud.user, pw = (u.providerData || []).some(p => p.providerId === 'password'), g = (u.providerData || []).some(p => p.providerId === 'google.com');
+  return `<div class="card"><h3>👤 Account</h3>
+  <p class="small"><b>${esc(u.email || '')}</b> ${u.emailVerified ? '<span class="badge green">verified</span>' : '<span class="badge amber">not verified</span>'}<br><span class="muted">Signed in with ${[pw && 'email & password', g && 'Google'].filter(Boolean).join(' + ') || 'Firebase'}</span></p>
+  <div class="btnrow wrap"><button class="btn sm ghost" data-act="acctsignout">Sign out</button>${pw ? '<button class="btn sm ghost" data-act="acctpw">Change password</button>' : ''}<button class="btn sm ghost danger" data-act="acctdel">Delete account & cloud data</button></div>
+  <p class="small muted">Signing out or deleting your account never touches the data on this phone — only the cloud copy.</p></div>`;
+}
+ACT.acctsignout = async () => { Sync.stop(); if (D.sync) D.sync.on = false; Cloud.stop(); try { await Cloud.f.signOut(Cloud.auth); } catch (e) {} Cloud.user = null; Store.save(); Sync.set('off'); toast('Signed out'); render(); };
+ACT.acctpw = async () => { try { await Cloud.f.sendPasswordResetEmail(Cloud.auth, Cloud.user.email); toast('A link to set a new password was sent to ' + Cloud.user.email, 4500); } catch (e) { toast(authMsg(e)); } };
+ACT.acctdel = async () => {
+  if (prompt('This permanently deletes your online account, your encrypted cloud backup and your batch membership. Data on this phone stays. Type DELETE to confirm.') !== 'DELETE') return;
+  const f = Cloud.f, uidv = Cloud.user.uid; toast('Deleting cloud data…', 8000);
+  try {
+    Sync.stop();
+    const blobs = await f.getDocs(f.collection(Cloud.db, 'users', uidv, 'blobs'));
+    for (const b of blobs.docs) { const n = b.data().n || 1; for (let i = 0; i < n; i++) await f.deleteDoc(f.doc(Cloud.db, 'users', uidv, 'blobs', b.id, 'c', String(i))); await f.deleteDoc(b.ref); }
+    await f.deleteDoc(f.doc(Cloud.db, 'users', uidv));
+    if (D.batch) { await f.deleteDoc(f.doc(Cloud.db, 'batches', D.batch.id, 'logstats', uidv)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', D.batch.id, 'members', uidv)).catch(() => {}); D.batch = null; }
+    await f.deleteUser(Cloud.user);
+    if (D.sync) D.sync.on = false; Cloud.user = null; await IDB.del('kv', 'syncbase'); await IDB.put('kv', 'psynced', []); Store.save(); Sync.set('off');
+    toast('Account and cloud data deleted'); render();
+  } catch (e) {
+    if (e.code === 'auth/requires-recent-login') { toast('Cloud data deleted. For security, sign out, sign in again and tap Delete once more to remove the login itself.', 6000); render(); }
+    else toast('Could not finish: ' + (e.code || e.message), 4000);
+  }
+};
 ACT.syncgoogle = async () => { try { await Cloud.init(); } catch (e) { return toast('Could not reach Firebase'); } await ACT.gsign(); setTimeout(() => ROUTE.path === 'settings' && render(), 1500); };
 ACT.syncemail = async el => {
   const email = val('sy_email'), pw = ($('#sy_pw') || {}).value || '', mode = el.dataset.mode;
@@ -185,13 +213,14 @@ ACT.syncemail = async el => {
   const f = Cloud.f;
   try {
     if (mode === 'reset') { await f.sendPasswordResetEmail(Cloud.auth, email); return toast('Password reset link sent to ' + email, 4000); }
-    if (mode === 'up') await f.createUserWithEmailAndPassword(Cloud.auth, email, pw); else await f.signInWithEmailAndPassword(Cloud.auth, email, pw);
-    toast('Signed in as ' + email);
+    if (mode === 'up') { await f.createUserWithEmailAndPassword(Cloud.auth, email, pw); Cloud.user = Cloud.auth.currentUser; await sendVerify(); }
+    else { await f.signInWithEmailAndPassword(Cloud.auth, email, pw); Cloud.user = Cloud.auth.currentUser; toast('Signed in as ' + email); }
     const c = $('#synccard'); if (c) c.innerHTML = syncCardHTML();
   } catch (e) { toast(authMsg(e), 3500); }
 };
 ACT.syncon = async () => {
   await Cloud.init();
+  if (needsVerify()) { toast('Verify your email first'); return render(); }
   const m = (await Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'users', Cloud.user.uid))).data(), auth = await IDB.get('meta', 'auth');
   if (m && m.salt !== b64(auth.salt)) {
     const pin = prompt('This account already has a cloud vault (from another device). Enter the PIN you use there — this device will switch to that PIN and both devices will be merged.');
@@ -215,9 +244,10 @@ async function restoreFlow() {
   if (!Cloud.user) {
     $('#rbody').innerHTML = `<button class="btn" id="rg">Continue with Google</button><input id="re" type="email" placeholder="Email"><input id="rp" type="password" placeholder="Password"><button class="btn ghost" id="rs">Sign in with email</button><p id="lerr" class="err"></p>`;
     $('#rg').onclick = () => ACT.gsign().then(() => setTimeout(restoreFlow, 800));
-    $('#rs').onclick = async () => { try { await Cloud.f.signInWithEmailAndPassword(Cloud.auth, $('#re').value.trim(), $('#rp').value); restoreFlow(); } catch (e) { $('#lerr').textContent = authMsg(e); } };
+    $('#rs').onclick = async () => { try { await Cloud.f.signInWithEmailAndPassword(Cloud.auth, $('#re').value.trim(), $('#rp').value); Cloud.user = Cloud.auth.currentUser; restoreFlow(); } catch (e) { $('#lerr').textContent = authMsg(e); } };
     return;
   }
+  if (needsVerify()) { $('#rbody').innerHTML = '<p class="err">This email is not verified yet. Open the verification link we emailed you, then tap Back and try again.</p>'; return; }
   const m = (await Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'users', Cloud.user.uid))).data();
   if (!m) { $('#rbody').innerHTML = `<p class="err">No cloud vault found for ${esc(Cloud.user.email)}. Turn on Cloud sync on your other device first.</p>`; return; }
   $('#rbody').innerHTML = `<p class="small">Signed in as <b>${esc(Cloud.user.email)}</b>. Enter the PIN you use on your other device.</p><input id="pin" type="password" inputmode="numeric" placeholder="PIN"><button class="btn" id="rgo">Restore</button><p id="lerr" class="err"></p>`;

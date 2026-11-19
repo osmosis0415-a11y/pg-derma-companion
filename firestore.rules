@@ -3,7 +3,8 @@ rules_version = '2';
 // Only batch calendar events, member display names/years and anonymous procedure counts are stored.
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
+    // Signed in AND email verified (Google accounts are verified automatically).
+    function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
     function isMember(b) { return signedIn() && exists(/databases/$(database)/documents/batches/$(b)/members/$(request.auth.uid)); }
     function isAdmin(b) { return signedIn() && request.auth.uid in get(/databases/$(database)/documents/batches/$(b)).data.admins; }
     function shortStr(v, n) { return v is string && v.size() <= n; }

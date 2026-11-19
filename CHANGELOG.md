@@ -2,6 +2,10 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 19 Nov 2026 (accounts)
+- **Email verification:** new email accounts get a verification link; Cloud sync and the Batch hub unlock once it's clicked (Google accounts are verified automatically).
+- **Account section** in Settings: sign out, change password, and delete your account and cloud data (data on your phone is never touched).
+
 ## 19 Nov 2026 (later)
 - **Email sign-in for Cloud sync:** create an account, sign in or reset your password with email, right in Settings → Cloud sync (Google sign-in still works).
 
