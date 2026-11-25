@@ -125,6 +125,8 @@ await ev(`$('[data-group=crf_Koebner] [data-v="1"]').click(); $('#crf_Repig_pct'
 chk('CRF saved', await ev(`V('${vid2}').crf.Koebner==='1' && V('${vid2}').crf.Repig_pct==='20' && V('${vid2}').ae.length===1`));
 // formulary tabs & drug add
 for (const t of ['drugs','iso','ftu','comp','ligno']) { await ev(`location.hash='#/formulary?t=${t}&w=25'`); await sleep(150); }
+chk('iso dose shows 2 decimals', await ev(`(location.hash='#/formulary?t=iso&w=60', new Promise(r=>setTimeout(()=>{$('#iw').value='60';$('#id').value='15';$('#id').dispatchEvent(new Event('input'));r($('#ires').textContent)},200)))`).then(t=>/0\.25 mg\/kg\/day/.test(t)));
+chk('SALT band S-subclass + severity', await ev(`(location.hash='#/score/${vid2}/SALT', new Promise(r=>setTimeout(()=>{const e=$('#sform [data-k=top]');e.value='55';e.dispatchEvent(new Event('input',{bubbles:true}));r($('#tot').textContent+'|'+$('#band').textContent)},250)))`).then(t=>t==='22|S1 · moderate'));
 chk('comp result', await ev(`(location.hash='#/formulary?t=comp', new Promise(r=>setTimeout(()=>r($('#cres').textContent),200)))`).then(t=>/Hydroquinone/.test(t)));
 await ev(`location.hash='#/formulary'`); await sleep(200); await ev(`ACT.drugadd()`); await sleep(100); await ev(`$('#d_name').value='Test drug';$('#d_k0').value='2';ACT.drugsave($('[data-act=drugsave]'))`); await sleep(200);
 chk('custom drug', await ev(`D.formulary.some(d=>d.name==='Test drug')`));

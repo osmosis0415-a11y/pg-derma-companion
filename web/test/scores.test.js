@@ -11,3 +11,10 @@ a('VASI',2*0.75+1,SCORES.VASI.calc({hands:{hu:2,dp:75},trunk:{hu:1,dp:100}}));
 a('GAGS max',44,SCORES.GAGS.calc({fh:4,rc:4,lc:4,no:4,ch:4,cb:4}));
 const q={};for(let i=0;i<10;i++)q['q'+i]='3';q.q9='0n';a('DLQI',27,SCORES.DLQI.calc(q));
 a('pct',75,pctImprovement(20,5));console.log(isoCalc(60,30,3600,120),lignoCalc(60),biCalc(['2','4','','3']));
+/* SALT subclass (Olsen 2004) + severity (King 2022) */
+const sb=t=>SCORES.SALT.band(t),eq=(n,e,g)=>{const ok=e===g;console.log((ok?'OK ':'FAIL ')+n,e,'|',g);if(!ok)process.exitCode=1};
+eq('SALT 0',"S0 · no hair loss",sb(0));eq('SALT 20',"S1 · limited",sb(20));eq('SALT 22',"S1 · moderate",sb(22));eq('SALT 25',"S2 · moderate",sb(25));
+eq('SALT 49.5',"S2 · moderate",sb(49.5));eq('SALT 50',"S3 · severe",sb(50));eq('SALT 95',"S4a · severe",sb(95));eq('SALT 97',"S4b · severe",sb(97));eq('SALT 100',"S5 · severe",sb(100));
+a('SALT clamps negative',0,SCORES.SALT.calc({top:-50}));
+a('SCORAD BSA override clamps <0',0,SCORES.SCORAD.bsa({bsaOverride:'-20'}));a('SCORAD region clamps <0',0,SCORES.SCORAD.bsa({reg:{tf:-50}}));
+a('SCORAD BSA override clamps >100',100,SCORES.SCORAD.bsa({bsaOverride:'150'}));

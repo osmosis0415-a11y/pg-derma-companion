@@ -2,6 +2,11 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 2026-11-26 — Score and dose accuracy fixes
+- **SALT (alopecia areata) grading corrected.** The band under the score now shows the standard subclass — S0 none, S1 <25%, S2 25–49%, S3 50–74%, S4a 75–95%, S4b 96–99%, S5 100% (Olsen 2004) — together with the 2022 severity grade (limited ≤20%, moderate 21–49%, severe ≥50%). Before, a 22% loss was shown as "S2", and 0% as "S1".
+- **Isotretinoin calculator:** the current dose now shows two decimals, so low-dose regimens read correctly (15 mg/day at 60 kg = 0.25 mg/kg/day, not 0.3).
+- **SCORAD and SALT:** a negative or over-100% entry by mistake can no longer push the score below 0 or above the maximum.
+
 ## 2026-11-20 — Journal digest
 - **New: Journal digest** (Home card, Profile → Journal, and mixed into the swipe Feed). New dermatology papers — reviews, trials, meta-analyses and guidelines from JAAD, BJD, JAMA Dermatology, JEADV, IJDVL, IDOJ and more — summarised for residents: headline, short summary, key points, and "what it means for you", with a link to the paper.
 - **Pictures with credit:** a figure from the paper only when the paper is open access under a Creative Commons licence; otherwise an openly licensed illustrative image, or none. Every picture shows its credit and licence.

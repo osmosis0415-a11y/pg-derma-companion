@@ -4,6 +4,7 @@ const AREA6 = [['0','0%'],['1','<10%'],['2','10–29%'],['3','30–49%'],['4','5
 const SEV4 = [['0','0 None'],['1','1 Slight'],['2','2 Moderate'],['3','3 Marked'],['4','4 Very marked']];
 const SEV3 = [['0','0'],['0.5','0.5'],['1','1'],['1.5','1.5'],['2','2'],['2.5','2.5'],['3','3']];
 const n = v => +v || 0;
+const clamp100 = x => Math.max(0, Math.min(100, x));
 
 const SCORES = {
  PASI: {
@@ -26,7 +27,7 @@ const SCORES = {
   regionsAdult:[['hn','Head & neck',9],['ula','Upper limb R',9],['ulb','Upper limb L',9],['tf','Trunk front',18],['tb','Trunk back',18],['lla','Lower limb R',18],['llb','Lower limb L',18],['gen','Genitals',1]],
   regionsChild:[['hn','Head & neck',17],['ula','Upper limb R',9],['ulb','Upper limb L',9],['tf','Trunk front',18],['tb','Trunk back',18],['lla','Lower limb R',12],['llb','Lower limb L',12],['gen','Genitals',1]],
   items:[['er','Erythema'],['ed','Oedema / papulation'],['oo','Oozing / crusts'],['ex','Excoriation'],['li','Lichenification'],['dr','Dryness (uninvolved skin)']],
-  bsa(v){ if(v.bsaOverride!==undefined && v.bsaOverride!=='') return Math.min(100,n(v.bsaOverride)); const R=v.child?this.regionsChild:this.regionsAdult; let a=0; for(const [k,,w] of R) a+=w*Math.min(100,n((v.reg||{})[k]))/100; return Math.min(100,a); },
+  bsa(v){ if(v.bsaOverride!==undefined && v.bsaOverride!=='') return clamp100(n(v.bsaOverride)); const R=v.child?this.regionsChild:this.regionsAdult; let a=0; for(const [k,,w] of R) a+=w*clamp100(n((v.reg||{})[k]))/100; return clamp100(a); },
   calc(v){ const A=this.bsa(v); let B=0; for(const [k] of this.items) B+=n((v.int||{})[k]); const C=n(v.itch)+n(v.sleep); return r1(A/5+3.5*B+C); },
   objective(v){ const A=this.bsa(v); let B=0; for(const [k] of this.items) B+=n((v.int||{})[k]); return r1(A/5+3.5*B); },
   band(t){ return t<25?'Mild':t<=50?'Moderate':'Severe'; }
@@ -34,8 +35,11 @@ const SCORES = {
  SALT: {
   full:'Severity of Alopecia Tool', max:100,
   regions:[['top','Top / vertex',0.40],['back','Posterior',0.24],['right','Right side',0.18],['left','Left side',0.18]],
-  calc(v){ let t=0; for(const [k,,w] of this.regions) t+=w*Math.min(100,n(v[k])); return r1(t); },
-  band(t){ return t<=20?'S1 (≤20% — limited)':t<=49?'S2 (21–49% — moderate)':t<=74?'S3 (50–74% — severe)':t<=99?'S4 (75–99% — very severe)':'S5 (100%)'; }
+  calc(v){ let t=0; for(const [k,,w] of this.regions) t+=w*clamp100(n(v[k])); return r1(t); },
+  /* Subclass per Olsen 2004 (S0 none; S1 <25; S2 25–49; S3 50–74; S4a 75–95; S4b 96–99; S5 100) + severity per King et al. 2022 (limited ≤20, moderate 21–49, severe ≥50) */
+  subclass(t){ return t<=0?'S0':t<25?'S1':t<50?'S2':t<75?'S3':t<=95?'S4a':t<100?'S4b':'S5'; },
+  severity(t){ return t<=0?'no hair loss':t<=20?'limited':t<50?'moderate':'severe'; },
+  band(t){ return this.subclass(t)+' · '+this.severity(t); }
  },
  MASI: {
   full:'Melasma Area & Severity Index', max:48,
