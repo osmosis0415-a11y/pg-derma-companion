@@ -66,14 +66,14 @@ function vCommunity() {
     if (!Cloud.user) { $('#cpane').innerHTML = `<div class="card"><p>Sign in with Google to join the community.</p><a class="btn" href="#/batch">Sign in</a></div>`; return; }
     if (t === 'top') return vBoard();
     if (t === 'explore') { Comm.listen(); $('#cpane').innerHTML = '<p class="muted small">Loading…</p>'; setTimeout(vExplore, Comm.posts.length ? 0 : 900); return; }
-    $('#cpane').innerHTML = `${pushPromptHTML()}<div id="stories"></div><a class="card composer" href="#/compose"><span class="pav" data-av="${esc(Cloud.user.uid)}">${av(Cloud.user.uid, D.settings.name || 'PG')}</span><span class="muted">${AppCfg.layout === 'twitter' ? 'What\'s happening in your OPD?' : 'Share a case, ask a doubt, post a pearl…'}</span>${ic('image')}</a>${AppCfg.layout === 'twitter' ? `<a class="fabtw" href="#/compose" aria-label="New post">${ic('plus')}</a>` : ''}
+    $('#cpane').innerHTML = `${pushPromptHTML()}<div id="stories"></div><a class="card composer" href="#/compose"><span class="pav" data-av="${esc(Cloud.user.uid)}">${av(Cloud.user.uid, D.settings.name || 'PG')}</span><span class="muted">${AppCfg.feedLayout === 'twitter' ? 'What\'s happening in your OPD?' : 'Share a case, ask a doubt, post a pearl…'}</span>${ic('image')}</a>${AppCfg.feedLayout === 'twitter' ? `<a class="fabtw" href="#/compose" aria-label="New post">${ic('plus')}</a>` : ''}
       <div class="chips scroll" id="pfilt">${[['', 'All'], ...Object.entries(POST_KINDS)].map(([k, l]) => `<a class="chip${(ROUTE.q.k || '') === k ? ' on' : ''}" href="#/community?k=${k}">${l}${k ? 's' : ''}</a>`).join('')}<a class="chip${ROUTE.q.k === 'following' ? ' on' : ''}" href="#/community?k=following">Following</a><a class="chip${ROUTE.q.k === 'mine' ? ' on' : ''}" href="#/community?k=mine">Mine</a><a class="chip${ROUTE.q.k === 'new' ? ' on' : ''}" href="#/community?k=new">Latest</a></div>
       <div id="plist" class="feed"><p class="muted small">Loading posts…</p></div>`;
     Comm.listen(); paintPosts(); Comm.pushProfile(); Social.start(); Prof.load(); Follow.load().then(() => { if (ROUTE.q.k === 'following') paintPosts(); });
   }).catch(() => { $('#cpane').innerHTML = '<p class="err">Could not reach the community. Check your connection.</p>'; });
 }
 function postHTML(p, full) {
-  if (typeof AppCfg !== 'undefined' && AppCfg.layout === 'twitter') return tweetHTML(p, full);
+  if (typeof AppCfg !== 'undefined' && AppCfg.feedLayout === 'twitter') return tweetHTML(p, full);
   const me = Cloud.user?.uid, mine = p.uid === me, n = mine ? Math.max(0, (p.comments || 0) - (Comm.st().seen[p.id] || 0)) : 0;
   const txt = p.text || '', cut = !full && txt.length > 280;
   return `<article class="post cpost" data-pid="${p.id}">
@@ -318,7 +318,7 @@ function storyItems(uid) {
   return a.concat(b).sort((x, y) => tsMs(x.createdAt) - tsMs(y.createdAt));
 }
 function storiesHTML() {
-  if (typeof AppCfg !== 'undefined' && AppCfg.layout === 'twitter') return '';
+  if (typeof AppCfg !== 'undefined' && AppCfg.feedLayout === 'twitter') return '';
   const me = Cloud.user?.uid, uids = new Set(), seen = Rank.aff().seenP;
   (typeof Stories !== 'undefined' ? Stories.list : []).forEach(x => uids.add(x.uid));
   Comm.posts.filter(p => tsMs(p.createdAt) > Date.now() - 48 * 36e5).forEach(p => uids.add(p.uid));

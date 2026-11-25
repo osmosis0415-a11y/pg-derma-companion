@@ -202,8 +202,10 @@ function vAdmin() {
   if (tab === 'batches') return vAdminBatches();
   if (tab === 'content') return vAdminContent();
   if (tab === 'reports') return vAdminReports();
+  if (tab === 'design') return vAdminDesign();
   main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === tab ? ' on' : ''}" href="#/admin?t=${k}">${l} <span id="cnt_${k}"></span></a>`).join('')}</div>
   <div id="alist" class="card"><p class="muted small">Loading…</p></div>
+  <a class="card link" href="#/admin?t=design"><b>${ic('grid')} Deploy designs</b><small class="muted"> — Bento / Glass home, X-style feed, micro-learning deck ›</small></a>
   <div class="card laycard"><h3>App style</h3><p class="small muted">How the Community feed looks for everyone.</p><div class="btnrow"><button class="btn sm${AppCfg.layout !== 'twitter' ? ' on' : ' ghost'}" data-act="setlayout" data-l="insta">Instagram style</button><button class="btn sm${AppCfg.layout === 'twitter' ? ' on' : ' ghost'}" data-act="setlayout" data-l="twitter">Twitter / X style</button></div></div>
   <div class="card"><h3>Invite people</h3><p class="small muted">Share the app link. They sign in with Google and appear here for your approval.</p><button class="btn sm ghost" data-act="adminshare">Share app link</button></div>`;
   Cloud.init().then(() => {
@@ -232,7 +234,7 @@ ACT.adminset = async el => {
 };
 ACT.adminshare = () => { const url = location.origin + location.pathname; const msg = `PG Derma Companion — app for DVL residents 🩺\n${url}\nOpen it, tap “Continue with Google”, and I'll approve you.`; if (navigator.share) navigator.share({ text: msg }).catch(() => {}); else window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };
 ACT.appsignout = () => Gate.signOut();
-const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['batches', 'Batches'], ['content', 'Content'], ['reports', 'Reports'], ['errors', 'Errors']];
+const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['design', 'Designs'], ['batches', 'Batches'], ['content', 'Content'], ['reports', 'Reports'], ['errors', 'Errors']];
 ACT.admincalls = async el => {
   const on = el.dataset.on !== '1';
   if (on && !(await uiConfirm('Allow this person to make and receive voice/video calls with batchmates?', { ok: 'Allow calls' }))) return;
@@ -327,3 +329,61 @@ function vAdminErrors() {
   }).catch(e => { const el = $('#elist'); if (el) el.innerHTML = `<p class="err">${esc(e.code || e.message)}</p>`; });
 }
 ACT.errclear = async () => { if (!(await uiConfirm('Delete all error reports?'))) return; const f = Cloud.f; for (const id of window.__errDocs || []) await f.deleteDoc(f.doc(Cloud.db, 'errors', id)).catch(() => {}); render(); };
+
+/* ---------- Admin → Designs: pick, preview on this phone, deploy to everyone, roll back ---------- */
+let designDraft = null;
+const designSummary = c => `${DESIGN_NAMES.home[c.home]} home · ${DESIGN_NAMES.layout[c.layout]} · ${DESIGN_NAMES.deck[c.deck]}`;
+const designLive = () => ({ home: AppCfg.live.home, deck: AppCfg.live.deck, layout: AppCfg.layout });
+const sameDesign = (a, b) => a.home === b.home && a.deck === b.deck && a.layout === b.layout;
+function vAdminDesign() {
+  setTitle('Deploy designs', true);
+  if (!amAdmin()) { main().innerHTML = empty('Admins only'); return; }
+  const live = designLive(), pv = AppCfg.preview();
+  if (!designDraft) designDraft = pv ? Object.assign({}, live, pv.design, { layout: pv.layout || live.layout }) : Object.assign({}, live);
+  const d = designDraft, same = sameDesign(d, live);
+  const opt = (k, v, label, sub, sw) => `<button class="dopt${d[k] === v ? ' on' : ''}" data-act="designpick" data-k="${k}" data-v="${v}" role="radio" aria-checked="${d[k] === v}"><span class="dsw ${sw}" aria-hidden="true"></span><span class="dtx"><b>${esc(label)}</b><small>${esc(sub)}</small></span><span class="drad" aria-hidden="true"></span></button>`;
+  const ts = x => (x && x.seconds ? x.seconds * 1000 : typeof x === 'number' ? x : 0);
+  main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === 'design' ? ' on' : ''}" href="#/admin?t=${k}">${l}</a>`).join('')}</div>
+  <section class="card dlive"><small>Live for everyone</small><b>${esc(designSummary(live))}</b>${pv ? `<p class="small">You are previewing a different design on this phone only. <button class="btn xs ghost" data-act="designunpreview">Stop preview</button></p>` : ''}</section>
+  <section class="card"><h3>1 · Home screen</h3><div class="dopts" role="radiogroup" aria-label="Home screen">
+    ${opt('home', 'classic', 'Classic', 'Teal hero with your Today list', 'sw-classic')}
+    ${opt('home', 'bento', 'Bento', 'Light bento grid: case carousel, goal, streak, quiz', 'sw-bento')}
+    ${opt('home', 'glass', 'Bento Glass', 'Same grid on dark frosted glass', 'sw-glass')}</div></section>
+  <section class="card"><h3>2 · Community feed</h3><div class="dopts" role="radiogroup" aria-label="Community feed">
+    ${opt('layout', 'twitter', 'X-style timeline', 'Dark-friendly 3-column timeline, round avatars', 'sw-x')}
+    ${opt('layout', 'insta', 'Instagram feed', 'Big image cards with stories', 'sw-insta')}</div></section>
+  <section class="card"><h3>3 · Study feed</h3><div class="dopts" role="radiogroup" aria-label="Study feed">
+    ${opt('deck', 'classic', 'Classic swipe feed', 'Colour-coded full-screen cards', 'sw-feed')}
+    ${opt('deck', 'micro', 'Micro-learning deck', 'Obsidian cards, topic pill, indigo + emerald, thumb rail', 'sw-micro')}</div></section>
+  <div class="dbtns"><button class="btn ghost" data-act="designpreview">${ic('user')} Preview on this phone</button>
+    <button class="btn" data-act="designdeploy"${same ? ' disabled' : ''}>Deploy to everyone</button></div>
+  <p class="small muted center">${same ? 'This is what is live now. Change something to deploy.' : 'Everyone gets it the next time the app opens online. You can roll back below.'}</p>
+  <section class="card"><h3>Deploy history</h3>${AppCfg.history.length ? AppCfg.history.slice(0, 6).map((h, i) => { const c = Object.assign({}, DESIGN_DEFAULT, { layout: 'twitter' }, h); const isLive = sameDesign(c, live);
+    return `<div class="li"><div><b>${esc(designSummary(c))}</b><small>${ts(h.at) ? fmt(new Date(ts(h.at)).toISOString()) : ''}${h.by ? ' · ' + esc(h.by) : ''}</small></div>${isLive ? '<span class="tag">Live</span>' : `<button class="btn xs ghost danger" data-act="designrollback" data-i="${i}">Roll back</button>`}</div>`; }).join('') : '<p class="muted small">No deploys yet.</p>'}</section>`;
+  Cloud.init().then(() => AppCfg.load()).then(() => { if (ROUTE.path === 'admin' && ROUTE.q.t === 'design' && !$('.dopt:focus')) { const h = JSON.stringify(AppCfg.history); if (h !== vAdminDesign._h) { vAdminDesign._h = h; vAdminDesign(); } } }).catch(() => {});
+}
+ACT.designpick = el => { designDraft = Object.assign({}, designDraft || designLive(), { [el.dataset.k]: el.dataset.v }); vAdminDesign(); };
+ACT.designpreview = () => {
+  const d = designDraft || designLive();
+  localStorage.setItem('pgd_design_preview', JSON.stringify({ design: AppCfg.clean(d), layout: d.layout }));
+  AppCfg.apply(); toast('Previewing on this phone only'); go(d.layout !== AppCfg.layout && d.home === AppCfg.live.home && d.deck === AppCfg.live.deck ? '#/community' : d.deck !== AppCfg.live.deck && d.home === AppCfg.live.home ? '#/feed' : '#/home');
+};
+ACT.designunpreview = () => { localStorage.removeItem('pgd_design_preview'); designDraft = null; AppCfg.apply(); toast('Preview off — you see what everyone sees'); vAdminDesign(); };
+async function designWrite(c, msg) {
+  const f = Cloud.f, entry = { home: c.home, deck: c.deck, layout: c.layout, at: Date.now(), by: (Cloud.user && Cloud.user.email) || '' };
+  const hist = [entry].concat(AppCfg.history || []).slice(0, 10);
+  await f.setDoc(f.doc(Cloud.db, 'config', 'app'), { layout: c.layout, design: AppCfg.clean(c), designHistory: hist, updatedAt: f.serverTimestamp() }, { merge: true });
+  AppCfg.layout = c.layout; AppCfg.live = AppCfg.clean(c); AppCfg.history = hist;
+  localStorage.setItem('pgd_layout', c.layout); localStorage.setItem('pgd_design', JSON.stringify(AppCfg.live)); localStorage.removeItem('pgd_design_preview');
+  designDraft = null; AppCfg.apply(); toast(msg); vAdminDesign();
+}
+ACT.designdeploy = async () => {
+  const d = designDraft || designLive(); if (sameDesign(d, designLive())) return;
+  if (!(await uiConfirm(`Deploy to everyone? ${designSummary(d)}. Approved users get it the next time the app opens online.`, { ok: 'Deploy' }))) return;
+  try { await Cloud.init(); await designWrite(d, 'Deployed to everyone'); } catch (e) { toast('Could not deploy: ' + (e.code || e.message)); }
+};
+ACT.designrollback = async el => {
+  const h = AppCfg.history[+el.dataset.i]; if (!h) return; const c = Object.assign({}, DESIGN_DEFAULT, { layout: 'twitter' }, h);
+  if (!(await uiConfirm(`Roll back everyone to: ${designSummary(c)}?`, { ok: 'Roll back' }))) return;
+  try { await Cloud.init(); await designWrite(c, 'Rolled back'); } catch (e) { toast('Could not roll back: ' + (e.code || e.message)); }
+};

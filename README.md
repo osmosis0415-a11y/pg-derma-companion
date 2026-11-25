@@ -14,7 +14,7 @@ Open it on your phone and install it to the home screen (Android Chrome: ⋮ →
 
 ## Access control
 
-Everyone signs in with Google. New accounts appear in **More → Access requests** for the admin (`sriramdeverashetty@gmail.com`, set in `web/src/gate.js` and `firestore.rules`) to approve, reject or revoke. Approval is enforced in `firestore.rules`, so unapproved accounts can't use the Batch hub even outside the app. Once approved, the decision is cached so the app works offline, and it is re-checked whenever the device is online.
+Everyone signs in with Google. New accounts appear in **More → Access requests** for the admin (`sriramdeverashetty@gmail.com`, set in `web/src/gate.js` and `firestore.rules`) to approve, reject or revoke. The admin also picks the app's look for everyone under **Admin → Designs** (Classic / Bento / Bento Glass home, X-style or Instagram Community feed, classic or micro-learning study deck), with preview-on-my-phone, deploy and roll back. Approval is enforced in `firestore.rules`, so unapproved accounts can't use the Batch hub even outside the app. Once approved, the decision is cached so the app works offline, and it is re-checked whenever the device is online.
 
 ## Privacy model
 

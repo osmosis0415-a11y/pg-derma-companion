@@ -574,3 +574,85 @@ a.feedcta{border-radius:18px}
 a.jhome{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit}a.jhome .jhi{width:42px;height:42px;border-radius:12px;background:var(--accs,#E8F6F5);color:var(--acc,#0B7A75);display:flex;align-items:center;justify-content:center;flex:none}
 a.jhome .sh{flex:1;display:flex;flex-direction:column;min-width:0}a.jhome small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .t-news{background:linear-gradient(160deg,#0b3b3a,#0f172a)}.t-news .fcite{display:block;color:#94a3b8;margin:8px 0}.t-news h2{font-size:21px}
+
+/* ===== Designs the admin can deploy (Admin → Designs) ===== */
+/* Bento home */
+.bento{display:flex;flex-direction:column;gap:10px;margin:0 0 14px}
+.bdate{font-size:13px;font-weight:500;color:var(--mut)}
+.bhello{font-size:28px;line-height:1.1;font-weight:700;letter-spacing:-.02em;margin:0 0 4px}
+.btile{position:relative;display:flex;flex-direction:column;border-radius:22px;padding:16px;text-decoration:none;color:#1A1A1A;overflow:hidden}
+.btile small{font-size:13px;font-weight:600}
+.btop{height:190px;padding:0;background:linear-gradient(160deg,#56708F,#B4C6DC);color:#fff}
+.bslide{position:absolute;inset:0;padding:18px;display:flex;flex-direction:column;gap:4px;color:#fff;opacity:0;visibility:hidden;transition:opacity .35s;text-decoration:none}
+.bslide.on{opacity:1;visibility:visible}
+.bslide small{font-size:12px;text-transform:uppercase;letter-spacing:.02em}
+.bslide b{font-size:21px;line-height:1.15;letter-spacing:-.02em;max-width:290px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bslide span{font-size:13px;font-weight:500;max-width:290px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bpill{position:absolute;right:14px;bottom:14px;display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 18px;border-radius:999px;background:#1A1A1A;color:#fff;font-weight:600;font-size:14px;font-style:normal}
+.bpill svg,.bround svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.bdots{position:absolute;left:14px;bottom:18px;z-index:2;display:flex;gap:2px;padding:0 8px;border-radius:999px;background:rgba(255,255,255,.24);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.35)}
+.bdots button{background:none;border:0;padding:10px 3px;cursor:pointer;display:flex}.bdots i{display:block;width:6px;height:6px;border-radius:999px;background:rgba(255,255,255,.6);transition:width .2s}.bdots .on i{width:18px;background:#fff}
+.bsplit{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:250px}
+.bgoal{background:linear-gradient(165deg,#5F667C,#9EA5B8);color:#fff;gap:2px}
+.bgoal b{font-size:42px;line-height:1;letter-spacing:-.03em;margin-top:auto}.bgoal b i{font-size:20px;font-style:normal}.bgoal span{font-size:13px}
+.bgoal .bpill{position:static;align-self:flex-start}
+.bbar{display:block;height:6px;border-radius:999px;background:rgba(255,255,255,.3);margin:10px 0 12px}.bbar i{display:block;height:6px;border-radius:999px;background:#fff}
+.bcol{display:flex;flex-direction:column;gap:10px}.bcol .btile{flex:1;min-height:118px}
+.bstreak{background:#F4F2EF}.bstreak b{font-size:24px;letter-spacing:-.02em}.bstreak span{font-size:12px;color:#5E5E5E;padding-right:46px}
+.bquiz{background:#D92B2B;color:#fff}.bquiz b{font-size:18px}.bquiz span{font-size:12px;padding-right:46px}
+.bround{position:absolute;right:10px;bottom:10px;width:44px;height:44px;border-radius:999px;background:#1A1A1A;color:#fff;display:flex;align-items:center;justify-content:center;font-style:normal}
+.bstrip{flex-direction:row;align-items:center;justify-content:space-between;gap:10px;min-height:72px;background:#F4F2EF;padding:12px 12px 12px 16px}
+.bstrip span{display:flex;flex-direction:column;min-width:0}.bstrip small{color:#5E5E5E;font-weight:500}.bstrip b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bstrip .bround{position:static;flex:none}
+body.home-bento.onhome main .card{border-radius:22px;box-shadow:none}
+@media (prefers-reduced-motion:reduce){.bslide{transition:none}}
+
+/* Bento Glass home (dark frosted glass over glowing colour) */
+body.home-glass.onhome{--bg:#0E1230;--card:rgba(8,12,32,.45);--ink:#fff;--mut:rgba(255,255,255,.8);--line:rgba(255,255,255,.22);--accs:rgba(255,255,255,.14);--acc:#7dd3fc;min-height:100vh}
+body.home-glass.onhome::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(circle at 88% 6%,rgba(34,193,195,.85),transparent 34%),radial-gradient(circle at 4% 45%,rgba(123,92,255,.8),transparent 38%),radial-gradient(circle at 96% 66%,rgba(255,94,126,.7),transparent 32%),radial-gradient(circle at 25% 100%,rgba(255,181,71,.5),transparent 35%)}
+body.home-glass.onhome #app{position:relative;z-index:1}
+body.home-glass.onhome #top,body.home-glass.onhome .nav.bottom,body.home-glass.onhome .nav.side{background:rgba(8,12,32,.6);-webkit-backdrop-filter:blur(16px) saturate(180%);backdrop-filter:blur(16px) saturate(180%);border-color:rgba(255,255,255,.2)}
+body.home-glass.onhome .nav a{color:rgba(255,255,255,.78)}body.home-glass.onhome .nav a.on{color:#fff}
+body.home-glass.onhome main .card,body.home-glass.onhome .btile{background:rgba(8,12,32,.42);-webkit-backdrop-filter:blur(16px) saturate(180%);backdrop-filter:blur(16px) saturate(180%);border:1px solid rgba(255,255,255,.25);border-top-color:rgba(255,255,255,.55);border-left-color:rgba(255,255,255,.45);box-shadow:0 8px 32px rgba(0,0,0,.2);color:#fff;border-radius:22px}
+body.home-glass.onhome .bslide{background:linear-gradient(180deg,rgba(8,12,32,.55),rgba(8,12,32,.2))}
+body.home-glass.onhome .bquiz{background:rgba(255,94,126,.3)}
+body.home-glass.onhome .bstreak span,body.home-glass.onhome .bstrip small{color:rgba(255,255,255,.82)}
+body.home-glass.onhome .bpill,body.home-glass.onhome .bround{background:#fff;color:#0E1230}
+body.home-glass.onhome .bbar{background:rgba(255,255,255,.25)}
+
+/* Micro-learning deck (study feed) */
+body.deck-micro #feedui{background:#0E1015;color:#F3F4F6}
+body.deck-micro .fcard{background:#0E1015;padding:104px 72px 64px 20px}
+body.deck-micro .fcard .fbody{background:#171A21;border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:18px;box-shadow:0 12px 32px rgba(0,0,0,.35)}
+body.deck-micro .fcard .fbody.center{background:none;border:0;box-shadow:none}
+body.deck-micro .fbody h2{font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-.02em;color:#F3F4F6}body.deck-micro .fbody h2.fpearl{font-size:25px}
+body.deck-micro .fbody p{font-size:16px;line-height:1.5;color:#E5E7EB}
+body.deck-micro .ftop span{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;background:rgba(99,102,241,.16);border:1px solid rgba(99,102,241,.4);color:#C7D2FE}
+body.deck-micro .ftop .fnew{background:rgba(16,185,129,.16);border-color:rgba(16,185,129,.45);color:#6EE7B7}
+body.deck-micro .fbolt svg{color:#34D399}
+body.deck-micro .fopt{background:#1F232C;border-color:rgba(255,255,255,.1);border-radius:14px}
+body.deck-micro .fopt b{background:rgba(99,102,241,.25);color:#E0E7FF}
+body.deck-micro .fopt.right{background:rgba(16,185,129,.16);border-color:#10B981}body.deck-micro .fopt.wrong{background:rgba(239,68,68,.16);border-color:#EF4444}
+body.deck-micro .fexp{background:rgba(255,255,255,.04)}body.deck-micro .fexp.ok b{color:#6EE7B7}body.deck-micro .fexp.no b{color:#FCA5A5}
+body.deck-micro .ftap{background:#4F46E5;color:#fff}body.deck-micro .fgr button{background:#1F232C}
+body.deck-micro .fback{border-top-color:rgba(255,255,255,.12)}body.deck-micro .fback h3{color:#A5B4FC}
+body.deck-micro .frail{right:12px;bottom:28px;gap:10px}
+body.deck-micro .frail button{width:44px;height:44px;border-radius:999px;justify-content:center;background:rgba(23,26,33,.85);border:1px solid rgba(255,255,255,.12);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+body.deck-micro .frail svg{width:20px;height:20px}body.deck-micro .frail small{display:none}
+body.deck-micro .frail .on{background:#4F46E5}body.deck-micro .frail .on svg{color:#fff}
+body.deck-micro .fhint{color:#A1A6B2}
+
+/* Admin → Designs picker */
+.dopts{display:flex;flex-direction:column;gap:8px}
+.dopt{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:8px 12px 8px 8px;border-radius:16px;border:2px solid var(--line);background:var(--card);color:var(--ink);text-align:left;cursor:pointer;font:inherit}
+.dopt.on{border-color:var(--ink)}.dtx{flex:1;display:flex;flex-direction:column;gap:2px}.dtx small{color:var(--mut)}
+.drad{width:20px;height:20px;border-radius:999px;border:2px solid var(--ink);flex:none;display:flex;align-items:center;justify-content:center}.dopt.on .drad::after{content:'';width:10px;height:10px;border-radius:999px;background:var(--ink)}
+.dsw{width:48px;height:48px;border-radius:12px;flex:none;border:1px solid var(--line)}
+.sw-classic{background:linear-gradient(135deg,#0A6E69,#14A3A0)}
+.sw-bento{background:conic-gradient(from 90deg at 55% 45%,#D92B2B 0 25%,#F4F2EF 0 50%,#9EA5B8 0 75%,#B4C6DC 0)}
+.sw-glass{background:radial-gradient(circle at 30% 30%,#22C1C3,transparent 55%),radial-gradient(circle at 75% 70%,#7B5CFF,transparent 55%),#0E1230}
+.sw-x{background:radial-gradient(circle at 13px 13px,#1D9BF0 5px,transparent 6px),linear-gradient(#71767B 0 0) 22px 11px/18px 3px no-repeat,linear-gradient(#71767B 0 0) 22px 18px/14px 3px no-repeat,linear-gradient(#16181C 0 0) 8px 28px/32px 12px no-repeat,#000}
+.sw-insta{background:linear-gradient(45deg,#f9ce34,#ee2a7b,#6228d7)}
+.sw-feed{background:linear-gradient(160deg,#0B7A75,#a8432f)}
+.sw-micro{background:linear-gradient(#171A21 0 0) 8px 12px/32px 28px no-repeat,linear-gradient(90deg,#6366F1 60%,#2A2F3A 0) 8px 5px/32px 3px no-repeat,#0E1015}
+.dlive{background:#56708F;color:#fff;border:0}.dlive small{font-weight:600;text-transform:uppercase;font-size:12px}.dlive b{display:block;font-size:18px;margin-top:4px}.dlive .btn.ghost{background:#fff;color:#1A1A1A}
+.dbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 6px}.dbtns .btn{border-radius:999px}

@@ -2,6 +2,13 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 2026-11-26 — Admin can deploy new designs
+- **Admin console → Designs:** pick the look for everyone, preview it on your own phone first, then deploy. A deploy history lets you roll back in one tap.
+  - **Home screen:** Classic (teal hero), **Bento** (light bento grid — a case/study carousel, daily goal, streak, quick quiz and what's due) or **Bento Glass** (the same grid on dark frosted glass).
+  - **Community feed:** X-style timeline or Instagram feed (the old quick switch is still on the Pending tab).
+  - **Study feed:** Classic swipe feed or the new **Micro-learning deck** — obsidian cards, monospace topic pills, indigo and emerald accents, and a compact thumb rail at the bottom right.
+- "Preview on this phone" changes only the admin's own phone; residents keep seeing what is live until you press **Deploy to everyone**.
+
 ## 2026-11-26 — Score and dose accuracy fixes
 - **SALT (alopecia areata) grading corrected.** The band under the score now shows the standard subclass — S0 none, S1 <25%, S2 25–49%, S3 50–74%, S4a 75–95%, S4b 96–99%, S5 100% (Olsen 2004) — together with the 2022 severity grade (limited ≤20%, moderate 21–49%, severe ≥50%). Before, a 22% loss was shown as "S2", and 0% as "S1".
 - **Isotretinoin calculator:** the current dose now shows two decimals, so low-dose regimens read correctly (15 mg/day at 60 kg = 0.25 mg/kg/day, not 0.3).
