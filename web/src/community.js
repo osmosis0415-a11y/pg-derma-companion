@@ -8,6 +8,9 @@
    Posts go live at once; anyone can report; the admin deletes posts or revokes the author. Patient photos must be
    de-identified — the composer warns, checks text for identifiers and requires a declaration. */
 const POST_KINDS = { case: 'Case', question: 'Question', pearl: 'Pearl' };
+/* Bot accounts (uid bot_*) are labelled everywhere so nobody mistakes them for a resident. */
+const isBot = x => !!(x && (x.bot === true || /^bot_/.test(String(x.uid || ''))));
+const botBadge = x => isBot(x) ? '<span class="botb" title="Automated account — posts are AI-generated">BOT</span>' : '';
 const weekKey = (d = new Date()) => { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day); const y = t.getUTCFullYear(), w = Math.ceil(((t - Date.UTC(y, 0, 1)) / 864e5 + 1) / 7); return 'w' + y + String(w).padStart(2, '0'); };
 const agoTxt = ms => { const s = Math.max(1, Math.round((Date.now() - ms) / 1000)); return s < 60 ? 'now' : s < 3600 ? Math.floor(s / 60) + 'm' : s < 86400 ? Math.floor(s / 3600) + 'h' : s < 604800 ? Math.floor(s / 86400) + 'd' : fmt(new Date(ms).toISOString()); };
 const tsMs = x => !x ? Date.now() : x.toMillis ? x.toMillis() : typeof x === 'number' ? x : x.seconds ? x.seconds * 1000 : Date.now();
@@ -77,7 +80,7 @@ function postHTML(p, full) {
   const me = Cloud.user?.uid, mine = p.uid === me, n = mine ? Math.max(0, (p.comments || 0) - (Comm.st().seen[p.id] || 0)) : 0;
   const txt = p.text || '', cut = !full && txt.length > 280;
   return `<article class="post cpost" data-pid="${p.id}">
-    <header>${avA(p.uid, p.name)}<a class="pwho" href="#/u/${esc(p.uid)}"><b>${esc(p.name || 'Resident')}</b><small>${esc(p.year || '')} · ${agoTxt(tsMs(p.createdAt))}</small></a><span class="ptag k-${esc(p.kind)}">${POST_KINDS[p.kind] || 'Post'}</span><button class="icon" data-act="pmenu" data-id="${p.id}" aria-label="More">${ic('more')}</button></header>
+    <header>${avA(p.uid, p.name)}<a class="pwho" href="#/u/${esc(p.uid)}"><b>${esc(p.name || 'Resident')}${botBadge(p)}</b><small>${esc(p.year || '')} · ${agoTxt(tsMs(p.createdAt))}</small></a><span class="ptag k-${esc(p.kind)}">${POST_KINDS[p.kind] || 'Post'}</span><button class="icon" data-act="pmenu" data-id="${p.id}" aria-label="More">${ic('more')}</button></header>
     <a class="pbody" href="#/post/${p.id}"><p class="pre">${esc(cut ? txt.slice(0, 280) + '…' : txt)}</p>${cut ? '<span class="muted small">more</span>' : ''}</a>
     ${p.img ? `<a class="pmedia" href="#/post/${p.id}"><img src="${esc(p.img)}" alt="Case photo" loading="lazy"></a>` : ''}
     ${(p.tags || []).length ? `<div class="ptags">${p.tags.map(t => `<span>#${esc(t)}</span>`).join('')}</div>` : ''}
@@ -89,7 +92,7 @@ const handleOf = (uid, name) => '@' + String(name || 'resident').replace(/^Dr\.?
 function tweetHTML(p, full) {
   const txt = p.text || '', cut = !full && txt.length > 420;
   return `<article class="tweet cpost" data-pid="${p.id}">${avA(p.uid, p.name)}<div class="tw">
-    <div class="twh"><a href="#/u/${esc(p.uid)}"><b>${esc(p.name || 'Resident')}</b></a><small>${esc(handleOf(p.uid, p.name))} · ${agoTxt(tsMs(p.createdAt))}</small><span class="ptag k-${esc(p.kind)}">${POST_KINDS[p.kind] || 'Post'}</span><button class="icon" data-act="pmenu" data-id="${p.id}" aria-label="More">${ic('more')}</button></div>
+    <div class="twh"><a href="#/u/${esc(p.uid)}"><b>${esc(p.name || 'Resident')}</b>${botBadge(p)}</a><small>${esc(handleOf(p.uid, p.name))} · ${agoTxt(tsMs(p.createdAt))}</small><span class="ptag k-${esc(p.kind)}">${POST_KINDS[p.kind] || 'Post'}</span><button class="icon" data-act="pmenu" data-id="${p.id}" aria-label="More">${ic('more')}</button></div>
     <a class="pbody" href="#/post/${p.id}"><p class="pre">${esc(cut ? txt.slice(0, 420) + '…' : txt)}</p></a>
     ${p.img ? `<a class="pmedia" href="#/post/${p.id}"><img src="${esc(p.img)}" alt="Case photo" loading="lazy"></a>` : ''}
     ${(p.tags || []).length ? `<div class="ptags">${p.tags.map(t => `<span>#${esc(t)}</span>`).join('')}</div>` : ''}
@@ -204,7 +207,7 @@ function openThread(tid, el, postId) {
     <div class="cbox"><textarea id="tc_text" rows="2" maxlength="1000" placeholder="Add to the discussion…"></textarea><button class="btn sm" data-act="tcsend" data-tid="${esc(tid)}" ${postId ? `data-post="${esc(postId)}"` : ''}>${ic('send')}</button></div>`;
   threadUnsub = f.onSnapshot(f.query(f.collection(Cloud.db, 'threads', tid, 'c'), f.orderBy('at', 'asc'), f.limit(200)), s => {
     const tl = $('#tl'); if (!tl) return;
-    tl.innerHTML = s.docs.map(d => { const c = d.data(), mine = c.uid === me; return `<div class="cm">${avA(c.uid, c.name, 'pav sm')}<div><b>${esc(c.name)}</b> <small class="muted">${agoTxt(tsMs(c.at))}</small><p class="pre">${esc(c.text)}</p></div>${mine || amAdmin() ? `<button class="icon xs" data-act="tcdel" data-tid="${esc(tid)}" data-id="${d.id}" ${postId ? `data-post="${esc(postId)}"` : ''} aria-label="Delete comment">✕</button>` : ''}</div>`; }).join('') || '<p class="muted small">No comments yet — be the first.</p>';
+    tl.innerHTML = s.docs.map(d => { const c = d.data(), mine = c.uid === me; return `<div class="cm">${avA(c.uid, c.name, 'pav sm')}<div><b>${esc(c.name)}</b>${botBadge(c)} <small class="muted">${agoTxt(tsMs(c.at))}</small><p class="pre">${esc(c.text)}</p></div>${mine || amAdmin() ? `<button class="icon xs" data-act="tcdel" data-tid="${esc(tid)}" data-id="${d.id}" ${postId ? `data-post="${esc(postId)}"` : ''} aria-label="Delete comment">✕</button>` : ''}</div>`; }).join('') || '<p class="muted small">No comments yet — be the first.</p>';
   }, () => { const tl = $('#tl'); if (tl) tl.innerHTML = '<p class="err small">Could not load comments.</p>'; });
 }
 ACT.tcsend = async el => {
@@ -255,7 +258,7 @@ function vUser() {
     const badges = [[pr.best >= 7, 'flame', '7-day streak'], [pr.best >= 30, 'flame', '30-day streak'], [(pr.total || 0) >= 100, 'bolt', '100 XP'], [(pr.total || 0) >= 1000, 'bolt', '1000 XP'], [(pr.posts || 0) >= 1, 'chat', 'First post'], [(pr.posts || 0) >= 10, 'chat', '10 posts']].filter(b => b[0]);
     if (pr.photo) Prof.map[uid] = pr; await Follow.load(); const fc = await Follow.counts(uid);
     main().innerHTML = `<section class="card uprof"><div class="phead"><span class="pbig${me ? ' edit' : ''}" ${me ? 'data-act="avpick" role="button" aria-label="Change profile photo"' : ''}>${pr.photo ? `<img src="${esc(pr.photo)}" alt="">` : esc(initials(name))}${me ? `<i class="avplus">+</i>` : ''}</span><div class="pstats"><div><b>${posts.length}</b><small>posts</small></div><a href="#/flist/${esc(uid)}?l=followers"><b>${fc.followers}</b><small>followers</small></a><a href="#/flist/${esc(uid)}?l=following"><b>${fc.following}</b><small>following</small></a></div></div>
-      <h2>${esc(name)}</h2><p class="small muted">${esc(handleOf(uid, name))} · ${esc([pr.year, pr.college].filter(Boolean).join(' · '))}</p>${pr.bio ? `<p class="pre">${esc(pr.bio)}</p>` : ''}
+      <h2>${esc(name)}${botBadge({ uid, bot: pr.bot })}</h2>${isBot({ uid, bot: pr.bot }) ? '<p class="small botnote">Automated account. Its posts are AI-generated — discuss them, and verify with your faculty before clinical use.</p>' : ''}<p class="small muted">${esc(handleOf(uid, name))} · ${esc([pr.year, pr.college].filter(Boolean).join(' · '))}</p>${pr.bio ? `<p class="pre">${esc(pr.bio)}</p>` : ''}
       ${badges.length ? `<div class="badges">${badges.map(b => `<span>${ic(b[1])}${b[2]}</span>`).join('')}</div>` : ''}
       <p class="small muted">🔥 ${pr.streak || 0}-day streak · ${(pr.xp || {})[w] || 0} XP this week</p>
       ${me ? `<div class="btnrow"><a class="btn sm ghost" href="#/settings">Edit profile</a><button class="btn sm ghost" data-act="avpick">${pr.photo ? 'Change' : 'Add'} photo</button><a class="btn sm ghost" href="#/story-new">Add story</a></div>${inviteCardHTML()}` : `<div class="btnrow"><button class="btn sm${Follow.has(uid) ? ' ghost' : ''}" data-act="follow" data-id="${esc(uid)}" data-n="${esc(name)}">${Follow.has(uid) ? 'Following' : 'Follow'}</button><button class="btn sm ghost" data-act="dmopen" data-id="${esc(uid)}" data-n="${esc(name)}">Message</button></div>`}
