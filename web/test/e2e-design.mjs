@@ -1,21 +1,24 @@
 // Designs: admin picks Bento / Glass home, X or Instagram feed, micro-learning deck; previews on own phone; deploys to everyone; rolls back.
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
+const SHOTS = fs.mkdtempSync(path.join(os.tmpdir(), 'pgd-e2e-'));
 const MOCK = fs.readFileSync(new URL('./fs-shared-mock.js', import.meta.url), 'utf8');
 const DLG = fs.readFileSync(new URL('./dlg-auto.js', import.meta.url), 'utf8');
 const base = 'http://127.0.0.1:9335';
 const sleep = ms => new Promise(r => setTimeout(r, ms)); const chk = (n, c) => console.log((c ? 'PASS ' : 'FAIL ') + n);
 const page = async target => {
   const ws = new WebSocket(target.webSocketDebuggerUrl); await new Promise(r => ws.onopen = r);
-  let id = 0; const pend = {}, errs = [];
-  ws.onmessage = m => { const d = JSON.parse(m.data); if (d.id && pend[d.id]) { pend[d.id](d); delete pend[d.id]; } if (d.method === 'Runtime.exceptionThrown') errs.push(d.params.exceptionDetails.exception?.description); };
-  const send = (method, params = {}) => new Promise(r => { const i = ++id; pend[i] = r; ws.send(JSON.stringify({ id: i, method, params })); });
+  let id = 0; const pend = new Map(), errs = [];
+  ws.onmessage = m => { const d = JSON.parse(m.data); if (d.id && pend.has(d.id)) { const cb = pend.get(d.id); pend.delete(d.id); cb(d); } if (d.method === 'Runtime.exceptionThrown') errs.push(d.params.exceptionDetails.exception?.description); };
+  const send = (method, params = {}) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
   const ev = async e => { const r = (await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true })).result; if (r.exceptionDetails) errs.push('EVAL: ' + (r.exceptionDetails.exception?.description || '').slice(0, 300)); return r.result?.value; };
   await send('Runtime.enable'); await send('Page.enable');
   await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(window,'FIREBASE_CONFIG',{get(){return null},set(){}});" + DLG + MOCK });
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   return { send, ev, errs };
 };
-const shot = async (P, n) => { await P.send('Page.bringToFront'); const r = await P.send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync('/tmp/' + n + '.png', Buffer.from(r.result.data, 'base64')); };
+const shot = async (P, n) => { await P.send('Page.bringToFront'); const r = await P.send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SHOTS, n + '.png'), Buffer.from(r.result.data, 'base64')); };
 const t1 = (await (await fetch(base + '/json')).json()).find(t => t.type === 'page');
 const t2 = await (await fetch(base + '/json/new?about:blank', { method: 'PUT' })).json();
 const A = await page(t1), B = await page(t2);
