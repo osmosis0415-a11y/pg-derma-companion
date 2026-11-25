@@ -203,6 +203,7 @@ function vAdmin() {
   if (tab === 'content') return vAdminContent();
   if (tab === 'reports') return vAdminReports();
   if (tab === 'design') return vAdminDesign();
+  if (tab === 'bots') return vAdminBots();
   main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === tab ? ' on' : ''}" href="#/admin?t=${k}">${l} <span id="cnt_${k}"></span></a>`).join('')}</div>
   <div id="alist" class="card"><p class="muted small">Loading…</p></div>
   <a class="card link" href="#/admin?t=design"><b>${ic('grid')} Deploy designs</b><small class="muted"> — Bento / Glass home, X-style feed, micro-learning deck ›</small></a>
@@ -234,7 +235,7 @@ ACT.adminset = async el => {
 };
 ACT.adminshare = () => { const url = location.origin + location.pathname; const msg = `PG Derma Companion — app for DVL residents 🩺\n${url}\nOpen it, tap “Continue with Google”, and I'll approve you.`; if (navigator.share) navigator.share({ text: msg }).catch(() => {}); else window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };
 ACT.appsignout = () => Gate.signOut();
-const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['design', 'Designs'], ['batches', 'Batches'], ['content', 'Content'], ['reports', 'Reports'], ['errors', 'Errors']];
+const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['design', 'Designs'], ['bots', 'Bots'], ['batches', 'Batches'], ['content', 'Content'], ['reports', 'Reports'], ['errors', 'Errors']];
 ACT.admincalls = async el => {
   const on = el.dataset.on !== '1';
   if (on && !(await uiConfirm('Allow this person to make and receive voice/video calls with batchmates?', { ok: 'Allow calls' }))) return;
@@ -386,4 +387,25 @@ ACT.designrollback = async el => {
   const h = AppCfg.history[+el.dataset.i]; if (!h) return; const c = Object.assign({}, DESIGN_DEFAULT, { layout: 'twitter' }, h);
   if (!(await uiConfirm(`Roll back everyone to: ${designSummary(c)}?`, { ok: 'Roll back' }))) return;
   try { await Cloud.init(); await designWrite(c, 'Rolled back'); } catch (e) { toast('Could not roll back: ' + (e.code || e.message)); }
+};
+
+/* ---------- Admin → Bots: switch the labelled community bots on/off (the Apps Script reads config/bots) ---------- */
+const BOT_LIST = [['case', 'Case of the Day Bot', '9 am teaching case · answer revealed in the thread by evening'], ['sop', 'Basics & SOP Bot', '1 pm basics lesson or procedure SOP'],
+  ['replies', 'Bot answers to questions', 'Basics & SOP Bot replies to residents\' Questions unanswered for an hour'], ['thesis', 'Thesis Coach Bot', '6 pm Mon/Wed/Fri research-method tip'], ['journal', 'Journal Club Bot', '8 pm discussion on a paper from the live Journal digest']];
+let botsCfg = null;
+function vAdminBots() {
+  setTitle('Bots', true);
+  if (!amAdmin()) { main().innerHTML = empty('Admins only'); return; }
+  const c = botsCfg || {}, on = c.on !== false, last = c.last || {};
+  const sw = (k, label, sub) => { const v = k === 'on' ? on : c[k] !== false; return `<div class="li"><div><b>${esc(label)}</b><small>${esc(sub)}${k !== 'on' && k !== 'replies' && last[k] ? ' · last post ' + esc(last[k]) : ''}</small></div><button class="btn xs${v ? '' : ' ghost'}" role="switch" aria-checked="${v}" data-act="botset" data-k="${k}" data-v="${v ? 0 : 1}"${k !== 'on' && !on ? ' disabled' : ''}>${v ? 'On' : 'Off'}</button></div>`; };
+  main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === 'bots' ? ' on' : ''}" href="#/admin?t=${k}">${l}</a>`).join('')}</div>
+  <p class="small muted">Bots are clearly labelled AI accounts (name ends in “Bot”, BOT badge, AI-generated note on every post). They post automatically from the admin bot script. Delete any bot post from its ⋯ menu.</p>
+  <section class="card">${botsCfg ? sw('on', 'All bots', on ? 'Bots are posting' : 'All bots are paused') + BOT_LIST.map(([k, l, s]) => sw(k, l, s)).join('') : '<p class="muted small">Loading…</p>'}</section>
+  <p class="small muted">First time: open the admin bot script, paste the latest <code>tools/admin-bot.gs</code> and run <b>setupBots()</b> once.</p>`;
+  if (!botsCfg) Cloud.init().then(async () => { try { const d = await Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'config', 'bots')); botsCfg = d.exists() ? d.data() : {}; } catch (e) { botsCfg = {}; } if (ROUTE.path === 'admin' && ROUTE.q.t === 'bots') vAdminBots(); }).catch(() => {});
+}
+ACT.botset = async el => {
+  const k = el.dataset.k, v = el.dataset.v === '1';
+  try { await Cloud.f.setDoc(Cloud.f.doc(Cloud.db, 'config', 'bots'), { [k]: v, updatedAt: Cloud.f.serverTimestamp() }, { merge: true }); botsCfg = Object.assign({}, botsCfg, { [k]: v }); toast(v ? 'Switched on' : 'Switched off'); vAdminBots(); }
+  catch (e) { toast('Could not save: ' + (e.code || e.message)); }
 };

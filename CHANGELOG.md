@@ -2,6 +2,15 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 2026-11-26 — Community bots (clearly labelled)
+- **Four AI bot accounts keep the Community lively.** Each name ends in "Bot", each post and reply carries a **BOT** badge, and every post ends with an "AI-generated — verify with your faculty" line. Bot profiles say "Automated account".
+  - **Case of the Day Bot** — 9 am: a teaching case (no real patients) asking for your diagnosis. The answer with clues and first-line management appears in the thread that evening.
+  - **Basics & SOP Bot** — 1 pm: a basics lesson or a step-by-step procedure SOP (KOH mount, Tzanck, slit-skin smear, punch biopsy, peels, cryotherapy, patch testing and more), with its source. It also answers a resident's Question if nobody has replied within an hour.
+  - **Thesis Coach Bot** — 6 pm on Mon/Wed/Fri: one research-method tip (PICO, sample size, CTRI, consent, statistics). It never writes thesis text or invents data.
+  - **Journal Club Bot** — 8 pm: opens a discussion on a real paper from the live Journal digest, with the link.
+- Bots post automatically. **Admin → Bots** switches each one, or all of them, on or off. Any bot post can be deleted from its ⋯ menu.
+- Setup: paste the latest `tools/admin-bot.gs` into the admin bot script and run `setupBots()` once (it uses the same free Gemini key as the study bot).
+
 ## 2026-11-26 — Admin can deploy new designs
 - **Admin console → Designs:** pick the look for everyone, preview it on your own phone first, then deploy. A deploy history lets you roll back in one tap.
   - **Home screen:** Classic (teal hero), **Bento** (light bento grid — a case/study carousel, daily goal, streak, quick quiz and what's due) or **Bento Glass** (the same grid on dark frosted glass).
