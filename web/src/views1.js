@@ -76,8 +76,32 @@ function vHome() {
   const online = D.batch && typeof Calls !== 'undefined' ? (D.batch.members || []).filter(m => m.id !== Cloud.user?.uid && Calls.isOnline(m.id)) : [];
   const recent = [...D.visits].sort((a, b) => (b.created || b.date).localeCompare(a.created || a.date)).slice(0, 4);
   const sd = typeof Study !== 'undefined' ? { n: Study.doneToday(), g: Study.st().goal, k: Study.streakNow(), due: Study.dueCards().length } : null;
-  main().innerHTML = `<section class="ahero"><i class="hb1"></i><i class="hb2"></i><span class="hpill"><i></i>${esc(yr)} · ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</span><h2>${esc(hello)}</h2><p>${due.length ? `<b>${due.length}</b> thing${due.length > 1 ? 's' : ''} due today` : 'All clear today'}${sd ? ` · <b>${sd.n}/${sd.g}</b> study cards` : ''}</p>
-  ${sd ? `<a class="card studyhome" href="#/study"><div class="flame${sd.k ? ' on' : ''}">${ic('flame')}<b>${sd.k}</b></div><div class="sh"><b>${sd.n >= sd.g ? 'Goal done — streak safe' : sd.k ? 'Keep your ' + sd.k + '-day streak' : 'Today\'s study set'}</b><small class="muted">${sd.n}/${sd.g} done${sd.due ? ' · ' + sd.due + ' flashcards due' : ''}</small><span class="bar"><i style="width:${Math.min(100, Math.round(sd.n / sd.g * 100))}%" class="${sd.n >= sd.g ? 'ok' : ''}"></i></span></div><span class="btn sm">${sd.n >= sd.g ? 'Bonus' : sd.n ? 'Continue' : 'Start'}</span></a><a class="feedcta sm" href="#/feed"><span>${ic('reels')}</span><div><b>Scroll the feed</b><small>Swipe-up dermatology cards</small></div>›</a>` : ''}</section>
+
+  const arrow = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
+  const jn = typeof Journal !== 'undefined' && Journal.items().length ? Journal.items()[0] : null;
+  const slides = [
+    sd ? { tag: 'Study set', t: sd.n >= sd.g ? 'Goal done — streak safe' : sd.k ? `Keep your ${sd.k}-day streak` : "Today's study set", s: `${sd.n}/${sd.g} done${sd.due ? ' · ' + sd.due + ' flashcards due' : ''}`, cta: sd.n ? 'Continue' : 'Start', h: '#/study' } : null,
+    { tag: 'Feed', t: 'Scroll swipe-up dermatology cards', s: 'Pearls, MCQs, spotters and flashcards', cta: 'Open feed', h: '#/feed' },
+    due.length ? { tag: 'Due today', t: `${due.length} thing${due.length > 1 ? 's' : ''} due${overdue ? ' · ' + overdue + ' overdue' : ''}`, s: due[0].title, cta: 'See all', h: '#/cal' } : null,
+    jn ? { tag: 'Journal digest', t: jn.h, s: 'New papers summarised for residents', cta: 'Read', h: '#/journal' } : null,
+    D.thesis ? { tag: 'Thesis', t: `Recruitment ${thA + thB}${thT ? ' / ' + thT : ''}`, s: 'Cases and controls enrolled', cta: 'Continue', h: '#/thesis' } : null
+  ].filter(Boolean);
+  const heroHTML = AppCfg.home === 'classic' ? `<section class="ahero"><i class="hb1"></i><i class="hb2"></i><span class="hpill"><i></i>${esc(yr)} · ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</span><h2>${esc(hello)}</h2><p>${due.length ? `<b>${due.length}</b> thing${due.length > 1 ? 's' : ''} due today` : 'All clear today'}${sd ? ` · <b>${sd.n}/${sd.g}</b> study cards` : ''}</p>
+  ${sd ? `<a class="card studyhome" href="#/study"><div class="flame${sd.k ? ' on' : ''}">${ic('flame')}<b>${sd.k}</b></div><div class="sh"><b>${sd.n >= sd.g ? 'Goal done — streak safe' : sd.k ? 'Keep your ' + sd.k + '-day streak' : 'Today\'s study set'}</b><small class="muted">${sd.n}/${sd.g} done${sd.due ? ' · ' + sd.due + ' flashcards due' : ''}</small><span class="bar"><i style="width:${Math.min(100, Math.round(sd.n / sd.g * 100))}%" class="${sd.n >= sd.g ? 'ok' : ''}"></i></span></div><span class="btn sm">${sd.n >= sd.g ? 'Bonus' : sd.n ? 'Continue' : 'Start'}</span></a><a class="feedcta sm" href="#/feed"><span>${ic('reels')}</span><div><b>Scroll the feed</b><small>Swipe-up dermatology cards</small></div>›</a>` : ''}</section>` : `<section class="bento">
+    <span class="bdate">${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })} · ${esc(yr)}</span>
+    <h2 class="bhello">${esc(hello)}.</h2>
+    <div class="btile btop" id="bcar">${slides.map((x, i) => `<a class="bslide${i ? '' : ' on'}" href="${x.h}" data-i="${i}"><small>${esc(x.tag)}</small><b>${esc(x.t)}</b><span>${esc(x.s || '')}</span><em class="bpill">${esc(x.cta)} ${arrow}</em></a>`).join('')}
+      <div class="bdots">${slides.map((x, i) => `<button class="${i ? '' : 'on'}" data-bdot="${i}" aria-label="Show card ${i + 1}"><i></i></button>`).join('')}</div></div>
+    <div class="bsplit">
+      <a class="btile bgoal" href="${sd ? '#/study' : '#/feed'}"><small>Daily goal</small><b>${sd ? sd.n : 0}<i>/${sd ? sd.g : 0}</i></b><span>study cards</span><span class="bbar"><i style="width:${sd ? Math.min(100, Math.round(sd.n / sd.g * 100)) : 0}%"></i></span><em class="bpill">${sd && sd.n ? 'Continue' : 'Start'} ${arrow}</em></a>
+      <div class="bcol">
+        <a class="btile bstreak" href="#/study"><small>Streak</small><b>${sd ? sd.k : 0} day${sd && sd.k === 1 ? '' : 's'}</b><span>${sd && sd.due ? sd.due + ' flashcards due' : 'Study daily to grow it'}</span><em class="bround">${arrow}</em></a>
+        <a class="btile bquiz" href="#/feed"><small>Quick quiz</small><b>Swipe feed</b><span>MCQs · spotters</span><em class="bround">${arrow}</em></a>
+      </div>
+    </div>
+    <a class="btile bstrip" href="${due.length ? '#/cal' : '#/add'}"><span><small>${due.length ? 'Due today' : 'Quick add'}</small><b>${due.length ? esc(due[0].title) : 'New OPD case'}</b></span><em class="bround">${arrow}</em></a>
+  </section>`;
+  main().innerHTML = `${heroHTML}
   ${!D.settings.lastBackup || daysBetween(ymd(D.settings.lastBackup), t) > 7 ? `<a class="warn" href="#/settings">No backup in the last 7 days — tap to back up</a>` : ''}
   ${Gate.cached && !(D.sync && D.sync.on) && !D.settings.backupNudgeOff ? `<div class="card backupnudge"><span class="bi">${ic('cloud')}</span><div><b>Log in on any phone with just your PIN</b><small class="muted">Turn on the encrypted Google Drive backup. On a new phone, enter your PIN and everything comes back.</small><div class="btnrow"><button class="btn sm" data-act="driveconnect">Turn on backup</button><button class="btn sm ghost" data-act="nudgeoff">Later</button></div></div></div>` : ''}
   ${typeof Journal !== 'undefined' && Journal.items().length ? (() => { const jn = Journal.fresh().length, j0 = Journal.items()[0]; return `<a class="card jhome" href="#/journal"><span class="jhi">${ic('news')}</span><span class="sh"><b>Journal digest${jn ? ' · ' + jn + ' new' : ''}</b><small class="muted">${esc(j0.h)}</small></span>›</a>`; })() : ''}
@@ -99,7 +123,13 @@ function vHome() {
     return `<a class="li" href="#/visit/${v.id}"><div class="row" style="gap:10px"><span class="pav sm">${esc(initials(p.name || p.uhid))}</span><div><b>${esc(ptLabel(p))}</b><small>${esc(dx || v.label || '')} · ${fmt(v.date)}</small></div></div>›</a>`; }).join('')
     || `<div class="card empty-feed"><h3>Add your first case</h3><p class="muted small">Photos, severity scores and notes for each OPD case stay encrypted on this phone.</p><a class="btn" href="#/add">Add a case</a></div>`}</div>
   <p class="muted small center" style="margin:18px 0 6px">${D.patients.length} patients · ${D.visits.length} visits · ${D.logbook.length} logbook entries</p>`;
+  bentoStart();
 }
+/* Bento home: carousel auto-advances; dots switch cards. */
+let bentoTimer = null;
+function bentoShow(i) { const c = $('#bcar'); if (!c) { clearInterval(bentoTimer); return; } const sl = $$('#bcar .bslide'); if (!sl.length) return; i = (i + sl.length) % sl.length; sl.forEach((x, k) => x.classList.toggle('on', k === i)); $$('#bcar [data-bdot]').forEach((x, k) => x.classList.toggle('on', k === i)); c.dataset.cur = i; }
+function bentoStart() { clearInterval(bentoTimer); if (!$('#bcar') || matchMedia('(prefers-reduced-motion: reduce)').matches) return; bentoTimer = setInterval(() => { const c = $('#bcar'); if (!c || document.hidden) { if (!c) clearInterval(bentoTimer); return; } bentoShow(+(c.dataset.cur || 0) + 1); }, 6000); }
+document.addEventListener('click', e => { const b = e.target.closest('[data-bdot]'); if (!b) return; e.preventDefault(); bentoShow(+b.dataset.bdot); bentoStart(); });
 /* ---------- PATIENTS LIST ---------- */
 function patientListHTML(q = '', bucket = '') {
   const s = q.toLowerCase();

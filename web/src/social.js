@@ -22,13 +22,39 @@ const Prof = {
 function av(uid, name) { const p = Prof.map[uid]; return p && p.photo ? `<img src="${esc(p.photo)}" alt="">` : esc(initials(name)); }
 function avA(uid, name, cls = 'pav') { return `<a class="${cls}" data-av="${esc(uid)}" href="#/u/${esc(uid)}">${av(uid, name)}</a>`; }
 
-/* ---------- App layout chosen by the admin ---------- */
+/* ---------- App designs chosen by the admin ----------
+   config/app holds what everyone sees: layout (Community: 'twitter' | 'insta') and
+   design { home: 'classic'|'bento'|'glass', deck: 'classic'|'micro' }, plus a short deploy history for roll-back.
+   The admin can preview a design on their own phone first (localStorage only, nobody else sees it). */
+const DESIGN_DEFAULT = { home: 'classic', deck: 'classic' };
+const DESIGN_NAMES = { home: { classic: 'Classic', bento: 'Bento', glass: 'Bento Glass' }, deck: { classic: 'Classic swipe feed', micro: 'Micro-learning deck' }, layout: { twitter: 'X-style timeline', insta: 'Instagram feed' } };
+const lsJSON = (k, d) => { try { return Object.assign({}, d, JSON.parse(localStorage.getItem(k) || 'null') || {}); } catch (e) { return Object.assign({}, d); } };
 const AppCfg = {
   layout: localStorage.getItem('pgd_layout') || 'twitter',
-  apply() { document.body.classList.toggle('lay-twitter', this.layout === 'twitter'); },
+  live: lsJSON('pgd_design', DESIGN_DEFAULT),
+  history: [],
+  preview() { try { const p = JSON.parse(localStorage.getItem('pgd_design_preview') || 'null'); return p && typeof amAdmin === 'function' && amAdmin() ? p : null; } catch (e) { return null; } },
+  get design() { const p = this.preview(); return Object.assign({}, DESIGN_DEFAULT, this.live, p ? p.design : {}); },
+  get home() { return this.design.home; },
+  get deck() { return this.design.deck; },
+  get feedLayout() { const p = this.preview(); return (p && p.layout) || this.layout; },
+  apply() {
+    const b = document.body.classList, d = this.design;
+    b.toggle('lay-twitter', this.feedLayout === 'twitter');
+    b.toggle('home-bento', d.home === 'bento'); b.toggle('home-glass', d.home === 'glass');
+    b.toggle('deck-micro', d.deck === 'micro');
+  },
+  clean(d) { d = d || {}; return { home: DESIGN_NAMES.home[d.home] ? d.home : 'classic', deck: DESIGN_NAMES.deck[d.deck] ? d.deck : 'classic' }; },
   async load() {
     if (!Comm.ok()) return;
-    try { const d = await Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'config', 'app')); const l = (d.exists() && d.data().layout) || 'twitter'; if (l !== this.layout) { this.layout = l; localStorage.setItem('pgd_layout', l); this.apply(); if (ROUTE.path === 'community') render(); } } catch (e) {}
+    try {
+      const d = await Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'config', 'app')), x = d.exists() ? d.data() : {};
+      const l = x.layout || 'twitter', des = this.clean(x.design);
+      this.history = Array.isArray(x.designHistory) ? x.designHistory : [];
+      const changed = l !== this.layout || des.home !== this.live.home || des.deck !== this.live.deck;
+      this.layout = l; this.live = des; localStorage.setItem('pgd_layout', l); localStorage.setItem('pgd_design', JSON.stringify(des));
+      if (changed) { this.apply(); if (['community', 'home'].includes(ROUTE.path)) render(); }
+    } catch (e) {}
   }
 };
 AppCfg.apply();

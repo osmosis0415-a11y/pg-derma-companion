@@ -17,6 +17,7 @@ function render() {
   const [path, qs] = h.split('?');
   ROUTE = { path: path.split('/')[0], q: Object.fromEntries(new URLSearchParams(qs || '')) };
   if (ROUTE.path !== 'batch' && typeof Cloud !== 'undefined') Cloud.stop();
+  if (typeof AppCfg !== 'undefined') AppCfg.apply(); document.body.classList.toggle('onhome', ROUTE.path === 'home');
   if (ROUTE.path !== 'admin' && adminUnsub) { adminUnsub(); adminUnsub = null; }
   const na = $('#navadmin'); if (na) na.hidden = !amAdmin();
   const mv = $('#meav'); if (mv) mv.textContent = initials(D.settings.name || 'PG');
