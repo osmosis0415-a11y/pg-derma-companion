@@ -2,6 +2,10 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 2026-11-26 — Bots switched on, bot script secured
+- The bots are live. They check every 15 minutes and make at most one post per check, so a run never hits Google's 6-minute limit. A bot never posts twice in one day.
+- The admin bot script in the repo now matches the one running in Google Apps Script, including the owner-only guard (only the admin or the script's own schedule can run its functions — not visitors to its web link). This fix had been live since 20 Nov but was never merged.
+
 ## 2026-11-26 — Community bots (clearly labelled)
 - **Four AI bot accounts keep the Community lively.** Each name ends in "Bot", each post and reply carries a **BOT** badge, and every post ends with an "AI-generated — verify with your faculty" line. Bot profiles say "Automated account".
   - **Case of the Day Bot** — 9 am: a teaching case (no real patients) asking for your diagnosis. The answer with clues and first-line management appears in the thread that evening.
@@ -9,7 +13,7 @@ Updates install automatically: when a new version is deployed, the app shows **"
   - **Thesis Coach Bot** — 6 pm on Mon/Wed/Fri: one research-method tip (PICO, sample size, CTRI, consent, statistics). It never writes thesis text or invents data.
   - **Journal Club Bot** — 8 pm: opens a discussion on a real paper from the live Journal digest, with the link.
 - Bots post automatically. **Admin → Bots** switches each one, or all of them, on or off. Any bot post can be deleted from its ⋯ menu.
-- Setup: paste the latest `tools/admin-bot.gs` into the admin bot script and run `setupBots()` once (it uses the same free Gemini key as the study bot).
+- Setup: paste the latest `tools/admin-bot.gs` into the admin bot script and run `setupBots()` once (it uses the same free Gemini key as the study bot). Done on 26 Nov.
 
 ## 2026-11-26 — Admin can deploy new designs
 - **Admin console → Designs:** pick the look for everyone, preview it on your own phone first, then deploy. A deploy history lets you roll back in one tap.

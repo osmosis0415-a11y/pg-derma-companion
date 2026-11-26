@@ -24,7 +24,7 @@ function wdFetch_(url, opt) {
   return r;
 }
 
-function watchdog() {
+function watchdog_() {
   var problems = [], notes = [];
   // 1. Live site
   var s = wdFetch_(WD_SITE + '?wd=' + Date.now());
@@ -69,8 +69,12 @@ function watchdog() {
   return { state: state, build: v, problems: problems, fixed: notes };
 }
 
-function installWatchdog() {
+function installWatchdog_() {
   ScriptApp.getProjectTriggers().forEach(function (x) { if (x.getHandlerFunction() === 'watchdog') ScriptApp.deleteTrigger(x); });
   ScriptApp.newTrigger('watchdog').timeBased().everyHours(1).create();
-  Logger.log(JSON.stringify(watchdog()));
+  Logger.log(JSON.stringify(watchdog_()));
 }
+
+// Public entry points are owner/trigger-only (owner_ is defined in Code.gs).
+function watchdog(e) { owner_(e); return watchdog_(); }
+function installWatchdog(e) { owner_(e); return installWatchdog_(); }
