@@ -28,8 +28,6 @@ await A.ev(`D.settings.name='Sriram'; __installFsMock('uA','sriramdeverashetty@g
 await B.send('Page.navigate', { url: 'http://localhost:8765/' }); await sleep(1500);
 await B.ev(`$('#pin')&&($('#pin').value='1234',$('#unlock').click())`); await sleep(2000);
 await B.ev(`D.settings.name='Priya Rao'; __installFsMock('uB','priya@x.com','Priya Rao'); Cloud.init()`); await sleep(300);
-const lum = c => { const m = c.match(/[\d.]+/g).map(Number); const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]); };
-const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
 const BG = { bento: 'rgb(255, 255, 255)', glass: 'rgb(14, 18, 48)', x: 'rgb(0, 0, 0)', micro: 'rgb(14, 16, 21)' };
 const pages = ['#/home', '#/patients', '#/study', '#/community?k=new', '#/more', '#/admin?t=design'];
 for (const th of ['bento', 'glass', 'x', 'micro']) {
