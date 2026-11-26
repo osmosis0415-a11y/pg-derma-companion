@@ -331,51 +331,62 @@ function vAdminErrors() {
 }
 ACT.errclear = async () => { if (!(await uiConfirm('Delete all error reports?'))) return; const f = Cloud.f; for (const id of window.__errDocs || []) await f.deleteDoc(f.doc(Cloud.db, 'errors', id)).catch(() => {}); render(); };
 
-/* ---------- Admin → Designs: pick, preview on this phone, deploy to everyone, roll back ---------- */
+/* ---------- Admin → Designs: pick a theme for every page (+ fine-tune layouts), preview on this phone, deploy to everyone, roll back ---------- */
 let designDraft = null;
-const designSummary = c => `${DESIGN_NAMES.home[c.home]} home · ${DESIGN_NAMES.layout[c.layout]} · ${DESIGN_NAMES.deck[c.deck]}`;
-const designLive = () => ({ home: AppCfg.live.home, deck: AppCfg.live.deck, layout: AppCfg.layout });
-const sameDesign = (a, b) => a.home === b.home && a.deck === b.deck && a.layout === b.layout;
+const designOf = h => Object.assign({ layout: 'twitter' }, AppCfg.clean(h), { layout: h.layout || 'twitter' });
+const designSummary = c => `${DESIGN_NAMES.theme[c.theme]} theme · ${DESIGN_NAMES.home[c.home]} · ${DESIGN_NAMES.layout[c.layout]} · ${DESIGN_NAMES.deck[c.deck]}`;
+const designLive = () => Object.assign({}, AppCfg.live, { layout: AppCfg.layout });
+const sameDesign = (a, b) => ['theme', 'home', 'deck', 'layout'].every(k => a[k] === b[k]);
+const THEME_INFO = [
+  ['classic', 'Classic', 'Teal and white; follows each phone\'s light/dark setting'],
+  ['bento', 'Bento', 'White and stone, pastel tiles, black pill buttons, red accent'],
+  ['glass', 'Glass', 'Dark navy with glowing colour behind frosted cards'],
+  ['x', 'X Dark', 'OLED black, hairline borders, blue accent'],
+  ['micro', 'Obsidian', 'Soft dark, indigo and emerald — the micro-learning look']
+];
 function vAdminDesign() {
   setTitle('Deploy designs', true);
   if (!amAdmin()) { main().innerHTML = empty('Admins only'); return; }
   const live = designLive(), pv = AppCfg.preview();
-  if (!designDraft) designDraft = pv ? Object.assign({}, live, pv.design, { layout: pv.layout || live.layout }) : Object.assign({}, live);
+  if (!designDraft) designDraft = pv ? Object.assign({}, live, AppCfg.clean(pv.design), { layout: pv.layout || live.layout }) : Object.assign({}, live);
   const d = designDraft, same = sameDesign(d, live);
   const opt = (k, v, label, sub, sw) => `<button class="dopt${d[k] === v ? ' on' : ''}" data-act="designpick" data-k="${k}" data-v="${v}" role="radio" aria-checked="${d[k] === v}"><span class="dsw ${sw}" aria-hidden="true"></span><span class="dtx"><b>${esc(label)}</b><small>${esc(sub)}</small></span><span class="drad" aria-hidden="true"></span></button>`;
   const ts = x => (x && x.seconds ? x.seconds * 1000 : typeof x === 'number' ? x : 0);
   main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === 'design' ? ' on' : ''}" href="#/admin?t=${k}">${l}</a>`).join('')}</div>
   <section class="card dlive"><small>Live for everyone</small><b>${esc(designSummary(live))}</b>${pv ? `<p class="small">You are previewing a different design on this phone only. <button class="btn xs ghost" data-act="designunpreview">Stop preview</button></p>` : ''}</section>
-  <section class="card"><h3>1 · Home screen</h3><div class="dopts" role="radiogroup" aria-label="Home screen">
-    ${opt('home', 'classic', 'Classic', 'Teal hero with your Today list', 'sw-classic')}
-    ${opt('home', 'bento', 'Bento', 'Light bento grid: case carousel, goal, streak, quiz', 'sw-bento')}
-    ${opt('home', 'glass', 'Bento Glass', 'Same grid on dark frosted glass', 'sw-glass')}</div></section>
-  <section class="card"><h3>2 · Community feed</h3><div class="dopts" role="radiogroup" aria-label="Community feed">
-    ${opt('layout', 'twitter', 'X-style timeline', 'Dark-friendly 3-column timeline, round avatars', 'sw-x')}
-    ${opt('layout', 'insta', 'Instagram feed', 'Big image cards with stories', 'sw-insta')}</div></section>
-  <section class="card"><h3>3 · Study feed</h3><div class="dopts" role="radiogroup" aria-label="Study feed">
+  <section class="card"><h3>1 · Theme — every page</h3><p class="small muted">Colours, cards, buttons, navigation, Community, Study, the swipe feed and this admin console all follow the theme. Picking a theme also picks the layouts that suit it; change them below if you like.</p>
+    <div class="dopts" role="radiogroup" aria-label="Theme">${THEME_INFO.map(([v, l, sub]) => `<button class="dopt${d.theme === v ? ' on' : ''}" data-act="designtheme" data-v="${v}" role="radio" aria-checked="${d.theme === v}"><span class="dsw tsw-${v}" aria-hidden="true"></span><span class="dtx"><b>${esc(l)}</b><small>${esc(sub)}</small></span><span class="drad" aria-hidden="true"></span></button>`).join('')}</div></section>
+  <section class="card"><h3>2 · Fine-tune layouts</h3>
+    <h4>Home screen</h4><div class="dopts" role="radiogroup" aria-label="Home screen">
+    ${opt('home', 'classic', 'Classic hero', 'Hero banner with your Today list', 'sw-classic')}
+    ${opt('home', 'bento', 'Bento grid', 'Case carousel, goal, streak, quick quiz, what\'s due', 'sw-bento')}</div>
+    <h4>Community feed</h4><div class="dopts" role="radiogroup" aria-label="Community feed">
+    ${opt('layout', 'twitter', 'X-style timeline', 'Round avatars, hairline rows, reply / like / share bar', 'sw-x')}
+    ${opt('layout', 'insta', 'Instagram feed', 'Big image cards with stories', 'sw-insta')}</div>
+    <h4>Study feed</h4><div class="dopts" role="radiogroup" aria-label="Study feed">
     ${opt('deck', 'classic', 'Classic swipe feed', 'Colour-coded full-screen cards', 'sw-feed')}
-    ${opt('deck', 'micro', 'Micro-learning deck', 'Obsidian cards, topic pill, indigo + emerald, thumb rail', 'sw-micro')}</div></section>
+    ${opt('deck', 'micro', 'Micro-learning deck', 'Topic pill, one card per swipe, thumb rail — in the theme\'s colours', 'sw-micro')}</div></section>
   <div class="dbtns"><button class="btn ghost" data-act="designpreview">${ic('user')} Preview on this phone</button>
     <button class="btn" data-act="designdeploy"${same ? ' disabled' : ''}>Deploy to everyone</button></div>
   <p class="small muted center">${same ? 'This is what is live now. Change something to deploy.' : 'Everyone gets it the next time the app opens online. You can roll back below.'}</p>
-  <section class="card"><h3>Deploy history</h3>${AppCfg.history.length ? AppCfg.history.slice(0, 6).map((h, i) => { const c = Object.assign({}, DESIGN_DEFAULT, { layout: 'twitter' }, h); const isLive = sameDesign(c, live);
+  <section class="card"><h3>Deploy history</h3>${AppCfg.history.length ? AppCfg.history.slice(0, 6).map((h, i) => { const c = designOf(h); const isLive = sameDesign(c, live);
     return `<div class="li"><div><b>${esc(designSummary(c))}</b><small>${ts(h.at) ? fmt(new Date(ts(h.at)).toISOString()) : ''}${h.by ? ' · ' + esc(h.by) : ''}</small></div>${isLive ? '<span class="tag">Live</span>' : `<button class="btn xs ghost danger" data-act="designrollback" data-i="${i}">Roll back</button>`}</div>`; }).join('') : '<p class="muted small">No deploys yet.</p>'}</section>`;
-  Cloud.init().then(() => AppCfg.load()).then(() => { if (ROUTE.path === 'admin' && ROUTE.q.t === 'design' && !$('.dopt:focus')) { const h = JSON.stringify(AppCfg.history); if (h !== vAdminDesign._h) { vAdminDesign._h = h; vAdminDesign(); } } }).catch(() => {});
+  Cloud.init().then(() => AppCfg.load()).then(() => { if (ROUTE.path === 'admin' && ROUTE.q.t === 'design') { const h = JSON.stringify(AppCfg.history); if (h !== vAdminDesign._h) { vAdminDesign._h = h; vAdminDesign(); } } }).catch(() => {});
 }
+ACT.designtheme = el => { const t = el.dataset.v; designDraft = Object.assign({}, designDraft || designLive(), { theme: t }, THEME_BUNDLES[t]); vAdminDesign(); };
 ACT.designpick = el => { designDraft = Object.assign({}, designDraft || designLive(), { [el.dataset.k]: el.dataset.v }); vAdminDesign(); };
 ACT.designpreview = () => {
   const d = designDraft || designLive();
   localStorage.setItem('pgd_design_preview', JSON.stringify({ design: AppCfg.clean(d), layout: d.layout }));
-  AppCfg.apply(); toast('Previewing on this phone only'); go(d.layout !== AppCfg.layout && d.home === AppCfg.live.home && d.deck === AppCfg.live.deck ? '#/community' : d.deck !== AppCfg.live.deck && d.home === AppCfg.live.home ? '#/feed' : '#/home');
+  AppCfg.apply(); toast('Previewing on this phone only — open any page'); go('#/home');
 };
 ACT.designunpreview = () => { localStorage.removeItem('pgd_design_preview'); designDraft = null; AppCfg.apply(); toast('Preview off — you see what everyone sees'); vAdminDesign(); };
 async function designWrite(c, msg) {
-  const f = Cloud.f, entry = { home: c.home, deck: c.deck, layout: c.layout, at: Date.now(), by: (Cloud.user && Cloud.user.email) || '' };
+  const f = Cloud.f, cl = AppCfg.clean(c), entry = Object.assign({}, cl, { layout: c.layout, at: Date.now(), by: (Cloud.user && Cloud.user.email) || '' });
   const hist = [entry].concat(AppCfg.history || []).slice(0, 10);
-  await f.setDoc(f.doc(Cloud.db, 'config', 'app'), { layout: c.layout, design: AppCfg.clean(c), designHistory: hist, updatedAt: f.serverTimestamp() }, { merge: true });
-  AppCfg.layout = c.layout; AppCfg.live = AppCfg.clean(c); AppCfg.history = hist;
-  localStorage.setItem('pgd_layout', c.layout); localStorage.setItem('pgd_design', JSON.stringify(AppCfg.live)); localStorage.removeItem('pgd_design_preview');
+  await f.setDoc(f.doc(Cloud.db, 'config', 'app'), { layout: c.layout, design: cl, designHistory: hist, updatedAt: f.serverTimestamp() }, { merge: true });
+  AppCfg.layout = c.layout; AppCfg.live = cl; AppCfg.history = hist;
+  localStorage.setItem('pgd_layout', c.layout); localStorage.setItem('pgd_design', JSON.stringify(cl)); localStorage.removeItem('pgd_design_preview');
   designDraft = null; AppCfg.apply(); toast(msg); vAdminDesign();
 }
 ACT.designdeploy = async () => {
@@ -384,11 +395,10 @@ ACT.designdeploy = async () => {
   try { await Cloud.init(); await designWrite(d, 'Deployed to everyone'); } catch (e) { toast('Could not deploy: ' + (e.code || e.message)); }
 };
 ACT.designrollback = async el => {
-  const h = AppCfg.history[+el.dataset.i]; if (!h) return; const c = Object.assign({}, DESIGN_DEFAULT, { layout: 'twitter' }, h);
+  const h = AppCfg.history[+el.dataset.i]; if (!h) return; const c = designOf(h);
   if (!(await uiConfirm(`Roll back everyone to: ${designSummary(c)}?`, { ok: 'Roll back' }))) return;
   try { await Cloud.init(); await designWrite(c, 'Rolled back'); } catch (e) { toast('Could not roll back: ' + (e.code || e.message)); }
 };
-
 /* ---------- Admin → Bots: switch the labelled community bots on/off (the Apps Script reads config/bots) ---------- */
 const BOT_LIST = [['case', 'Case of the Day Bot', '9 am teaching case · answer revealed in the thread by evening'], ['sop', 'Basics & SOP Bot', '1 pm basics lesson or procedure SOP'],
   ['replies', 'Bot answers to questions', 'Basics & SOP Bot replies to residents\' Questions unanswered for an hour'], ['thesis', 'Thesis Coach Bot', '6 pm Mon/Wed/Fri research-method tip'], ['journal', 'Journal Club Bot', '8 pm discussion on a paper from the live Journal digest']];
