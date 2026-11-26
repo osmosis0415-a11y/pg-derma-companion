@@ -17,7 +17,7 @@ let geminiText = id => JSON.stringify({ ok: true, h: 'Headline ' + id, s: 'Summa
 
 const g = {
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => P[k] ?? null, setProperty: (k, v) => P[k] = v }) },
-  Session: { getEffectiveUser: () => ({ getEmail: () => 'admin@x.com' }) },
+  Session: { getEffectiveUser: () => ({ getEmail: () => 'admin@x.com' }), getActiveUser: () => ({ getEmail: () => (globalThis.__ACTIVE ?? 'admin@x.com') }) },
   Utilities: { sleep: () => {}, getUuid: () => crypto.randomUUID(), computeHmacSha256Signature: (m, k) => [...crypto.createHmac('sha256', k).update(m).digest()], base64EncodeWebSafe: b => Buffer.from(b).toString('base64'), formatDate: d => d.toISOString().slice(0, 10) },
   ScriptApp: { getService: () => ({ getUrl: () => 'https://w/exec' }), getOAuthToken: () => 'T', getProjectTriggers: () => [], deleteTrigger: () => {}, newTrigger: () => ({ timeBased: () => ({ everyDays: () => ({ atHour: () => ({ create: () => 1 }) }) }) }) },
   LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },

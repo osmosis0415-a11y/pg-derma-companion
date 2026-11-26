@@ -14,7 +14,7 @@ let geminiText = JSON.stringify({ items: [
   { t: 'evil', p: 'x' }] });
 const g = {
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => P[k] ?? null, setProperty: (k, v) => P[k] = v }) },
-  Session: { getEffectiveUser: () => ({ getEmail: () => 'admin@x.com' }) },
+  Session: { getEffectiveUser: () => ({ getEmail: () => 'admin@x.com' }), getActiveUser: () => ({ getEmail: () => (globalThis.__ACTIVE ?? 'admin@x.com') }) },
   Utilities: { sleep: () => {}, getUuid: () => crypto.randomUUID(), computeHmacSha256Signature: (m, k) => [...crypto.createHmac('sha256', k).update(m).digest()], base64EncodeWebSafe: b => Buffer.from(b).toString('base64').replace(/\+/g, '-').replace(/\//g, '_'),
     formatDate: (d, tz, f) => { const s = new Date(d.getTime() + 5.5 * 36e5).toISOString(); return f === 'H' ? String(+s.slice(11, 13)) : f === 'yyyy-MM-dd' ? s.slice(0, 10) : s.slice(0, 10) + '-' + s.slice(11, 13) + s.slice(14, 16); } },
   ScriptApp: { getService: () => ({ getUrl: () => 'https://w/exec' }), getOAuthToken: () => 'T', getProjectTriggers: () => [], deleteTrigger: () => {}, newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => 1 }), everyDays: () => ({ atHour: () => ({ create: () => 1 }) }), everyHours: () => ({ create: () => 1 }) }) }) },

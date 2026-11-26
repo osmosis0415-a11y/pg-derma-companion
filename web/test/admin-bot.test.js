@@ -1,7 +1,7 @@
 const crypto=require('crypto'),fs=require('fs');
 const P={};const sent=[];const db={u1:{email:'a@x.com',name:'Asha',status:'pending'},u2:{email:'b@x.com',name:'Bo',status:'approved'}};let fetches=[];
 const g={PropertiesService:{getScriptProperties:()=>({getProperty:k=>P[k]??null,setProperty:(k,v)=>P[k]=v})},
-Session:{getEffectiveUser:()=>({getEmail:()=>'admin@x.com'})},
+Session:{getEffectiveUser:()=>({getEmail:()=>'admin@x.com'}),getActiveUser:()=>({getEmail:()=>(globalThis.__ACTIVE??'admin@x.com')})},
 Utilities:{getUuid:()=>crypto.randomUUID(),computeHmacSha256Signature:(m,k)=>[...crypto.createHmac('sha256',k).update(m).digest()],base64EncodeWebSafe:b=>Buffer.from(b).toString('base64').replace(/\+/g,'-').replace(/\//g,'_')},
 ScriptApp:{getService:()=>({getUrl:()=>'https://w/exec'}),getOAuthToken:()=>'T',getProjectTriggers:()=>[],newTrigger:()=>({timeBased:()=>({everyMinutes:()=>({create:()=>1})})})},
 LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})},
@@ -25,3 +25,9 @@ ok('decide approves',B.decide('u1','approve',q.s).includes('Approved Asha')&&db.
 const D=Object.fromEntries(new URL(B.dashLink_()).searchParams);ok('list page',B.doGet({parameter:D}).h.includes('Nobody is waiting'));
 ok('list needs key',B.doGet({parameter:{a:'list',s:'x'}}).h.includes('not valid'));
 db.u3={email:'c@x.com',name:'<script>',status:'pending'};B.checkNew();ok('escapes html + new one notified',sent.length===2&&sent[1].htmlBody.includes('&lt;script&gt;'));
+// Owner-only guard: anonymous web-app visitors (google.script.run) must not reach admin functions.
+{ const n0=sent.length; globalThis.__ACTIVE='';
+  let blocked=0; for (const fn of ['checkNew','setup']) { try { B[fn](); } catch(e){ if(/Not allowed/.test(e.message)) blocked++; } }
+  let fake=false; try { B.checkNew({triggerUid:'guess-123'}); } catch(e){ fake=/Not allowed/.test(e.message); }
+  ok('anonymous caller blocked from admin functions', blocked===2 && fake && sent.length===n0);
+  globalThis.__ACTIVE=undefined; }
