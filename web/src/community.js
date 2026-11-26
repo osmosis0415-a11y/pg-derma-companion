@@ -61,7 +61,7 @@ function commBadge() { const n = Comm.newOnMine(), el = document.querySelector('
 /* ---------- Community hub ---------- */
 function vCommunity() {
   const t = ROUTE.q.t || 'posts';
-  setTitle('Community', false, `<a class="icon" href="#/people" aria-label="Find people">${ic('search')}</a><a class="icon" href="#/compose" aria-label="New post">${ic('plussq')}</a><a class="icon topic" href="#/notifs" aria-label="Notifications">${ic('heart')}<i class="nb" data-nbadge hidden></i></a><a class="icon topic" href="#/dms" aria-label="Messages">${ic('send')}</a>`); setTimeout(() => Notif.badge());
+  setTitle('Community', false, `<a class="icon" href="#/people" aria-label="Find people">${ic('search')}</a><a class="icon topic" href="#/notifs" aria-label="Notifications">${ic('heart')}<i class="nb" data-nbadge hidden></i></a><a class="icon topic" href="#/dms" aria-label="Messages">${ic('send')}</a>`); setTimeout(() => Notif.badge());
   const tabs = [['posts', 'For you'], ['explore', 'Explore'], ['top', 'Leaderboard'], ['batch', 'Batch']];
   main().innerHTML = `<div class="seg">${tabs.map(([k, l]) => `<a class="${k === t ? 'on' : ''}" href="${k === 'batch' ? '#/batch' : '#/community?t=' + k}">${l}</a>`).join('')}</div><div id="cpane"></div>`;
   if (!Cloud.cfg()) { $('#cpane').innerHTML = `<div class="card"><p>Sign in with Google (Batch hub) to join the community.</p><a class="btn" href="#/batch">Sign in</a></div>`; return; }

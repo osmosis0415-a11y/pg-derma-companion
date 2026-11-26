@@ -72,7 +72,7 @@ function vHome() {
   const invOpen = D.inv.filter(i => i.status !== 'correlated').length;
   const prog = (href, icon, label, n, of, sub) => { const pc = of ? Math.min(100, Math.round(n / of * 100)) : 0;
     return `<a class="pg" href="${href}"><span class="pgi">${ic(icon)}</span><span class="pgb"><span class="row between"><b>${esc(label)}</b><small>${of ? n + ' / ' + of : esc(sub || '')}</small></span>${of ? `<span class="bar"><i style="width:${pc}%" class="${pc >= 100 ? 'ok' : ''}"></i></span>` : ''}</span></a>`; };
-  const quick = [['#/add', 'plus', 'New case'], ['#/logadd', 'book', 'Log procedure'], ['#/vault', 'image', 'Photos'], ['#/formulary', 'pill', 'Formulary'], ['#/inv', 'flask', 'Reports'], ['#/checklists', 'check', 'Checklists']];
+  const quick = [AppCfg.home === 'bento' ? ['#/inv', 'flask', 'Reports'] : ['#/add', 'plus', 'New case'], ['#/logadd', 'book', 'Log procedure'], ['#/vault', 'image', 'Photos'], ['#/formulary', 'pill', 'Formulary']];
   const online = D.batch && typeof Calls !== 'undefined' ? (D.batch.members || []).filter(m => m.id !== Cloud.user?.uid && Calls.isOnline(m.id)) : [];
   const recent = [...D.visits].sort((a, b) => (b.created || b.date).localeCompare(a.created || a.date)).slice(0, 4);
   const sd = typeof Study !== 'undefined' ? { n: Study.doneToday(), g: Study.st().goal, k: Study.streakNow(), due: Study.dueCards().length } : null;
@@ -87,7 +87,7 @@ function vHome() {
     D.thesis ? { tag: 'Thesis', t: `Recruitment ${thA + thB}${thT ? ' / ' + thT : ''}`, s: 'Cases and controls enrolled', cta: 'Continue', h: '#/thesis' } : null
   ].filter(Boolean);
   const heroHTML = AppCfg.home === 'classic' ? `<section class="ahero"><i class="hb1"></i><i class="hb2"></i><span class="hpill"><i></i>${esc(yr)} · ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</span><h2>${esc(hello)}</h2><p>${due.length ? `<b>${due.length}</b> thing${due.length > 1 ? 's' : ''} due today` : 'All clear today'}${sd ? ` · <b>${sd.n}/${sd.g}</b> study cards` : ''}</p>
-  ${sd ? `<a class="card studyhome" href="#/study"><div class="flame${sd.k ? ' on' : ''}">${ic('flame')}<b>${sd.k}</b></div><div class="sh"><b>${sd.n >= sd.g ? 'Goal done — streak safe' : sd.k ? 'Keep your ' + sd.k + '-day streak' : 'Today\'s study set'}</b><small class="muted">${sd.n}/${sd.g} done${sd.due ? ' · ' + sd.due + ' flashcards due' : ''}</small><span class="bar"><i style="width:${Math.min(100, Math.round(sd.n / sd.g * 100))}%" class="${sd.n >= sd.g ? 'ok' : ''}"></i></span></div><span class="btn sm">${sd.n >= sd.g ? 'Bonus' : sd.n ? 'Continue' : 'Start'}</span></a><a class="feedcta sm" href="#/feed"><span>${ic('reels')}</span><div><b>Scroll the feed</b><small>Swipe-up dermatology cards</small></div>›</a>` : ''}</section>` : `<section class="bento">
+  ${sd ? `<a class="card studyhome" href="#/study"><div class="flame${sd.k ? ' on' : ''}">${ic('flame')}<b>${sd.k}</b></div><div class="sh"><b>${sd.n >= sd.g ? 'Goal done — streak safe' : sd.k ? 'Keep your ' + sd.k + '-day streak' : 'Today\'s study set'}</b><small class="muted">${sd.n}/${sd.g} done${sd.due ? ' · ' + sd.due + ' flashcards due' : ''}</small><span class="bar"><i style="width:${Math.min(100, Math.round(sd.n / sd.g * 100))}%" class="${sd.n >= sd.g ? 'ok' : ''}"></i></span></div><span class="btn sm">${sd.n >= sd.g ? 'Bonus' : sd.n ? 'Continue' : 'Start'}</span></a>` : ''}</section>` : `<section class="bento">
     <span class="bdate">${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })} · ${esc(yr)}</span>
     <h2 class="bhello">${esc(hello)}.</h2>
     <div class="btile btop" id="bcar">${slides.map((x, i) => `<a class="bslide${i ? '' : ' on'}" href="${x.h}" data-i="${i}"><small>${esc(x.tag)}</small><b>${esc(x.t)}</b><span>${esc(x.s || '')}</span><em class="bpill">${esc(x.cta)} ${arrow}</em></a>`).join('')}
@@ -102,9 +102,9 @@ function vHome() {
     <a class="btile bstrip" href="${due.length ? '#/cal' : '#/add'}"><span><small>${due.length ? 'Due today' : 'Quick add'}</small><b>${due.length ? esc(due[0].title) : 'New OPD case'}</b></span><em class="bround">${arrow}</em></a>
   </section>`;
   main().innerHTML = `${heroHTML}
-  ${!D.settings.lastBackup || daysBetween(ymd(D.settings.lastBackup), t) > 7 ? `<a class="warn" href="#/settings">No backup in the last 7 days — tap to back up</a>` : ''}
+  ${(!D.settings.lastBackup || daysBetween(ymd(D.settings.lastBackup), t) > 7) && !(Gate.cached && !(D.sync && D.sync.on) && !D.settings.backupNudgeOff) ? `<a class="warn" href="#/settings">No backup in the last 7 days — tap to back up</a>` : ''}
   ${Gate.cached && !(D.sync && D.sync.on) && !D.settings.backupNudgeOff ? `<div class="card backupnudge"><span class="bi">${ic('cloud')}</span><div><b>Log in on any phone with just your PIN</b><small class="muted">Turn on the encrypted Google Drive backup. On a new phone, enter your PIN and everything comes back.</small><div class="btnrow"><button class="btn sm" data-act="driveconnect">Turn on backup</button><button class="btn sm ghost" data-act="nudgeoff">Later</button></div></div></div>` : ''}
-  ${typeof Journal !== 'undefined' && Journal.items().length ? (() => { const jn = Journal.fresh().length, j0 = Journal.items()[0]; return `<a class="card jhome" href="#/journal"><span class="jhi">${ic('news')}</span><span class="sh"><b>Journal digest${jn ? ' · ' + jn + ' new' : ''}</b><small class="muted">${esc(j0.h)}</small></span>›</a>`; })() : ''}
+  ${AppCfg.home === 'classic' && typeof Journal !== 'undefined' && Journal.items().length ? (() => { const jn = Journal.fresh().length, j0 = Journal.items()[0]; return `<a class="card jhome" href="#/journal"><span class="jhi">${ic('news')}</span><span class="sh"><b>Journal digest${jn ? ' · ' + jn + ' new' : ''}</b><small class="muted">${esc(j0.h)}</small></span>›</a>`; })() : ''}
   <section class="card today"><div class="row between"><h3>Today</h3><a class="link" href="#/cal">See all ›</a></div>
     ${due.length ? `<p class="small muted">${due.length} due${overdue ? ` · <b class="od">${overdue} overdue</b>` : ''}</p><div class="tlist">${due.slice(0, 4).map(d => `<a class="ti" href="${d.href}"><span class="tic k-${d.kind}">${ic(kindIc[d.kind] || 'calendar')}</span><span class="tib"><b>${esc(d.title)}</b><small>${esc(d.sub || '')}</small></span><small class="${d.date < t ? 'od' : 'muted'}">${d.date < t ? fmt(d.date) : 'Today'}</small></a>`).join('')}</div>`
       : `<p class="muted small">Nothing due today. Follow-ups, thesis visits and report tracing show up here.</p>`}</section>
@@ -121,8 +121,8 @@ function vHome() {
   <div class="row between feedhead"><h3>Recent cases</h3><a class="link" href="#/patients">All patients ›</a></div>
   <div class="list">${recent.map(v => { const p = P(v.pid); if (!p) return ''; const dx = (v.dx || []).join(', ') || (p.dx || []).join(', ');
     return `<a class="li" href="#/visit/${v.id}"><div class="row" style="gap:10px"><span class="pav sm">${esc(initials(p.name || p.uhid))}</span><div><b>${esc(ptLabel(p))}</b><small>${esc(dx || v.label || '')} · ${fmt(v.date)}</small></div></div>›</a>`; }).join('')
-    || `<div class="card empty-feed"><h3>Add your first case</h3><p class="muted small">Photos, severity scores and notes for each OPD case stay encrypted on this phone.</p><a class="btn" href="#/add">Add a case</a></div>`}</div>
-  <p class="muted small center" style="margin:18px 0 6px">${D.patients.length} patients · ${D.visits.length} visits · ${D.logbook.length} logbook entries</p>`;
+    || `<p class="muted small">No cases yet — tap <b>${AppCfg.home === 'bento' ? 'Quick add' : 'New case'}</b> above. Everything stays encrypted on this phone.</p>`}</div>
+`;
   bentoStart();
 }
 /* Bento home: carousel auto-advances; dots switch cards. */
