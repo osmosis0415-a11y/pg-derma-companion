@@ -121,7 +121,7 @@ function vStudy() {
     <a data-act="studygo" data-m="saved">${ic('heart')}<b>Saved</b><small>${saved} items</small></a>
   </div>
   <section class="card"><div class="row between"><h3>Topics</h3><small class="muted">${seenN}/${all.length} seen</small></div>
-    <div class="topics">${tops.map(t => { const it = all.filter(x => x.top === t), sn = it.filter(x => s.seen[x.id]).length; return `<a data-act="studygo" data-m="topic" data-top="${esc(t)}"><span>${esc(t)}</span><small>${sn}/${it.length}</small><span class="bar"><i style="width:${Math.round(sn / it.length * 100)}%"></i></span></a>`; }).join('')}</div></section>
+    <div class="topics">${tops.map((t, ti) => { const it = all.filter(x => x.top === t), sn = it.filter(x => s.seen[x.id]).length; return `<a data-act="studygo" data-m="topic" data-top="${esc(t)}"${ti >= 6 ? ' class="tmore" hidden' : ''}><span>${esc(t)}</span><small>${sn}/${it.length}</small><span class="bar"><i style="width:${Math.round(sn / it.length * 100)}%"></i></span></a>`; }).join('')}</div>${tops.length > 6 ? `<button class="btn sm ghost wide" data-act="topicsall">All ${tops.length} topics</button>` : ''}</section>
   ${!(s.remind && s.remind.on) ? `<a class="card hint" href="#/study-set">${ic('bell')} <span><b>Set a daily reminder</b><small class="muted"> so the streak doesn't slip</small></span></a>` : ''}
   <p class="small muted center">Content reviewed from standard texts (Rook, Fitzpatrick, IADVL). New items arrive after admin review. Always verify before clinical use.</p>`;
   Study.pull();
@@ -329,3 +329,5 @@ const Feed = {
   }
 };
 function vFeed() { setTitle('Feed', true); main().innerHTML = ''; Feed.open(); }
+
+ACT.topicsall = el => { $$('.topics .tmore').forEach(a => a.hidden = false); el.remove(); };

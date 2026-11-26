@@ -26,37 +26,60 @@ function avA(uid, name, cls = 'pav') { return `<a class="${cls}" data-av="${esc(
    config/app holds what everyone sees: layout (Community: 'twitter' | 'insta') and
    design { home: 'classic'|'bento'|'glass', deck: 'classic'|'micro' }, plus a short deploy history for roll-back.
    The admin can preview a design on their own phone first (localStorage only, nobody else sees it). */
-const DESIGN_DEFAULT = { home: 'classic', deck: 'classic' };
-const DESIGN_NAMES = { home: { classic: 'Classic', bento: 'Bento', glass: 'Bento Glass' }, deck: { classic: 'Classic swipe feed', micro: 'Micro-learning deck' }, layout: { twitter: 'X-style timeline', insta: 'Instagram feed' } };
+const DESIGN_DEFAULT = { theme: 'classic', home: 'classic', deck: 'classic' };
+const DESIGN_NAMES = {
+  theme: { classic: 'Classic', bento: 'Bento', glass: 'Glass', x: 'X Dark', micro: 'Obsidian' },
+  home: { classic: 'Classic hero', bento: 'Bento grid' },
+  deck: { classic: 'Classic swipe feed', micro: 'Micro-learning deck' },
+  layout: { twitter: 'X-style timeline', insta: 'Instagram feed' }
+};
+/* A theme is a complete look for every page; picking one also picks the layouts that suit it (fine-tune after). */
+const THEME_BUNDLES = {
+  classic: { home: 'classic', layout: 'insta', deck: 'classic' },
+  bento: { home: 'bento', layout: 'insta', deck: 'micro' },
+  glass: { home: 'bento', layout: 'insta', deck: 'micro' },
+  x: { home: 'bento', layout: 'twitter', deck: 'micro' },
+  micro: { home: 'bento', layout: 'twitter', deck: 'micro' }
+};
+const THEME_BG = { bento: '#FFFFFF', glass: '#0E1230', x: '#000000', micro: '#0E1015' };
 const lsJSON = (k, d) => { try { return Object.assign({}, d, JSON.parse(localStorage.getItem(k) || 'null') || {}); } catch (e) { return Object.assign({}, d); } };
 const AppCfg = {
   layout: localStorage.getItem('pgd_layout') || 'twitter',
-  live: lsJSON('pgd_design', DESIGN_DEFAULT),
+  live: null,
   history: [],
   preview() { try { const p = JSON.parse(localStorage.getItem('pgd_design_preview') || 'null'); return p && typeof amAdmin === 'function' && amAdmin() ? p : null; } catch (e) { return null; } },
-  get design() { const p = this.preview(); return Object.assign({}, DESIGN_DEFAULT, this.live, p ? p.design : {}); },
+  get design() { const p = this.preview(); return this.clean(Object.assign({}, this.live, p ? p.design : {})); },
+  get theme() { return this.design.theme; },
   get home() { return this.design.home; },
   get deck() { return this.design.deck; },
   get feedLayout() { const p = this.preview(); return (p && p.layout) || this.layout; },
   apply() {
     const b = document.body.classList, d = this.design;
     b.toggle('lay-twitter', this.feedLayout === 'twitter');
-    b.toggle('home-bento', d.home === 'bento'); b.toggle('home-glass', d.home === 'glass');
+    for (const t of Object.keys(DESIGN_NAMES.theme)) b.toggle('th-' + t, d.theme === t && t !== 'classic');
+    b.toggle('home-bento', d.home === 'bento'); b.remove('home-glass');
     b.toggle('deck-micro', d.deck === 'micro');
+    const m = document.querySelector('meta[name="theme-color"]'); if (m) { if (!m.dataset.orig) m.dataset.orig = m.content || ''; m.content = THEME_BG[d.theme] || m.dataset.orig; }
   },
-  clean(d) { d = d || {}; return { home: DESIGN_NAMES.home[d.home] ? d.home : 'classic', deck: DESIGN_NAMES.deck[d.deck] ? d.deck : 'classic' }; },
+  /* Older deploys stored home 'glass' (before themes): that is now the Glass theme with the Bento grid. */
+  clean(d) {
+    d = Object.assign({}, d || {});
+    if (d.home === 'glass') { d.home = 'bento'; if (!d.theme || d.theme === 'classic') d.theme = 'glass'; }
+    return { theme: DESIGN_NAMES.theme[d.theme] ? d.theme : 'classic', home: DESIGN_NAMES.home[d.home] ? d.home : 'classic', deck: DESIGN_NAMES.deck[d.deck] ? d.deck : 'classic' };
+  },
   async load() {
     if (!Comm.ok()) return;
     try {
       const d = await Cloud.f.getDoc(Cloud.f.doc(Cloud.db, 'config', 'app')), x = d.exists() ? d.data() : {};
       const l = x.layout || 'twitter', des = this.clean(x.design);
       this.history = Array.isArray(x.designHistory) ? x.designHistory : [];
-      const changed = l !== this.layout || des.home !== this.live.home || des.deck !== this.live.deck;
+      const changed = l !== this.layout || ['theme', 'home', 'deck'].some(k => des[k] !== this.live[k]);
       this.layout = l; this.live = des; localStorage.setItem('pgd_layout', l); localStorage.setItem('pgd_design', JSON.stringify(des));
       if (changed) { this.apply(); if (['community', 'home'].includes(ROUTE.path)) render(); }
     } catch (e) {}
   }
 };
+AppCfg.live = AppCfg.clean(lsJSON('pgd_design', DESIGN_DEFAULT));
 AppCfg.apply();
 ACT.setlayout = async el => {
   const l = el.dataset.l; try { await Cloud.f.setDoc(Cloud.f.doc(Cloud.db, 'config', 'app'), { layout: l, updatedAt: Cloud.f.serverTimestamp() }, { merge: true }); AppCfg.layout = l; localStorage.setItem('pgd_layout', l); AppCfg.apply(); toast(l === 'twitter' ? 'Everyone now sees the Twitter-style timeline' : 'Everyone now sees the Instagram-style feed'); render(); } catch (e) { toast('Could not save: ' + (e.code || e.message)); }

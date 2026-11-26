@@ -2,6 +2,26 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 2026-11-26 — Decluttered screens
+- **Today:**
+  - "Scroll the feed" moved off Today (it's one tap away in Study).
+  - Only one backup reminder shows at a time.
+  - Quick actions are one row of four (Reports and Checklists stay in Profile; on the Bento home, Reports replaces New case because the grid has its own Quick add).
+  - The empty "Recent cases" card is now one line, and the footer counts are gone.
+- **Community:** the extra "New post" icon in the top bar is gone (post from the composer box or the + button).
+- **Study:** the topic list shows 6 topics with an "All topics" button instead of a 22-row list.
+
+## 2026-11-26 — Unified themes for every page
+- **Admin → Designs → Theme** now styles the whole app, not just Today: top bar, navigation, cards, buttons, chips, forms, Patients, Study, Community, Profile, the swipe feed and the admin console.
+  - **Classic** — teal and white; follows each phone's light/dark setting.
+  - **Bento** — white and stone, pastel tiles, black pill buttons, red accent.
+  - **Glass** — dark navy with glowing colour behind frosted cards.
+  - **X Dark** — OLED black, hairline borders, blue accent.
+  - **Obsidian** — soft dark, indigo and emerald.
+- Picking a theme also picks the layouts that suit it (Bento grid home, X-style or Instagram Community feed, micro-learning study deck); you can still fine-tune each one.
+- With any theme other than Classic, everyone sees the same look whatever their phone's dark-mode setting, so only the admin decides how the app looks.
+- Text contrast was checked on every page in every theme (at least 4.5:1). Older "Bento Glass" deploys carry over as the Glass theme.
+
 ## 2026-11-26 — Bots switched on, bot script secured
 - The bots are live. They check every 15 minutes and make at most one post per check, so a run never hits Google's 6-minute limit. A bot never posts twice in one day.
 - The admin bot script in the repo now matches the one running in Google Apps Script, including the owner-only guard (only the admin or the script's own schedule can run its functions — not visitors to its web link). This fix had been live since 20 Nov but was never merged.
