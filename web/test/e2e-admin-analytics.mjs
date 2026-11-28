@@ -1,18 +1,21 @@
 // Admin → Analytics / Storage / Health tabs + the once-a-day anonymous usage heartbeat (issue #16).
 // Needs: python3 -m http.server 8765 -d dist  and  Chrome with --remote-debugging-port=9333 (fresh profile).
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
+const SHOTS = fs.mkdtempSync(path.join(os.tmpdir(), 'pgd-e2e-'));
 const MOCK = fs.readFileSync(new URL('./fs-shared-mock.js', import.meta.url), 'utf8');
 const DLG = fs.readFileSync(new URL('./dlg-auto.js', import.meta.url), 'utf8');
 const sleep = ms => new Promise(r => setTimeout(r, ms)); let fails = 0; const chk = (n, c) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + n); };
 const t = (await (await fetch('http://127.0.0.1:9333/json')).json()).find(t => t.type === 'page');
 const ws = new WebSocket(t.webSocketDebuggerUrl); await new Promise(r => ws.onopen = r);
-let id = 0; const pend = {}, errs = [];
-ws.onmessage = m => { const d = JSON.parse(m.data); if (d.id && pend[d.id]) { pend[d.id](d); delete pend[d.id]; }
+let id = 0; const pend = new Map(), errs = [];
+ws.onmessage = m => { const d = JSON.parse(m.data); if (d.id && pend.has(d.id)) { const cb = pend.get(d.id); pend.delete(d.id); cb(d); }
   if (d.method === 'Runtime.exceptionThrown') errs.push(d.params.exceptionDetails.exception?.description || d.params.exceptionDetails.text);
   if (d.method === 'Runtime.consoleAPICalled' && d.params.type === 'error') errs.push('console: ' + d.params.args.map(a => a.value || a.description).join(' ')); };
-const send = (method, params = {}) => new Promise(r => { const i = ++id; pend[i] = r; ws.send(JSON.stringify({ id: i, method, params })); });
+const send = (method, params = {}) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 const ev = async e => { const r = (await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true })).result; if (r.exceptionDetails) errs.push('EVAL: ' + (r.exceptionDetails.exception?.description || '').slice(0, 300)); return r.result?.value; };
-const shot = async n => { const r = await send('Page.captureScreenshot', { format: 'png' }); fs.mkdirSync('/tmp/shots', { recursive: true }); fs.writeFileSync('/tmp/shots/' + n + '.png', Buffer.from(r.result.data, 'base64')); };
+const shot = async n => { const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SHOTS, n + '.png'), Buffer.from(r.result.data, 'base64')); };
 // No real network: GitHub Actions API is stubbed; every other non-local request is recorded.
 const NET = `(()=>{ window.__net=[]; const real=window.fetch.bind(window); window.fetch=async(u,o)=>{ const s=String(u);
   if(s.startsWith('https://api.github.com/')){ window.__gh=(window.__gh||0)+1; window.__ghOpts=o; if(window.__ghFail) return new Response('',{status:503});
