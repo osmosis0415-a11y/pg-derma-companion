@@ -30,20 +30,34 @@ const SPY = `(()=>{ window.__w=[]; Cloud.init(); const f=Cloud.f; if(!f.__spy){ 
 await ev(`__installFsMock('uRes1','res@x.com','Dr Res'); Gate.cached={uid:'uRes1',email:'res@x.com',status:'approved'};`);
 await ev(SPY);
 await ev(`D.settings.residencyStart='2025-08-01'; D.patients.push({id:'p1',uhid:'UH-2026-1001',name:'Ravi Kumar',dx:['Vitiligo'],buckets:['Routine'],studyId:'T001'},{id:'p2',uhid:'UH-77',name:'Asha',buckets:['Routine']}); D.visits.push({id:'v1',pid:'p1',date:'2026-11-20',notes:'itchy rash'}); D.logbook.push({id:'l1',proc:'Punch biopsy',cat:'Other',role:'Performed',date:'2026-11-20',year:'JR2',indication:'',site:'',supervisor:'',notes:'',pid:'p1',vid:null}); Store.save();`);
-for (const h of ['#/patients', '#/patient/p1', '#/vault', '#/logbook', '#/patients', '#/study']) { await ev(`location.hash='${h}'`); await sleep(250); }
-await ev(`Usage.start(200)`); await sleep(2500);
+// Opt-in: nothing is sent and nothing is counted until the user says yes.
+await ev(`location.hash='#/patients'`); await sleep(250); await ev(`location.hash='#/home'`); await sleep(500);
+chk('Today asks once (opt-in card, honest wording)', await ev(`!!$('#usageask') && $('#usageask').textContent.includes('Help improve the app? Share daily usage counts with the admin.') && $('#usageask').textContent.includes('Turn off any time to delete it.') && !!$('#usageask [data-act=usageyes]') && !!$('#usageask [data-act=usageno]')`));
+await shot('usage-ask');
+await ev(`Usage.start(100)`); await sleep(1200);
+chk('not opted in: no heartbeat, no counters', (await ev(`__w.filter(x=>x.p.startsWith('usage/')).length`)) === 0 && (await ev(`Usage.beat().then(r=>r===false && !Object.keys(localStorage).some(k=>/^pgd_(feat|usage)/.test(k)))`)));
+await ev(`$('#usageask [data-act=usageyes]').click()`); await sleep(2500);
 const w1 = await ev(`__w.filter(x=>x.p.startsWith('usage/'))`);
-chk('heartbeat wrote exactly one usage doc', w1.length === 1 && w1[0].p === 'usage/uRes1');
+chk('Yes, share: card gone, exactly one usage doc', w1.length === 1 && w1[0].p === 'usage/uRes1' && await ev(`D.settings.usageShare===true && !$('#usageask')`));
 const doc = w1[0] && w1[0].v;
 const KEYS = ['day', 'v', 'plat', 'inst', 'dept', 'yr', 'n', 'feat', 'lsMB', 'drv', 'lastSync', 'syncFail', 'at'];
 chk('only whitelisted keys', doc && Object.keys(doc).every(k => KEYS.includes(k)));
 chk('no names / UHIDs / diagnoses / notes / email', doc && !/Ravi|Asha|UH-|Vitiligo|itchy|biopsy|res@x|Dr Res/i.test(JSON.stringify(doc)));
 chk('counts are numbers', doc && doc.n.patients === 2 && doc.n.visits === 1 && doc.n.logbook === 1 && doc.n.thesis === 1 && Object.values(doc.n).every(Number.isInteger));
-chk('feature counts are route names only', doc && doc.feat && doc.feat.patients === 2 && doc.feat.patient === 1 && !Object.keys(doc.feat).some(k => /p1|\//.test(k)));
+chk('screens opened before opting in were not counted', doc && !doc.feat);
 chk('day/version/platform/year', doc && doc.day === await ev(`usageDay()`) && doc.v === await ev(`APP_VERSION`) && ['android', 'ios', 'desktop', 'other'].includes(doc.plat) && doc.yr === 'JR2' && typeof doc.lsMB === 'number' && doc.lastSync === null && doc.syncFail === 0);
 chk('no drive stats when Drive is not connected', doc && !('drv' in doc));
 chk('second heartbeat the same day writes nothing', (await ev(`Usage.beat()`)) === false && (await ev(`__w.filter(x=>x.p.startsWith('usage/')).length`)) === 1);
-chk('feature counter reset after sending', await ev(`!localStorage.getItem('pgd_feat') || Object.keys(JSON.parse(localStorage.getItem('pgd_feat'))).length===0`));
+chk('card never shows again', await ev(`(location.hash='#/patients', new Promise(r=>setTimeout(()=>{location.hash='#/home'; setTimeout(()=>r(!$('#usageask')),300)},200)))`));
+// Next day: screen opens (route names only) are sent, and the per-account counter resets.
+await ev(`localStorage.removeItem('pgd_feat:uRes1')`);
+for (const h of ['#/patients', '#/patient/p1', '#/vault', '#/logbook', '#/patients', '#/study']) { await ev(`location.hash='${h}'`); await sleep(250); }
+chk('counters are per account', await ev(`!!localStorage.getItem('pgd_feat:uRes1') && !localStorage.getItem('pgd_feat') && !!localStorage.getItem('pgd_usage:uRes1')`));
+await ev(`localStorage.setItem('pgd_usage:uRes1', JSON.stringify({day:'2000-01-01',uid:'uRes1'}))`);
+chk('next day sends again', (await ev(`Usage.beat()`)) === true);
+const doc2 = (await ev(`__w.filter(x=>x.p.startsWith('usage/'))`)).pop().v;
+chk('feature counts are route names only', doc2 && doc2.feat && doc2.feat.patients === 2 && doc2.feat.patient === 1 && !Object.keys(doc2.feat).some(k => /p1|\//.test(k)));
+chk('feature counter reset after sending', await ev(`Object.keys(JSON.parse(localStorage.getItem('pgd_feat:uRes1')||'{}')).length===0`));
 // Reload (same day): nothing is written again.
 await ev(`delete D.settings.fbConfig; Store.flush()`); await sleep(300);
 await send('Page.reload'); await sleep(2500);
@@ -51,16 +65,29 @@ chk('app reopens after reload', await ev(`!!D && !$('#app').hidden`));
 await ev(`__installFsMock('uRes1','res@x.com','Dr Res'); Gate.cached={uid:'uRes1',email:'res@x.com',status:'approved'};`); await ev(SPY);
 await ev(`Usage.start(100)`); await sleep(1500);
 chk('second load the same day writes nothing', (await ev(`__w.filter(x=>x.p.startsWith('usage/')).length`)) === 0 && (await ev(`!!JSON.parse(localStorage.fsmock)['usage/uRes1']`)));
-// Privacy toggle
+// Privacy toggle (Settings)
 await ev(`location.hash='#/settings'`); await sleep(500);
-chk('Privacy toggle shown, on by default', await ev(`!!$('#s_usage') && $('#s_usage').checked && $('#main').textContent.includes('Share anonymous usage counts with the admin') && $('#main').textContent.includes('Never names, diagnoses, notes or photos.')`));
+chk('Privacy toggle: honest label + description, reflects opt-in', await ev(`!!$('#s_usage') && $('#s_usage').checked && $('#main').textContent.includes('Share daily usage counts with the admin (linked to your account)') && $('#main').textContent.includes('Never names, UHIDs, diagnoses, notes or photos. Turn off any time to delete it.')`));
 await shot('usage-privacy');
 await ev(`$('#s_usage').click()`); await sleep(800);
-chk('turning it off deletes usage/{uid}', await ev(`D.settings.usageShare===false && !JSON.parse(localStorage.fsmock)['usage/uRes1'] && __w.some(x=>x.p==='usage/uRes1'&&x.del)`));
-await ev(`localStorage.removeItem('pgd_usage')`);
+chk('turning it off (online) deletes usage/{uid}', await ev(`D.settings.usageShare===false && !D.settings.usageDel && !JSON.parse(localStorage.fsmock)['usage/uRes1'] && __w.some(x=>x.p==='usage/uRes1'&&x.del) && $('#toast').textContent.includes('was deleted')`));
 chk('off: no heartbeat', (await ev(`Usage.beat()`)) === false && (await ev(`__w.filter(x=>x.p.startsWith('usage/')&&!x.del).length`)) === 0);
 await ev(`$('#s_usage').click()`); await sleep(2500);
 chk('back on: sends again', await ev(`D.settings.usageShare===true && !!JSON.parse(localStorage.fsmock)['usage/uRes1']`));
+// Turning off while offline: delete is retried when back online.
+await send('Network.enable'); await send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }); await sleep(300);
+chk('offline emulated', (await ev(`navigator.onLine`)) === false);
+await ev(`$('#s_usage').click()`); await sleep(800);
+chk('off while offline: kept pending, honest toast', await ev(`D.settings.usageShare===false && D.settings.usageDel===true && !!JSON.parse(localStorage.fsmock)['usage/uRes1'] && $('#toast').textContent.includes("will be deleted when you're back online")`));
+await send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }); await sleep(4500);
+chk('back online: doc deleted, flag cleared', await ev(`navigator.onLine && !JSON.parse(localStorage.fsmock)['usage/uRes1'] && D.settings.usageDel===false`));
+chk('still off after the retry (no heartbeat)', (await ev(`__w.filter(x=>x.p.startsWith('usage/')&&!x.del).length`)) === 1);
+// "Not now" on a fresh account choice
+await ev(`delete D.settings.usageShare; location.hash='#/patients'`); await sleep(200); await ev(`location.hash='#/home'`); await sleep(400);
+await ev(`$('#usageask [data-act=usageno]').click()`); await sleep(300);
+chk('Not now: off, card gone for good', await ev(`D.settings.usageShare===false && !$('#usageask') && (location.hash='#/patients', new Promise(r=>setTimeout(()=>{location.hash='#/home'; setTimeout(()=>r(!$('#usageask')),300)},200)))`));
+// Sign-out / erase clear the local counters
+chk('clearLocal removes per-account counters', await ev(`localStorage.setItem('pgd_feat:uRes1','{}'); localStorage.setItem('pgd_usage:uX','{}'); Usage.clearLocal(); !Object.keys(localStorage).some(k=>/^pgd_(feat|usage)/.test(k))`));
 chk('no external network from heartbeat', (await ev(`__net.length`)) === 0);
 
 // ---------- Admin: Analytics / Storage / Health ----------

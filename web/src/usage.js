@@ -1,12 +1,17 @@
 /* ===== Anonymous usage heartbeat + admin analytics maths =====
    Once a day (per local day, per account) the app writes usage/{uid} with NUMBERS ONLY: how many patients,
    visits, photos, logbook entries and thesis cases; which screens were opened (counts); app version; platform;
-   storage used. Never names, emails, UHIDs, diagnoses, notes, free text or photos. Settings → Privacy turns it off
-   (and deletes the doc). Only the admin can read these docs (firestore.rules).
+   storage used. Never names, emails, UHIDs, diagnoses, notes, free text or photos. OPT-IN: nothing is sent until the
+   user says yes (Today card or Settings → Privacy, D.settings.usageShare === true). Turning it off deletes the doc
+   (retried when back online). The doc is linked to the account (usage/{uid}); only the admin can read it (firestore.rules).
    The pure functions below (no DOM, no Firebase) also drive Admin → Analytics / Storage / Health and are unit-tested in Node. */
 
 const USAGE_KEYS = ['day', 'v', 'plat', 'inst', 'dept', 'yr', 'n', 'feat', 'lsMB', 'drv', 'lastSync', 'syncFail', 'at'];
 const USAGE_FEAT_MAX = 30;          // matches firestore.rules feat.size() <= 30
+const USAGE_N_KEYS = ['patients', 'visits', 'photos', 'logbook', 'scores', 'thesis'];
+/* Screen names that may be counted in feat — the first segment of every route in app.js ROUTES (also the firestore.rules list). */
+const USAGE_ROUTES = ['home', 'patients', 'patient', 'add', 'visit', 'score', 'map', 'wa', 'cam', 'vault', 'photo', 'deid', 'compare', 'inv', 'cal', 'logbook', 'logadd', 'targets', 'thesis', 'thesis-setup', 'analytics', 'formulary', 'checklists', 'more', 'settings', 'batch', 'admin', 'study', 'feed', 'community', 'notifs', 'dms', 'dm', 'story-new', 'people', 'flist', 'compose', 'post', 'u', 'study-run', 'study-set', 'journal'];
+const USAGE_VER_RE = /^\d{4}\.\d{2}\.\d{2}-\d{4}/;
 const usageDay = (t = Date.now()) => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 const usageInt = x => Math.max(0, Math.floor(+x || 0));
 const usageNum = (x, dp = 1) => { const p = Math.pow(10, dp); return Math.round((+x || 0) * p) / p; };
@@ -39,14 +44,14 @@ function usagePayload(D, env) {
     at: env.ts === undefined ? null : env.ts
   };
   const feat = {}; let k = 0;
-  for (const [key, c] of Object.entries(env.feat || {})) { if (k >= USAGE_FEAT_MAX) break; if (/^[a-z][a-z-]{0,19}$/.test(key) && usageInt(c) > 0) { feat[key] = usageInt(c); k++; } }
+  for (const [key, c] of Object.entries(env.feat || {})) { if (k >= USAGE_FEAT_MAX) break; if (USAGE_ROUTES.includes(key) && usageInt(c) > 0) { feat[key] = usageInt(c); k++; } }
   if (k) o.feat = feat;
   const dv = env.drv;
   if (dv && sy.on) { const d = {}; for (const x of ['appMB', 'usedGB', 'totalGB']) if (dv[x] != null && isFinite(+dv[x])) d[x] = usageNum(dv[x], x === 'appMB' ? 1 : 2); if (Object.keys(d).length) o.drv = d; }
   return o;
 }
-/* At most one write per account per local day. prev = what this device last sent ({day, uid}). */
-function usageShouldSend(prev, day, uid) { return !!uid && !(prev && prev.day === day && prev.uid === uid); }
+/* Only after an explicit opt-in (share === true), and at most one write per account per local day. prev = what this device last sent ({day, uid}). */
+function usageShouldSend(prev, day, uid, share) { return share === true && !!uid && !(prev && prev.day === day && prev.uid === uid); }
 
 /* ---------- Analytics maths (admin) ---------- */
 const dayNum = s => Math.floor(Date.parse(String(s || '').slice(0, 10) + 'T00:00:00Z') / 864e5);
@@ -70,8 +75,8 @@ function gauge(v, max) { const pct = max > 0 ? Math.round((+v || 0) / max * 1000
 function crashFree(activeUids, errorUids) { const a = new Set(activeUids || []), e = new Set(errorUids || []); if (!a.size) return null; let bad = 0; for (const u of a) if (e.has(u)) bad++; return Math.round((a.size - bad) / a.size * 1000) / 10; }
 /* Version adoption: latest = the larger of this build and the newest version seen (build strings sort by date). */
 function versionAdoption(docs, build) {
-  const vs = (docs || []).map(d => String(d.v || '')).filter(Boolean); let latest = String(build || '');
-  for (const v of vs) if (v > latest) latest = v;
+  const vs = (docs || []).map(d => String(d.v || '')).filter(Boolean); let latest = USAGE_VER_RE.test(String(build || '')) ? String(build) : '';
+  for (const v of vs) if (USAGE_VER_RE.test(v) && v > latest) latest = v;
   return { latest, pct: vs.length ? Math.round(vs.filter(v => v === latest).length / vs.length * 1000) / 10 : null };
 }
 /* Sync health: of active users who use Drive sync (lastSync set), % synced in the last 24 h. */
@@ -106,20 +111,27 @@ function healthLight(m) {
 /* ---------- Runtime (browser only) ---------- */
 const Usage = {
   _t: null,
-  on() { return !!(D && D.settings && D.settings.usageShare !== false); },
+  on() { return !!(D && D.settings && D.settings.usageShare === true); },
+  /* Ask once (Today card) while the user has not chosen yet. */
+  askable() { return !!(D && D.settings && D.settings.usageShare === undefined && typeof Gate !== 'undefined' && Gate.enabled() && Gate.cached && Gate.cached.status === 'approved'); },
+  _uid() { return (typeof Gate !== 'undefined' && Gate.cached && Gate.cached.uid) || (typeof Cloud !== 'undefined' && Cloud.user && Cloud.user.uid) || ''; },
   _get(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } },
   _set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
-  /* Screen opens since the last heartbeat (route names only, never ids or query strings). */
+  /* Local counters are per account: pgd_feat:<uid>, pgd_usage:<uid>. */
+  clearLocal(uid) { try { for (const k of Object.keys(localStorage)) if (/^pgd_(feat|usage)(:|$)/.test(k) && (!uid || k.endsWith(':' + uid))) localStorage.removeItem(k); } catch (e) {} },
+  /* Screen opens since the last heartbeat (route names only, never ids or query strings). Only while sharing is on. */
   track() {
     try {
+      const uid = this._uid(); if (!this.on() || !uid) return;
       const path = (location.hash.replace(/^#\/?/, '') || 'home').split('?')[0];
       if (typeof ROUTES === 'undefined' || !ROUTES.some(r => r[0].test(path))) return;
-      const k = path.split('/')[0]; if (!/^[a-z][a-z-]{0,19}$/.test(k)) return;
-      const f = this._get('pgd_feat') || {}; if (!(k in f) && Object.keys(f).length >= USAGE_FEAT_MAX) return;
-      f[k] = (f[k] || 0) + 1; this._set('pgd_feat', f);
+      const k = path.split('/')[0]; if (!USAGE_ROUTES.includes(k)) return;
+      const f = this._get('pgd_feat:' + uid) || {}; if (!(k in f) && Object.keys(f).length >= USAGE_FEAT_MAX) return;
+      f[k] = (f[k] || 0) + 1; this._set('pgd_feat:' + uid, f);
     } catch (e) {}
   },
-  start(ms = 8000) { clearTimeout(this._t); this._t = setTimeout(() => this.beat(), ms); },
+  /* Retries a pending delete (even with sharing off), then sends today's heartbeat if sharing is on. */
+  start(ms = 8000) { clearTimeout(this._t); this._t = setTimeout(async () => { if (D && D.settings && D.settings.usageDel) await this.remove(); this.beat(); }, ms); },
   async ready() {
     if (!D || !this.on() || !navigator.onLine || typeof Gate === 'undefined' || !Gate.enabled() || !Gate.cached || Gate.cached.status !== 'approved') return null;
     await Cloud.init(); const u = Cloud.user; if (!u || (Gate.cached.uid && Gate.cached.uid !== u.uid)) return null;
@@ -134,32 +146,58 @@ const Usage = {
   },
   async beat() {
     try {
+      if (!this.on()) return false;
       const u = await this.ready(); if (!u) return false;
-      const day = usageDay(); if (!usageShouldSend(this._get('pgd_usage'), day, u.uid)) return false;
+      const day = usageDay(), kU = 'pgd_usage:' + u.uid, kF = 'pgd_feat:' + u.uid;
+      if (!usageShouldSend(this._get(kU), day, u.uid, D.settings.usageShare)) return false;
       let lsMB = 0; try { const e = await navigator.storage.estimate(); lsMB = (e.usage || 0) / 1048576; } catch (e) {}
-      const f = Cloud.f, feat = this._get('pgd_feat') || {};
+      const f = Cloud.f, feat = this._get(kF) || {};
       const doc = usagePayload(D, { day, v: typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?', ua: navigator.userAgent, inst: !!(matchMedia('(display-mode: standalone)').matches || navigator.standalone),
         lsMB, feat, drv: await this.driveInfo(), ts: f.serverTimestamp() });
-      if (!this.on()) return false;
+      if (!this.on() || D.settings.usageDel) return false;
       await f.setDoc(f.doc(Cloud.db, 'usage', u.uid), doc);
-      this._set('pgd_usage', { day, uid: u.uid });
-      const now = this._get('pgd_feat') || {}; for (const k of Object.keys(feat)) { now[k] = (now[k] || 0) - feat[k]; if (now[k] <= 0) delete now[k]; } this._set('pgd_feat', now);
+      this._set(kU, { day, uid: u.uid });
+      const now = this._get(kF) || {}; for (const k of Object.keys(feat)) { now[k] = (now[k] || 0) - feat[k]; if (now[k] <= 0) delete now[k]; } this._set(kF, now);
       return true;
     } catch (e) { return false; }
   },
+  /* Deletes usage/{uid}. D.settings.usageDel stays true until the delete really succeeded (retried by start()/online). */
   async remove() {
-    try { localStorage.removeItem('pgd_usage'); localStorage.removeItem('pgd_feat'); } catch (e) {}
-    if (!Cloud.cfg() || !navigator.onLine) return;
-    try { await Cloud.init(); if (Cloud.user) await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'usage', Cloud.user.uid)); } catch (e) {}
+    this.clearLocal(this._uid() || undefined);
+    if (!D || !D.settings.usageDel) return true;
+    if (!Cloud.cfg() || !navigator.onLine) return false;
+    try {
+      await Cloud.init(); if (!Cloud.user) return false;
+      await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'usage', Cloud.user.uid));
+      D.settings.usageDel = false; Store.save(); return true;
+    } catch (e) { return false; }
+  },
+  async setShare(on) {
+    D.settings.usageShare = !!on;
+    if (on) { D.settings.usageDel = false; Store.save(); Usage.start(500); return true; }
+    D.settings.usageDel = true; Store.save();
+    return this.remove();
   }
 };
+const USAGE_LABEL = 'Share daily usage counts with the admin (linked to your account)';
+const USAGE_DESC = 'Once a day, sends the app admin: how many patients, visits, photos, logbook entries and scores you have (numbers only); which screens you opened; app version; phone or desktop; department and residency year; storage used on this device and in your Google Drive. Never names, UHIDs, diagnoses, notes or photos. Turn off any time to delete it.';
+/* One-time question on Today (until the user picks Yes or Not now). */
+function usageAskHTML() {
+  if (!Usage.askable()) return '';
+  return `<div class="card usageask" id="usageask"><b>${esc('Help improve the app? Share daily usage counts with the admin.')}</b><p class="small muted">${esc(USAGE_DESC)}</p>
+    <div class="btnrow"><button class="btn sm" data-act="usageyes">Yes, share</button><button class="btn sm ghost" data-act="usageno">Not now</button></div></div>`;
+}
 if (typeof addEventListener !== 'undefined' && typeof document !== 'undefined') {
   addEventListener('hashchange', () => Usage.track());
   addEventListener('online', () => { if (typeof D !== 'undefined' && D) Usage.start(3000); });
 }
-if (typeof ACT !== 'undefined') ACT.usageshare = async el => {
-  D.settings.usageShare = !!el.checked; Store.save();
-  if (el.checked) { toast('Thanks — anonymous counts will be sent once a day'); Usage.start(1500); }
-  else { await Usage.remove(); toast('Usage sharing off — your usage record was deleted'); }
-};
-if (typeof module !== 'undefined') module.exports = { USAGE_KEYS, usageDay, usagePlat, usageYr, usagePayload, usageShouldSend, weekBuckets, activeCounts, activeSince, gauge, crashFree, versionAdoption, syncHealth, countBy, sumMaps, FS_AVG_BYTES, FS_FREE, FS_PER_USER, sizeEstimate, dailyOps, healthLight, BOT_STALE_MS, GAUGE_WARN, GAUGE_BAD };
+if (typeof ACT !== 'undefined') {
+  const offMsg = ok => toast(ok ? 'Usage sharing off — your usage record was deleted' : 'Usage sharing off — your usage record will be deleted when you\'re back online', 3500);
+  ACT.usageshare = async el => {
+    if (el.checked) { await Usage.setShare(true); toast('Thanks — usage counts will be sent once a day'); }
+    else offMsg(await Usage.setShare(false));
+  };
+  ACT.usageyes = async () => { $('#usageask')?.remove(); await Usage.setShare(true); toast('Thanks — usage counts will be sent once a day'); };
+  ACT.usageno = async () => { $('#usageask')?.remove(); D.settings.usageShare = false; Store.save(); };
+}
+if (typeof module !== 'undefined') module.exports = { Usage, USAGE_ROUTES, USAGE_N_KEYS, USAGE_LABEL, USAGE_DESC, USAGE_KEYS, usageDay, usagePlat, usageYr, usagePayload, usageShouldSend, weekBuckets, activeCounts, activeSince, gauge, crashFree, versionAdoption, syncHealth, countBy, sumMaps, FS_AVG_BYTES, FS_FREE, FS_PER_USER, sizeEstimate, dailyOps, healthLight, BOT_STALE_MS, GAUGE_WARN, GAUGE_BAD };

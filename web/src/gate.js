@@ -165,7 +165,7 @@ const Gate = {
   async signOut() {
     if (!(await uiConfirm('Sign out of PG Derma Companion on this device? Your encrypted data stays on this device; you will need Google sign-in (and your PIN) to open it again.'))) return;
     try { await Cloud.f.signOut(Cloud.auth); } catch (e) {}
-    await IDB.del('meta', 'gate'); await Drive.forget().catch(() => {}); location.reload();
+    await IDB.del('meta', 'gate'); Usage.clearLocal(); await Drive.forget().catch(() => {}); location.reload();
   }
 };
 
@@ -247,7 +247,7 @@ ACT.admincalls = async el => {
 };
 ACT.admindel = async el => {
   if (!(await uiConfirm('Remove this record? If they sign in again they will appear as a new request.'))) return;
-  try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'approvals', el.dataset.id)); toast('Removed'); } catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
+  try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'approvals', el.dataset.id)); await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'usage', el.dataset.id)).catch(() => {}); toast('Removed'); } catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
 };
 /* ---------- Admin → Content: review study items drafted by the bot ---------- */
 function contentPreview(x) {
@@ -479,7 +479,7 @@ function adminLoadErr(sel, e) { const el = $(sel); if (el) el.innerHTML = `<p cl
 
 function vAdminAnalytics() {
   setTitle('Analytics', true);
-  main().innerHTML = `${adminChips('analytics')}<p class="small muted">Anonymous daily counts from users who leave usage sharing on (Settings → Privacy). No names, patient data or notes.</p><div id="aan"><p class="muted small">Loading…</p></div>`;
+  main().innerHTML = `${adminChips('analytics')}<p class="small muted">Per-account daily counts from users who opted in to usage sharing (Settings → Privacy). No names, patient data or notes.</p><div id="aan"><p class="muted small">Loading…</p></div>`;
   Cloud.init().then(async () => {
     const d = await adminData(), m = adminMetrics(d), f = Cloud.f, db = Cloud.db, el = $('#aan'); if (!el) return;
     const st = countBy(d.approvals, x => x.status), weeks = weekBuckets(d.approvals.map(x => admMs(x.requestedAt)).filter(Boolean), d.now, 12).map(w => ({ label: new Date(w.start + 864e5).toISOString().slice(5, 10), n: w.n }));
@@ -498,7 +498,7 @@ function vAdminAnalytics() {
     const be = $('#abatch'); if (be) be.innerHTML = rows.length ? `<table class="atable"><tr><th>Batch</th><th>Members</th><th>Msgs / 7 d</th></tr>${rows.sort((a, b) => (b.members || 0) - (a.members || 0)).map(r => `<tr><td>${esc(r.name)}</td><td>${nfmt(r.members)}</td><td>${nfmt(r.msgs)}</td></tr>`).join('')}</table>` : '<p class="muted small">No batches yet.</p>';
   }).catch(e => adminLoadErr('#aan', e));
 }
-const STORE_COLLS = ['approvals', 'usage', 'errors', 'posts', 'profiles', 'content', 'digest', 'batches', 'dms', 'notifs', 'stories', 'study', 'follows', 'reports'];
+const STORE_COLLS = ['approvals', 'usage', 'errors', 'posts', 'profiles', 'content', 'digest', 'batches', 'stories', 'study', 'follows', 'reports'];
 function vAdminStorage() {
   setTitle('Storage', true);
   main().innerHTML = `${adminChips('storage')}<p class="small muted">Firestore free tier: 1 GiB stored, 50,000 reads and 20,000 writes a day. Sizes and daily use are rough estimates (documented in usage.js).</p><div id="ast"><p class="muted small">Counting…</p></div>`;

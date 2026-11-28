@@ -29,17 +29,36 @@ ok('lastSync ms + syncFail int', p.lastSync === Date.parse('2026-11-27T10:00:00.
 const p2 = U.usagePayload({ settings: {} }, { day: '2026-11-28', ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile', drv: { appMB: 1 } });
 ok('empty data: zeros, no drive when sync off, lastSync null', p2.n.patients === 0 && !p2.drv && p2.lastSync === null && p2.syncFail === 0 && p2.plat === 'ios' && p2.yr === '' && !p2.feat);
 ok('platform detection', U.usagePlat('Mozilla/5.0 (Windows NT 10.0; Win64)') === 'desktop' && U.usagePlat('') === 'other');
-const many = {}; for (let i = 0; i < 50; i++) many['r' + String.fromCharCode(97 + (i % 26)) + 'x'.repeat(Math.floor(i / 26))] = 1;
+const many = {}; for (const r of U.USAGE_ROUTES) many[r] = 1;
 ok('feat capped at 30 keys', Object.keys(U.usagePayload(D, Object.assign({}, env, { feat: many })).feat).length === 30);
 ok('version string sanitised', U.usagePayload(D, Object.assign({}, env, { v: '<script>alert(1)</script>' + 'x'.repeat(60) })).v.length <= 40 && !/[<>()]/.test(U.usagePayload(D, Object.assign({}, env, { v: '<b>' })).v));
 
 // ---------- once-per-day throttle ----------
-ok('send when never sent', U.usageShouldSend(null, '2026-11-28', 'u1'));
-ok('skip second send same day', !U.usageShouldSend({ day: '2026-11-28', uid: 'u1' }, '2026-11-28', 'u1'));
-ok('send next day', U.usageShouldSend({ day: '2026-11-27', uid: 'u1' }, '2026-11-28', 'u1'));
-ok('send for a different account on this device', U.usageShouldSend({ day: '2026-11-28', uid: 'u1' }, '2026-11-28', 'u2'));
-ok('never without uid', !U.usageShouldSend(null, '2026-11-28', ''));
+ok('send when never sent (opted in)', U.usageShouldSend(null, '2026-11-28', 'u1', true));
+ok('skip second send same day', !U.usageShouldSend({ day: '2026-11-28', uid: 'u1' }, '2026-11-28', 'u1', true));
+ok('send next day', U.usageShouldSend({ day: '2026-11-27', uid: 'u1' }, '2026-11-28', 'u1', true));
+ok('send for a different account on this device', U.usageShouldSend({ day: '2026-11-28', uid: 'u1' }, '2026-11-28', 'u2', true));
+ok('never without uid', !U.usageShouldSend(null, '2026-11-28', '', true));
+ok('opt-in: never when usageShare is undefined or false', !U.usageShouldSend(null, '2026-11-28', 'u1', undefined) && !U.usageShouldSend(null, '2026-11-28', 'u1', false) && !U.usageShouldSend(null, '2026-11-28', 'u1', 'yes'));
 ok('local day format', /^\d{4}-\d{2}-\d{2}$/.test(U.usageDay()));
+// Usage.beat / track / on do nothing until the user opts in.
+globalThis.__cloudCalls = 0;
+globalThis.Gate = { enabled: () => true, cached: { uid: 'u1', status: 'approved' } };
+globalThis.Cloud = { init: async () => { globalThis.__cloudCalls++; }, user: { uid: 'u1' }, f: { setDoc: async () => { globalThis.__cloudCalls++; } } };
+globalThis.D = { settings: {} };
+const beatUndef = U.Usage.beat();
+ok('Usage.on() false while usageShare is undefined', U.Usage.on() === false);
+globalThis.D = { settings: { usageShare: false } };
+ok('Usage.on() false after Not now', U.Usage.on() === false);
+globalThis.D = { settings: { usageShare: true } };
+ok('Usage.on() true only after yes', U.Usage.on() === true);
+globalThis.D = { settings: {} };
+ok('askable while undefined; not after a choice', U.Usage.askable() === true && (globalThis.D.settings.usageShare = false, U.Usage.askable() === false));
+// Feature keys must be real routes (app.js ROUTES first segments) — and the same list as firestore.rules.
+const appSrc = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
+const routeHeads = [...new Set([...appSrc.slice(0, appSrc.indexOf('function render')).matchAll(/\[\/\^([a-z][a-z-]*)/g)].map(m => m[1]))];
+ok('USAGE_ROUTES = route names in app.js ROUTES', JSON.stringify([...routeHeads].sort()) === JSON.stringify([...U.USAGE_ROUTES].sort()));
+ok('feat drops non-route keys', JSON.stringify(U.usagePayload(D, { day: '2026-11-28', feat: { home: 1, ravi: 2, 'patient-x': 3 } }).feat) === '{"home":1}');
 
 // ---------- analytics maths ----------
 const now = Date.parse('2026-11-28T12:00:00Z'), W = 7 * 864e5;
@@ -55,7 +74,8 @@ ok('gauge bad >= 90', U.gauge(90, 100).level === 'bad' && U.gauge(45000, 50000).
 ok('crash-free %', U.crashFree(['a', 'b', 'c', 'd'], ['b', 'zz']) === 75 && U.crashFree([], ['a']) === null && U.crashFree(['a'], []) === 100);
 const va = U.versionAdoption([{ v: '2026.11.20-0100-a' }, { v: '2026.11.28-0500-b' }, { v: '2026.11.28-0500-b' }, { v: '2026.11.01-0100-c' }], '2026.11.25-0000-z');
 ok('version adoption: latest = max seen, % on it', va.latest === '2026.11.28-0500-b' && va.pct === 50);
-ok('version adoption: build newer than all', U.versionAdoption([{ v: '2026.01.01' }], '2026.12.01').pct === 0);
+ok('version adoption: build newer than all', U.versionAdoption([{ v: '2026.01.01-0000-a' }], '2026.12.01-0000-b').pct === 0);
+ok('version adoption: ignores junk versions when picking latest', (() => { const r = U.versionAdoption([{ v: '2026.11.28-0500-b' }, { v: 'zzz-hacked' }, { v: '9999' }, { v: '?' }], '?'); return r.latest === '2026.11.28-0500-b' && r.pct === 25; })());
 ok('sync health', U.syncHealth([{ lastSync: now - 1000 }, { lastSync: now - 3 * 864e5 }, { lastSync: null }], now) === 50 && U.syncHealth([{ lastSync: null }], now) === null);
 ok('countBy / sumMaps', JSON.stringify(U.countBy([{ p: 'a' }, { p: 'a' }, { p: 'b' }, {}], x => x.p)) === '{"a":2,"b":1}' && JSON.stringify(U.sumMaps([{ x: 1 }, { x: 2, y: 3 }, null])) === '{"x":3,"y":3}');
 ok('size estimate uses documented averages', U.sizeEstimate({ posts: 10, usage: 2, unknown: 1 }) === 10 * U.FS_AVG_BYTES.posts + 2 * U.FS_AVG_BYTES.usage + 1000);
@@ -85,7 +105,12 @@ ok('usage: relay branch limited to month ids', ub.includes("allow create, update
 ok('usage: owner branch requires m == request.auth.uid', /allow create, update: if approved\(\) && m == request\.auth\.uid\s*\n\s*&& request\.resource\.data\.keys\(\)\.hasOnly\(ukeys\(\)\)/.test(ub));
 ok('usage: owner keys match the app whitelist', (() => { const m = ub.match(/function ukeys\(\) \{ return \[([^\]]+)\]/); return m && JSON.stringify(m[1].split(',').map(s => s.trim().replace(/'/g, ''))) === JSON.stringify(U.USAGE_KEYS); })());
 ok('usage: at == request.time, day regex, size limits', ub.includes('request.resource.data.at == request.time') && ub.includes("day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')") && ub.includes('n.size() <= 8') && ub.includes('feat.size() <= 30') && ub.includes('drv.size() <= 4'));
-ok('usage: owner delete only', /allow delete: if signedIn\(\) && m == request\.auth\.uid;/.test(ub));
+ok('usage: delete by owner or admin only', /allow delete: if signedIn\(\) && \(m == request\.auth\.uid \|\| isAdminUser\(\)\);/.test(ub));
+ok('usage: n keys fixed + int values', ub.includes("n.keys().hasOnly(" + JSON.stringify(U.USAGE_N_KEYS).replace(/"/g, "'").replace(/,/g, ', ') + ")") && U.USAGE_N_KEYS.every(k => ub.includes("n.get('" + k + "', 0) is int")));
+ok('usage: drv keys fixed + number values', ub.includes("drv.keys().hasOnly(['appMB', 'usedGB', 'totalGB'])") && ['appMB', 'usedGB', 'totalGB'].every(k => ub.includes("drv.get('" + k + "', 0) is number")));
+ok('usage: feat keys = USAGE_ROUTES', (() => { const m = ub.match(/function froutes\(\) \{ return \[([^\]]+)\]/); return m && JSON.stringify(m[1].split(',').map(s => s.trim().replace(/'/g, ''))) === JSON.stringify(U.USAGE_ROUTES) && ub.includes('feat.keys().hasOnly(froutes())'); })());
+ok('payload n keys match the rules list', JSON.stringify(Object.keys(p.n)) === JSON.stringify(U.USAGE_N_KEYS));
 ok('system: admin-only read, admin-only limited write', /allow read: if isAdminUser\(\);/.test(sb) && /allow write: if isAdminUser\(\) && request\.resource\.data\.keys\(\)\.hasOnly\(\['lastRun', 'ok', 'note'\]\);/.test(sb) && !/approved\(\)|signedIn\(\)/.test(sb));
 
-console.log(fails ? fails + ' FAILED' : 'ALL PASS'); process.exit(fails ? 1 : 0);
+beatUndef.then(r => { ok('Usage.beat() does nothing while usageShare is undefined (no Firebase calls)', r === false && globalThis.__cloudCalls === 0);
+  console.log(fails ? fails + ' FAILED' : 'ALL PASS'); process.exit(fails ? 1 : 0); });

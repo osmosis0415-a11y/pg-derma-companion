@@ -208,9 +208,11 @@ service cloud.firestore {
       allow delete: if signedIn() && (u == request.auth.uid || isAdminUser());
     }
     // usage/{YYYY-MM}: monthly call-relay estimate (calls.js).
-    // usage/{uid}: once-a-day anonymous usage counts from each user (usage.js) — numbers, version, platform only;
+    // usage/{uid}: opt-in, once-a-day usage counts linked to the account (usage.js) — numbers, version, platform only;
     // never names, emails, UHIDs, diagnoses, notes or photos. Only the admin reads either kind.
     match /usage/{m} {
+      // Screen names (counts only) — same list as USAGE_ROUTES in web/src/usage.js.
+      function froutes() { return ['home', 'patients', 'patient', 'add', 'visit', 'score', 'map', 'wa', 'cam', 'vault', 'photo', 'deid', 'compare', 'inv', 'cal', 'logbook', 'logadd', 'targets', 'thesis', 'thesis-setup', 'analytics', 'formulary', 'checklists', 'more', 'settings', 'batch', 'admin', 'study', 'feed', 'community', 'notifs', 'dms', 'dm', 'story-new', 'people', 'flist', 'compose', 'post', 'u', 'study-run', 'study-set', 'journal']; }
       function ukeys() { return ['day', 'v', 'plat', 'inst', 'dept', 'yr', 'n', 'feat', 'lsMB', 'drv', 'lastSync', 'syncFail', 'at']; }
       allow read: if isAdminUser();
       allow create, update: if approved() && m.matches('^[0-9]{4}-[0-9]{2}$') && request.resource.data.keys().hasOnly(['relayMB', 'relayCalls', 'updatedAt'])
@@ -223,13 +225,21 @@ service cloud.firestore {
         && request.resource.data.inst is bool
         && shortStr(request.resource.data.dept, 20) && shortStr(request.resource.data.yr, 10)
         && request.resource.data.n is map && request.resource.data.n.size() <= 8
-        && (!('feat' in request.resource.data) || (request.resource.data.feat is map && request.resource.data.feat.size() <= 30))
+        && request.resource.data.n.keys().hasOnly(['patients', 'visits', 'photos', 'logbook', 'scores', 'thesis'])
+        && request.resource.data.n.get('patients', 0) is int && request.resource.data.n.get('visits', 0) is int
+        && request.resource.data.n.get('photos', 0) is int && request.resource.data.n.get('logbook', 0) is int
+        && request.resource.data.n.get('scores', 0) is int && request.resource.data.n.get('thesis', 0) is int
+        && (!('feat' in request.resource.data) || (request.resource.data.feat is map && request.resource.data.feat.size() <= 30
+          && request.resource.data.feat.keys().hasOnly(froutes())))
         && request.resource.data.lsMB is number
-        && (!('drv' in request.resource.data) || (request.resource.data.drv is map && request.resource.data.drv.size() <= 4))
+        && (!('drv' in request.resource.data) || (request.resource.data.drv is map && request.resource.data.drv.size() <= 4
+          && request.resource.data.drv.keys().hasOnly(['appMB', 'usedGB', 'totalGB'])
+          && request.resource.data.drv.get('appMB', 0) is number && request.resource.data.drv.get('usedGB', 0) is number
+          && request.resource.data.drv.get('totalGB', 0) is number))
         && (request.resource.data.lastSync == null || request.resource.data.lastSync is number)
         && request.resource.data.syncFail is int
         && request.resource.data.at == request.time;
-      allow delete: if signedIn() && m == request.auth.uid;
+      allow delete: if signedIn() && (m == request.auth.uid || isAdminUser());
     }
     // App health heartbeats (system/bot from the approval bot). Admin only. The bot writes with the admin's own
     // OAuth token (tools/admin-bot.gs), so client writes are limited to the admin and to these keys.
