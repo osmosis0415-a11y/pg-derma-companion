@@ -4,7 +4,7 @@
 const FB_VER = '10.12.2';
 const EVENT_TYPES = ['Seminar', 'Journal club', 'Case presentation', 'Clinical meet', 'Posting', 'Duty', 'Exam / assessment', 'Workshop / CME', 'Other'];
 const Cloud = {
-  ready: null, auth: null, db: null, f: {}, user: null, unsubs: [], lastUid: undefined,
+  ready: null, auth: null, db: null, f: {}, user: null, unsubs: [], lastUid: undefined, gen: 0,
   cfg() { return (D && D.settings.fbConfig) || window.FIREBASE_CONFIG || null; },
   init() {
     if (this.ready) return this.ready;
@@ -22,7 +22,7 @@ const Cloud = {
     this.ready.catch(() => { this.ready = null; });
     return this.ready;
   },
-  stop() { this.unsubs.forEach(u => { try { u(); } catch (e) {} }); this.unsubs = []; }
+  stop() { this.gen++; this.unsubs.forEach(u => { try { u(); } catch (e) {} }); this.unsubs = []; }
 };
 const authMsg = e => ({ 'auth/invalid-credential': 'Wrong email or password', 'auth/wrong-password': 'Wrong email or password', 'auth/user-not-found': 'No account with this email', 'auth/email-already-in-use': 'Account exists — sign in instead', 'auth/weak-password': 'Password must be at least 6 characters', 'auth/invalid-email': 'Invalid email address', 'auth/network-request-failed': 'No internet connection', 'auth/popup-closed-by-user': 'Sign-in cancelled', 'auth/unauthorized-domain': 'This site is not authorised in Firebase → Authentication → Settings → Authorised domains', 'auth/too-many-requests': 'Too many attempts — try again later', 'auth/requires-recent-login': 'For security, sign in again and then retry', 'auth/missing-password': 'Enter your password' }[e.code] || e.message || 'Something went wrong');
 const B = () => D.batch || null;
@@ -107,9 +107,10 @@ ACT.bjoin = async () => {
     delete D.settings.pendingJoin; Store.save(); toast('Joined ' + s.data().name); render(); Calls.start();
   } catch (e) { toast('Could not join: ' + (e.code || e.message)); }
 };
-ACT.bsignout = async () => { Cloud.stop(); Sync.stop(); await Cloud.f.signOut(Cloud.auth); render(); };
+ACT.bsignout = async () => { Usage.clearLocal(); Cloud.stop(); Sync.stop(); await Cloud.f.signOut(Cloud.auth); render(); };
 
 function batchTabsHTML() {
+  Chat.sync();
   const t = ROUTE.q.t || 'cal';
   return `<div class="row between"><div><b>${esc(B().name)}</b><div class="small muted">Code ${esc(B().id)}</div></div><button class="btn sm ghost" data-act="binvite">Invite</button></div>
   <div class="chips">${[['chat', 'Chat' + chatUnreadBadge()], ['cal', 'Calendar'], ['log', 'Logbook comparison'], ['mem', 'Members']].map(([k, l]) => `<a class="chip${k === t ? ' on' : ''}" href="#/batch?t=${k}">${l}</a>`).join('')}</div><div id="bpane"></div>`;
@@ -121,7 +122,7 @@ function paintBatch() {
   if (t === 'cal') {
     const up = (B().events || []).filter(e => e.date >= today()).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
     const past = (B().events || []).filter(e => e.date < today()).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
-    const row = e => `<div class="li"><div><b>${esc(e.title)}</b> <span class="tag">${esc(e.type)}</span><small>${fmt(e.date)}${e.time ? ' · ' + esc(e.time) : ''}${e.venue ? ' · ' + esc(e.venue) : ''}${e.presenter ? ' · ' + esc(e.presenter) : ''}</small>${e.notes ? `<small>${esc(e.notes)}</small>` : ''}</div>${e.createdBy === Cloud.user?.uid || bAdmin() ? `<button class="icon" data-act="bevdel" data-id="${e.id}" aria-label="Delete">✕</button>` : ''}</div>`;
+    const row = e => `<div class="li"><div><b>${esc(e.title)}</b> <span class="tag">${esc(e.type)}</span><small>${fmt(e.date)}${e.time ? ' · ' + esc(e.time) : ''}${e.venue ? ' · ' + esc(e.venue) : ''}${e.presenter ? ' · ' + esc(e.presenter) : ''}</small>${e.notes ? `<small>${esc(e.notes)}</small>` : ''}</div>${e.createdBy === Cloud.user?.uid || bAdmin() ? `<button class="icon" data-act="bevdel" data-id="${esc(e.id)}" aria-label="Delete">✕</button>` : ''}</div>`;
     el.innerHTML = `<div class="btnrow"><button class="btn sm" data-act="bevadd">＋ Add event</button><button class="btn sm ghost" data-act="bevics">📅 Add all to my calendar</button><button class="btn sm ghost" data-act="bevwa">Share week on WhatsApp</button></div>
     <div class="card">${up.map(row).join('') || '<p class="muted">No upcoming events. Add the seminar / journal-club schedule so everyone sees it.</p>'}</div>
     ${past.length ? `<details><summary class="small muted">Past events</summary><div class="card">${past.map(row).join('')}</div></details>` : ''}`;
@@ -145,24 +146,133 @@ function paintBatch() {
     const gOn = (B().members || []).filter(m => m.id !== Cloud.user?.uid && Calls.canCall(m.id) && Calls.isOnline(m.id)).length;
     el.innerHTML = `${Calls.allowed ? `<div class="card gcard"><div><b>Group call</b><small class="muted">Up to 4 people · discuss cases, revise together · ${gOn} online</small></div><button class="btn sm" data-act="gcall" ${gOn ? '' : 'disabled'}>${ic('users')} Start</button></div>` : ''}<div class="card">${(B().members || []).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(m => { const me = m.id === Cloud.user?.uid, on = me || Calls.isOnline(m.id);
       return `<div class="li"><div class="row" style="gap:10px"><span class="pres${on ? ' on' : ''}" title="${on ? 'Online' : 'Offline'}"></span><div><b>${esc(m.name)}</b>${me ? ' <span class="tag">You</span>' : ''}<small>${esc(m.year || '')}${!me ? (on ? ' · online' : ' · offline') : ''}</small></div></div>
-      <div class="row" style="gap:2px">${!me && Calls.canCall(m.id) ? `<button class="icon callbtn" data-act="bcall" data-id="${m.id}" data-n="${esc(m.name)}" data-v="0" aria-label="Voice call ${esc(m.name)}" ${on ? '' : 'disabled'}>${ic('phone')}</button><button class="icon callbtn" data-act="bcall" data-id="${m.id}" data-n="${esc(m.name)}" data-v="1" aria-label="Video call ${esc(m.name)}" ${on ? '' : 'disabled'}>${ic('video')}</button>` : ''}${bAdmin() && !me ? `<button class="icon" data-act="bkick" data-id="${m.id}" aria-label="Remove">✕</button>` : ''}</div></div>`; }).join('') || '<p class="muted">Loading…</p>'}</div>
+      <div class="row" style="gap:2px">${!me && Calls.canCall(m.id) ? `<button class="icon callbtn" data-act="bcall" data-id="${esc(m.id)}" data-n="${esc(m.name)}" data-v="0" aria-label="Voice call ${esc(m.name)}" ${on ? '' : 'disabled'}>${ic('phone')}</button><button class="icon callbtn" data-act="bcall" data-id="${esc(m.id)}" data-n="${esc(m.name)}" data-v="1" aria-label="Video call ${esc(m.name)}" ${on ? '' : 'disabled'}>${ic('video')}</button>` : ''}${bAdmin() && !me ? `<button class="icon" data-act="bkick" data-id="${esc(m.id)}" aria-label="Remove">✕</button>` : ''}</div></div>`; }).join('') || '<p class="muted">Loading…</p>'}</div>
     ${Calls.allowed ? '' : '<p class="small muted">Voice/video calls are switched on by the admin. Ask the admin if you need calling.</p>'}<div class="btnrow"><button class="btn sm ghost" data-act="bleave">Leave batch</button><button class="btn sm ghost" data-act="bsignout">Sign out</button></div>
     ${bAdmin() ? `<div class="card"><h3>Admin</h3><p class="small muted">${B().admin ? 'You created this batch.' : 'You are the app admin.'} These actions affect everyone.</p><div class="btnrow"><button class="btn sm ghost danger" data-act="bclearchat">Clear chat</button><button class="btn sm danger" data-act="bdelete">Delete batch</button></div></div>` : ''}`;
   }
 }
+/* ---------- Cheap hub sync (issue #16 part 5) ----------
+   The hub used to attach full listeners to events (60 days), members, logstats and the last 150 messages on every
+   open/tab switch (~240 reads). Now everything is cached in D.batch (inside the PIN-encrypted vault, never plain
+   localStorage; 'batch' is LOCAL_ONLY so it is not sent to Drive sync) and each open reads only what changed:
+   - messages: render from cache (last MSG_CAP), then listen where at >= newest-cached (>= so equal/truncated
+     timestamps are not lost; ids are de-duplicated). Older history: "Load older" = where at < oldest, desc, limit 50.
+   - events: render from cache, then listen where createdAt >= newest-cached createdAt (events are add/delete only).
+   - members / logstats: live full listener only while their own tab is open; otherwise a one-shot fetch at most daily.
+   Deletes: while a listener is open, a cached item inside its range (>= since) that is missing from the server snapshot
+   is dropped, so the deleter and anyone with the hub open see deletes at once; the deleter also drops it locally.
+   Deletes of OLDER items reach other members on the daily full refresh (events: whole 60-day window; messages: the
+   newest MSG_FULL, and if fewer than MSG_FULL exist the whole cache is replaced, which also covers admin "Clear chat").
+   Trade-off: up to a day of staleness for other people's deletes of older items, in exchange for ~2 reads per open.
+   Cache format is versioned (hc.v); a cache from another version is dropped and rebuilt (old backups stay importable). */
+const HUB_V = 1, MSG_CAP = 300, MSG_FULL = 100, MSG_PAGE = 50, HUB_DAY = 864e5;
+const hubMs = x => x && x.toMillis ? x.toMillis() : (typeof x === 'number' ? x : null);
+const tsVal = ms => (Cloud.f.Timestamp && Cloud.f.Timestamp.fromMillis) ? Cloud.f.Timestamp.fromMillis(ms) : ms; // real SDK needs a Timestamp; the test mocks store numbers
+function hubCache() {
+  const b = B(); if (!b) return null;
+  if (!b.hc || b.hc.v !== HUB_V) b.hc = { v: HUB_V, msgs: [], more: true, full: {} };
+  return b.hc;
+}
+const msgOf = d => { const x = d.data() || {}; return { id: d.id, uid: x.uid, name: x.name, text: String(x.text == null ? '' : x.text), at: hubMs(x.at) ?? Date.now() }; };
+const evOf = d => Object.assign({ id: d.id }, d.data(), { createdAt: hubMs(d.data().createdAt) });
+const byAt = (a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+/* One-shot read: getDocs on the real SDK; first snapshot of a listener where a stand-in has no getDocs. */
+function hubOnce(q) {
+  const f = Cloud.f; if (f.getDocs) return f.getDocs(q);
+  return new Promise((res, rej) => { let done = false, u = null; u = f.onSnapshot(q, s => { if (done) return; done = true; res(s); if (u) u(); }, e => { if (!done) { done = true; rej(e); } }); if (done && u) u(); });
+}
+const fromCache = s => !!(s && s.metadata && s.metadata.fromCache);
+function setMsgs(list) {
+  const seen = new Map(); for (const m of list) seen.set(m.id, m);
+  Chat.msgs = [...seen.values()].sort(byAt);
+  const hc = hubCache(); if (hc) { hc.msgs = Chat.msgs.slice(-MSG_CAP); hc.more = Chat.more || Chat.msgs.length > MSG_CAP; }
+}
+function chatChanged() {
+  Store.save();
+  if (ROUTE.path !== 'batch') return;
+  if (ROUTE.q.t === 'chat') { paintChatList(); Chat.markRead(); } else { const c = $('#chatbadge'); if (c) c.outerHTML = chatUnreadBadge(); }
+}
+const evWindow = () => addDays(today(), -60);
+function evChanged() { B().events = (B().events || []).filter(e => e.date >= evWindow()); Store.save(); if (ROUTE.path === 'batch' && (ROUTE.q.t || 'cal') === 'cal') paintBatch(); }
 function subscribeBatch() {
-  Cloud.stop(); Chat.msgs = []; const f = Cloud.f, id = B().id, db = Cloud.db;
-  const err = e => { if (e.code === 'permission-denied') { toast('You are no longer a member of this batch'); Calls.stop(); D.batch = null; Store.save(); render(); Calls.start(); } };
-  Cloud.unsubs.push(f.onSnapshot(f.query(f.collection(db, 'batches', id, 'events'), f.where('date', '>=', addDays(today(), -60)), f.orderBy('date')), s => { B().events = s.docs.map(d => Object.assign({ id: d.id }, d.data(), { createdAt: null })); Store.save(); if ((ROUTE.q.t || 'cal') === 'cal') paintBatch(); }, err));
-  Cloud.unsubs.push(f.onSnapshot(f.collection(db, 'batches', id, 'members'), s => { B().members = s.docs.map(d => ({ id: d.id, name: d.data().name, year: d.data().year })); if (ROUTE.q.t === 'mem') paintBatch(); }, err));
-  Cloud.unsubs.push(f.onSnapshot(f.collection(db, 'batches', id, 'logstats'), s => { B().stats = s.docs.map(d => ({ id: d.id, counts: d.data().counts || {} })); if (ROUTE.q.t === 'log') paintBatch(); }, err));
+  Cloud.stop(); const f = Cloud.f, id = B().id, db = Cloud.db, gen = Cloud.gen, hc = hubCache(), now = Date.now(), t = ROUTE.q.t || 'cal';
+  const same = () => !!(B() && B().id === id), live = () => Cloud.gen === gen && same(); // same: data still applies; live: this subscription is current
+  const err = e => { if (!same()) return; if (e && !e.code) { try { ErrLog.capture('hub', String(e.message || e), e.stack); } catch (x) {} } if (e && e.code === 'permission-denied') { toast('You are no longer a member of this batch'); Calls.stop(); D.batch = null; Store.save(); render(); Calls.start(); } };
+  const col = n => f.collection(db, 'batches', id, n);
+  Chat.sync(); // paint from cache straight away
+  const due = k => !(now - (hc.full[k] || 0) < HUB_DAY);
+  const daily = async (k, fn) => { if (!due(k)) return; const prev = hc.full[k]; hc.full[k] = now; try { await fn(); } catch (e) { hc.full[k] = prev; throw e; } };
+
+  // events
+  (async () => {
+    await daily('ev', async () => {
+      const s = await hubOnce(f.query(col('events'), f.where('date', '>=', evWindow()), f.orderBy('date'))); if (!same() || fromCache(s)) return;
+      const got = s.docs.map(evOf), top = Math.max(0, ...got.map(e => e.createdAt || 0));
+      B().events = got.concat((B().events || []).filter(e => (e.createdAt || 0) > top && !got.some(g => g.id === e.id))); evChanged(); // keep anything a newer listener already added
+    });
+    if (!live()) return;
+    // newest createdAt we hold; with none, start just before the last full fetch (1 h margin for clock skew) so an
+    // empty window does not re-read every old event of the batch on each open
+    const since = Math.max(0, (hc.full.ev || 0) - 36e5, ...(B().events || []).map(e => e.createdAt || 0));
+    Cloud.unsubs.push(f.onSnapshot(f.query(col('events'), f.where('createdAt', '>=', tsVal(since))), s => {
+      if (!live()) return;
+      const got = s.docs.map(evOf).filter(e => !(typeof e.createdAt === 'number' && e.createdAt < since)), ids = new Set(got.map(e => e.id));
+      let list = B().events || [];
+      if (!fromCache(s)) list = list.filter(e => !(typeof e.createdAt === 'number' && e.createdAt >= since) || ids.has(e.id));
+      const m = new Map(list.map(e => [e.id, e])); got.forEach(e => m.set(e.id, e)); B().events = [...m.values()]; evChanged();
+    }, err));
+  })().catch(err);
+
+  // members + logstats: live while their tab is open, otherwise at most one fetch a day
+  const memOf = d => ({ id: d.id, name: d.data().name, year: d.data().year }), stOf = d => ({ id: d.id, counts: d.data().counts || {} });
+  for (const [k, tab, key, map] of [['members', 'mem', 'members', memOf], ['logstats', 'log', 'stats', stOf]]) {
+    const apply = s => { if (!same() || fromCache(s)) return; B()[key] = s.docs.map(map); hc.full[k] = Date.now(); Store.save(); if (ROUTE.path === 'batch' && t === tab) paintBatch(); };
+    if (t === tab) Cloud.unsubs.push(f.onSnapshot(col(k), apply, err));
+    else daily(k, async () => apply(await hubOnce(col(k)))).catch(err);
+  }
+
+  // messages
   try {
-  Cloud.unsubs.push(f.onSnapshot(f.query(f.collection(db, 'batches', id, 'messages'), f.orderBy('at', 'desc'), f.limit(150)), s => {
-    Chat.msgs = s.docs.map(d => { const x = d.data(); return { id: d.id, uid: x.uid, name: x.name, text: x.text, at: x.at && x.at.toMillis ? x.at.toMillis() : (typeof x.at === 'number' ? x.at : Date.now()) }; }).reverse();
-    if (ROUTE.q.t === 'chat') { paintChatList(); Chat.markRead(); } else { const c = $('#chatbadge'); if (c) c.outerHTML = chatUnreadBadge(); }
-  }, err));
+    (async () => {
+      await daily('msg', async () => {
+        const s = await hubOnce(f.query(col('messages'), f.orderBy('at', 'desc'), f.limit(MSG_FULL))); if (!same() || fromCache(s)) return;
+        const got = s.docs.map(msgOf).sort(byAt), list = Chat.msgs;
+        if (!got.length) { Chat.more = false; setMsgs([]); } // empty collection (e.g. admin cleared the chat)
+        else {
+          const lo = got[0].at, hi = got[got.length - 1].at, whole = got.length < MSG_FULL;
+          // older cached messages are kept only if they join up with this page (no gap) and there can be older ones
+          const older = !whole && list.some(m => m.at >= lo) ? list.filter(m => m.at < lo) : [];
+          Chat.more = !whole; setMsgs(older.concat(got, list.filter(m => m.at > hi)));
+        }
+        chatChanged();
+      });
+      if (!live()) return;
+      const since = Chat.msgs.length ? Chat.msgs[Chat.msgs.length - 1].at : 0;
+      Cloud.unsubs.push(f.onSnapshot(f.query(col('messages'), f.where('at', '>=', tsVal(since)), f.orderBy('at')), s => {
+        if (!live()) return;
+        const got = s.docs.map(msgOf), ids = new Set(got.map(m => m.id));
+        let list = Chat.msgs; if (!fromCache(s)) list = list.filter(m => m.at < since || ids.has(m.id));
+        setMsgs(list.concat(got)); chatChanged();
+      }, err));
+    })().catch(err);
   } catch (e) { ErrLog.capture('chat', String(e && e.message || e), e && e.stack); }
 }
+/* Older chat history on demand: the 50 messages before the oldest one we hold. */
+async function loadOlderChat() {
+  const hc = hubCache(); if (!hc || Chat.loading || !Chat.more || !Cloud.f.getDocs) return;
+  const f = Cloud.f, oldest = Chat.msgs.length ? Chat.msgs[0].at : Date.now() + 1;
+  Chat.loading = true; const box = $('#chatlist'), h0 = box ? box.scrollHeight - box.scrollTop : 0;
+  try {
+    const s = await f.getDocs(f.query(f.collection(Cloud.db, 'batches', B().id, 'messages'), f.where('at', '<', tsVal(oldest)), f.orderBy('at', 'desc'), f.limit(MSG_PAGE)));
+    const got = s.docs.map(msgOf).filter(m => m.at < oldest);
+    if (got.length < MSG_PAGE) Chat.more = false;
+    setMsgs(got.concat(Chat.msgs)); // the saved cache keeps only the newest MSG_CAP; older pages stay in memory
+    Store.save(); paintChatList(false, true);
+    const b2 = $('#chatlist'); if (b2) b2.scrollTop = b2.scrollHeight - h0;
+  } catch (e) { toast('Could not load older messages'); }
+  Chat.loading = false;
+}
+ACT.chatolder = () => loadOlderChat();
 async function publishStats() { const f = Cloud.f; await f.setDoc(f.doc(Cloud.db, 'batches', B().id, 'logstats', Cloud.user.uid), { counts: myCounts(), updatedAt: f.serverTimestamp() }); }
 ACT.bpub = () => { if (!B().shareStats) return toast('Turn on sharing first'); publishStats().then(() => toast('Counts updated'), e => toast(e.code || e.message)); };
 ACT.bshare = async el => {
@@ -182,11 +292,17 @@ ACT.bevsave = async () => {
   const title = val('ev_t'); if (!title) return toast('Enter a title');
   const f = Cloud.f, reps = +val('ev_r') || 1, base = val('ev_d') || today();
   try {
-    for (let i = 0; i < reps; i++) await f.addDoc(f.collection(Cloud.db, 'batches', B().id, 'events'), { title, type: getChips('ev_ty', $('#sheet')), date: addDays(base, 7 * i), time: val('ev_tm'), presenter: val('ev_p'), venue: val('ev_v'), notes: val('ev_n'), createdBy: Cloud.user.uid, createdAt: f.serverTimestamp() });
-    closeSheet(); toast(reps > 1 ? reps + ' events added' : 'Event added');
+    const ty = getChips('ev_ty', $('#sheet')), tm = val('ev_tm'), pr = val('ev_p'), ve = val('ev_v'), no = val('ev_n');
+    for (let i = 0; i < reps; i++) {
+      const ev = { title, type: ty, date: addDays(base, 7 * i), time: tm, presenter: pr, venue: ve, notes: no, createdBy: Cloud.user.uid };
+      const r = await f.addDoc(f.collection(Cloud.db, 'batches', B().id, 'events'), Object.assign({}, ev, { createdAt: f.serverTimestamp() }));
+      // show it at once; the createdAt listener later replaces it with the server copy (same id)
+      const rid = String(r && r.id || '').split('/').pop(); if (rid && B() && !(B().events || []).some(e => e.id === rid)) (B().events = B().events || []).push(Object.assign({ id: rid, createdAt: null }, ev));
+    }
+    evChanged(); closeSheet(); toast(reps > 1 ? reps + ' events added' : 'Event added');
   } catch (e) { toast('Could not save: ' + (e.code || e.message)); }
 };
-ACT.bevdel = async el => { if (!(await uiConfirm('Delete this event for everyone?'))) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'batches', B().id, 'events', el.dataset.id)); } catch (e) { toast(e.code || e.message); } };
+ACT.bevdel = async el => { const eid = el.dataset.id; if (!(await uiConfirm('Delete this event for everyone?'))) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'batches', B().id, 'events', eid)); if (B()) { B().events = (B().events || []).filter(e => e.id !== eid); evChanged(); } } catch (e) { toast(e.code || e.message); } };
 ACT.bevics = () => { const ev = (B().events || []).filter(e => e.date >= today()).map(e => ({ id: 'b' + e.id, date: e.date, time: e.time, title: e.type + ': ' + e.title, desc: [e.presenter, e.venue, e.notes].filter(Boolean).join(' · ') })); if (!ev.length) return toast('No upcoming events'); download(makeICS(ev), 'batch-calendar.ics'); };
 ACT.bevwa = () => { const ev = (B().events || []).filter(e => e.date >= today() && e.date <= addDays(today(), 7)).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))); if (!ev.length) return toast('Nothing in the next 7 days'); const msg = `📅 ${B().name} — this week\n\n` + ev.map(e => `• ${fmt(e.date)}${e.time ? ' ' + e.time : ''} — ${e.type}: ${e.title}${e.presenter ? ' (' + e.presenter + ')' : ''}${e.venue ? ' @ ' + e.venue : ''}`).join('\n'); window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };
 ACT.bleave = async () => { if (!(await uiConfirm('Leave this batch? Your shared counts will be removed.'))) return; Calls.stop(); const f = Cloud.f, id = B().id, uid = Cloud.user.uid; try { await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'presence', uid)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'logstats', uid)).catch(() => {}); await f.deleteDoc(f.doc(Cloud.db, 'batches', id, 'members', uid)); } catch (e) {} Cloud.stop(); D.batch = null; Store.save(); render(); Calls.start(); };
@@ -233,14 +349,17 @@ ACT.bdelete = async () => {
 };
 ACT.bclearchat = async () => {
   if (!bAdmin() || !(await uiConfirm('Delete ALL chat messages in this batch for everyone?'))) return;
-  try { const n = await clearBatchChat(B().id); toast(n + ' messages deleted'); } catch (e) { toast('Could not clear: ' + (e.code || e.message)); }
+  try { const n = await clearBatchChat(B().id); Chat.more = false; setMsgs([]); Store.save(); toast(n + ' messages deleted'); } catch (e) { toast('Could not clear: ' + (e.code || e.message)); }
 };
 
 /* ---------- Batch group chat ----------
    batches/{id}/messages/{m} = { uid, name, text, at }. Only members can read or post; you can delete your own
-   messages and the batch admin can delete any. The last 150 messages are kept in memory only (not in backups). */
+   messages and the batch admin can delete any. The newest MSG_CAP messages are cached in D.batch.hc (encrypted vault,
+   so they are also inside encrypted .pgbak backups, but never in Drive sync); older pages load on demand. */
 const Chat = {
-  msgs: [],
+  msgs: [], more: true, loading: false, hc: null,
+  /* (re)load the in-memory list from the encrypted cache when the batch/cache changed; keeps older pages loaded this session */
+  sync() { const hc = hubCache(); if (!hc) { this.msgs = []; this.hc = null; return; } if (this.hc !== hc) { this.hc = hc; this.msgs = (hc.msgs || []).slice(); this.more = hc.more !== false; } },
   lastRead() { return (D.batch && D.batch.chatRead) || 0; },
   unread() { const me = Cloud.user?.uid, lr = this.lastRead(); return this.msgs.filter(m => m.uid !== me && m.at > lr).length; },
   markRead() { const last = this.msgs.length ? this.msgs[this.msgs.length - 1].at : 0; if (D.batch && last > this.lastRead()) { D.batch.chatRead = last; Store.save(); } }
@@ -257,17 +376,18 @@ function paintChat(el) {
   $('#chatform').addEventListener('submit', e => { e.preventDefault(); sendChat(); });
   paintChatList(true); Chat.markRead();
 }
-function paintChatList(force) {
+function paintChatList(force, keepPos) {
   const box = $('#chatlist'); if (!box) return;
-  const near = force || box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+  const near = !keepPos && (force || box.scrollHeight - box.scrollTop - box.clientHeight < 120);
+  if (!box.dataset.older) { box.dataset.older = '1'; box.addEventListener('scroll', () => { if (box.scrollTop < 40 && Chat.more && Chat.msgs.length) loadOlderChat(); }, { passive: true }); }
   const me = Cloud.user?.uid; let day = '', prev = null;
-  box.innerHTML = Chat.msgs.length ? Chat.msgs.map(m => {
+  box.innerHTML = (Chat.more && Chat.msgs.length && Cloud.f.getDocs ? `<div class="chatday"><button type="button" class="linkbtn" data-act="chatolder">${Chat.loading ? 'Loading…' : 'Load older messages'}</button></div>` : '') + (Chat.msgs.length ? Chat.msgs.map(m => {
     const d = new Date(m.at), dk = d.toDateString(); let h = '';
     if (dk !== day) { day = dk; prev = null; h += `<div class="chatday">${fmt(d.toISOString().slice(0, 10))}</div>`; }
     const mine = m.uid === me, cont = prev && prev.uid === m.uid && m.at - prev.at < 5 * 60e3; prev = m;
     const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return h + `<div class="msg${mine ? ' me' : ''}${cont ? ' cont' : ''}">${!mine && !cont ? `<b>${esc(m.name || 'Member')}</b>` : ''}<p>${esc(m.text).replace(/\n/g, '<br>')}</p><small>${t}${mine || bAdmin() ? ` · <button type="button" class="linkbtn" data-act="chatdel" data-id="${m.id}">delete</button>` : ''}</small></div>`;
-  }).join('') : '<p class="empty">No messages yet. Say hi to your batch 👋</p>';
+    return h + `<div class="msg${mine ? ' me' : ''}${cont ? ' cont' : ''}">${!mine && !cont ? `<b>${esc(m.name || 'Member')}</b>` : ''}<p>${esc(m.text).replace(/\n/g, '<br>')}</p><small>${t}${mine || bAdmin() ? ` · <button type="button" class="linkbtn" data-act="chatdel" data-id="${esc(m.id)}">delete</button>` : ''}</small></div>`;
+  }).join('') : '<p class="empty">No messages yet. Say hi to your batch 👋</p>');
   if (near) box.scrollTop = box.scrollHeight;
 }
 async function sendChat() {
@@ -278,4 +398,4 @@ async function sendChat() {
   try { await f.addDoc(f.collection(Cloud.db, 'batches', B().id, 'messages'), { uid: Cloud.user.uid, name: (me && me.name) || D.settings.name || Cloud.user.displayName || 'Member', text, at: f.serverTimestamp() }); }
   catch (e) { ta.value = text; toast(e.code === 'permission-denied' ? 'You are not a member of this batch' : 'Could not send — check your internet'); }
 }
-ACT.chatdel = async el => { if (!(await uiConfirm('Delete this message for everyone?'))) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'batches', B().id, 'messages', el.dataset.id)); } catch (e) { toast('Could not delete'); } };
+ACT.chatdel = async el => { const mid = el.dataset.id; if (!(await uiConfirm('Delete this message for everyone?'))) return; try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'batches', B().id, 'messages', mid)); if (B()) { setMsgs(Chat.msgs.filter(m => m.id !== mid)); Store.save(); paintChatList(); } } catch (e) { toast('Could not delete'); } };

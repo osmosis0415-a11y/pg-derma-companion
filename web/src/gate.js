@@ -165,7 +165,7 @@ const Gate = {
   async signOut() {
     if (!(await uiConfirm('Sign out of PG Derma Companion on this device? Your encrypted data stays on this device; you will need Google sign-in (and your PIN) to open it again.'))) return;
     try { await Cloud.f.signOut(Cloud.auth); } catch (e) {}
-    await IDB.del('meta', 'gate'); await Drive.forget().catch(() => {}); location.reload();
+    await IDB.del('meta', 'gate'); Usage.clearLocal(); await Drive.forget().catch(() => {}); location.reload();
   }
 };
 
@@ -204,6 +204,9 @@ function vAdmin() {
   if (tab === 'reports') return vAdminReports();
   if (tab === 'design') return vAdminDesign();
   if (tab === 'bots') return vAdminBots();
+  if (tab === 'analytics') return vAdminAnalytics();
+  if (tab === 'storage') return vAdminStorage();
+  if (tab === 'health') return vAdminHealth();
   main().innerHTML = `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === tab ? ' on' : ''}" href="#/admin?t=${k}">${l} <span id="cnt_${k}"></span></a>`).join('')}</div>
   <div id="alist" class="card"><p class="muted small">Loading…</p></div>
   <a class="card link" href="#/admin?t=design"><b>${ic('grid')} Deploy designs</b><small class="muted"> — Bento / Glass home, X-style feed, micro-learning deck ›</small></a>
@@ -235,7 +238,7 @@ ACT.adminset = async el => {
 };
 ACT.adminshare = () => { const url = location.origin + location.pathname; const msg = `PG Derma Companion — app for DVL residents 🩺\n${url}\nOpen it, tap “Continue with Google”, and I'll approve you.`; if (navigator.share) navigator.share({ text: msg }).catch(() => {}); else window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank'); };
 ACT.appsignout = () => Gate.signOut();
-const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['design', 'Designs'], ['bots', 'Bots'], ['batches', 'Batches'], ['content', 'Content'], ['reports', 'Reports'], ['errors', 'Errors']];
+const ADMIN_TABS = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['design', 'Designs'], ['bots', 'Bots'], ['batches', 'Batches'], ['content', 'Content'], ['reports', 'Reports'], ['errors', 'Errors'], ['analytics', 'Analytics'], ['storage', 'Storage'], ['health', 'Health']];
 ACT.admincalls = async el => {
   const on = el.dataset.on !== '1';
   if (on && !(await uiConfirm('Allow this person to make and receive voice/video calls with batchmates?', { ok: 'Allow calls' }))) return;
@@ -244,7 +247,7 @@ ACT.admincalls = async el => {
 };
 ACT.admindel = async el => {
   if (!(await uiConfirm('Remove this record? If they sign in again they will appear as a new request.'))) return;
-  try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'approvals', el.dataset.id)); toast('Removed'); } catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
+  try { await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'approvals', el.dataset.id)); await Cloud.f.deleteDoc(Cloud.f.doc(Cloud.db, 'usage', el.dataset.id)).catch(() => {}); toast('Removed'); } catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
 };
 /* ---------- Admin → Content: review study items drafted by the bot ---------- */
 function contentPreview(x) {
@@ -419,3 +422,127 @@ ACT.botset = async el => {
   try { await Cloud.f.setDoc(Cloud.f.doc(Cloud.db, 'config', 'bots'), { [k]: v, updatedAt: Cloud.f.serverTimestamp() }, { merge: true }); botsCfg = Object.assign({}, botsCfg, { [k]: v }); toast(v ? 'Switched on' : 'Switched off'); vAdminBots(); }
   catch (e) { toast('Could not save: ' + (e.code || e.message)); }
 };
+
+/* ---------- Admin → Analytics / Storage / Health (numbers only; maths in usage.js) ---------- */
+const admMs = x => !x ? 0 : x.toMillis ? x.toMillis() : x.seconds ? x.seconds * 1000 : typeof x === 'number' ? x : Date.parse(x) || 0;
+const adminChips = t => `<div class="chips">${ADMIN_TABS.map(([k, l]) => `<a class="chip${k === t ? ' on' : ''}" href="#/admin?t=${k}">${l}</a>`).join('')}</div>`;
+const admAgo = x => { const t = admMs(x); if (!t) return ''; const s = (Date.now() - t) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + ' min ago' : s < 86400 ? Math.floor(s / 3600) + ' h ago' : Math.floor(s / 86400) + ' d ago'; };
+const nfmt = n => n == null ? '—' : Number(n).toLocaleString('en-IN');
+const pfmt = p => p == null ? '—' : p + '%';
+const LIGHT = { green: ['🟢', 'All good'], yellow: ['🟡', 'Needs a look'], red: ['🔴', 'Action needed'] };
+function lightHTML(h, compact) {
+  const [e, l] = LIGHT[h.light] || LIGHT.green;
+  return `<div class="card hlight hl-${h.light}" id="hlight" data-light="${h.light}"><b>${e} ${l}</b>${h.reasons.length ? (compact ? `<small class="muted"> · ${esc(h.reasons[0])}${h.reasons.length > 1 ? ' +' + (h.reasons.length - 1) : ''}</small>` : `<ul class="small">${h.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>`) : '<small class="muted"> · no problems found</small>'}${compact ? ' <a class="link small" href="#/admin?t=health">Health ›</a>' : ''}</div>`;
+}
+const statsHTML = rows => `<div class="stats">${rows.map(([n, l]) => `<div class="stat"><b>${esc(typeof n === 'number' ? nfmt(n) : n)}</b><small>${esc(l)}</small></div>`).join('')}</div>`;
+function barsSVG(items, label) {
+  const W = 320, H = 120, n = items.length || 1, bw = W / n, max = Math.max(1, ...items.map(x => x.n));
+  return `<svg class="abars" viewBox="0 0 ${W} ${H + 18}" role="img" aria-label="${esc(label)}">${items.map((x, i) => { const h = Math.round(x.n / max * H); return `<rect x="${(i * bw + 2).toFixed(1)}" y="${H - h}" width="${(bw - 4).toFixed(1)}" height="${h}" rx="3"><title>${esc(x.label)}: ${x.n}</title></rect>${x.n ? `<text x="${(i * bw + bw / 2).toFixed(1)}" y="${Math.max(10, H - h - 3)}" text-anchor="middle">${x.n}</text>` : ''}${i % 3 === 0 || i === n - 1 ? `<text class="ax" x="${(i * bw + bw / 2).toFixed(1)}" y="${H + 14}" text-anchor="middle">${esc(x.label)}</text>` : ''}`; }).join('')}</svg>`;
+}
+function hbarsHTML(obj, empty) {
+  const e = Object.entries(obj || {}).sort((a, b) => b[1] - a[1]), max = Math.max(1, ...e.map(x => x[1]));
+  return e.length ? `<div class="hbars">${e.map(([k, v]) => `<div class="hb"><span>${esc(k)}</span><i style="width:${Math.max(2, Math.round(v / max * 100))}%"></i><b>${nfmt(v)}</b></div>`).join('')}</div>` : `<p class="muted small">${esc(empty || 'No data yet.')}</p>`;
+}
+const gaugeHTML = (name, g, sub) => `<div class="gauge g-${g.level}" data-level="${g.level}"><div class="row between"><b>${esc(name)}</b><small>${pfmt(g.pct)}</small></div><div class="gbar"><i style="width:${Math.min(100, g.pct)}%"></i></div><small class="muted">${esc(sub || '')}</small></div>`;
+async function fsCount(q) {
+  const f = Cloud.f;
+  try { if (f.getCountFromServer) return (await f.getCountFromServer(q)).data().count; return (await f.getDocs(q)).size; } catch (e) { return null; }
+}
+/* One cached read of what the three tabs share (approvals, heartbeat docs, recent errors, bot heartbeat). */
+let adminCache = null;
+async function adminData(force) {
+  if (adminCache && !force && Date.now() - adminCache.now < 60000) return adminCache;
+  await Cloud.init(); const f = Cloud.f, db = Cloud.db, now = Date.now();
+  const [ap, us, er, bot] = await Promise.all([
+    f.getDocs(f.collection(db, 'approvals')),
+    f.getDocs(f.collection(db, 'usage')),
+    f.getDocs(f.query(f.collection(db, 'errors'), f.orderBy('createdAt', 'desc'), f.limit(300))).catch(() => ({ docs: [] })),
+    f.getDoc(f.doc(db, 'system', 'bot')).catch(() => null)]);
+  const row = d => Object.assign({ id: d.id }, d.data());
+  adminCache = { now, today: usageDay(now), approvals: ap.docs.map(row), usage: us.docs.map(row).filter(x => typeof x.day === 'string'), errors: er.docs.map(row), bot: bot && bot.exists() ? bot.data() : null };
+  return adminCache;
+}
+function adminMetrics(d, extra) {
+  const act7 = activeSince(d.usage, d.today, 7), act = activeCounts(d.usage, d.today);
+  const errs7 = d.errors.filter(e => d.now - admMs(e.createdAt || e.at) <= 7 * 864e5);
+  const ops = dailyOps(act.today);
+  const m = { now: d.now, act, act7, errs7, crashFree: crashFree(act7.map(x => x.id), errs7.map(e => e.uid)), ver: versionAdoption(act7, typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''),
+    syncPct: syncHealth(act7, d.now), bot: d.bot ? { lastRun: admMs(d.bot.lastRun), ok: d.bot.ok } : null,
+    gauges: [Object.assign(gauge(ops.reads, FS_FREE.reads), { name: 'Daily reads' }), Object.assign(gauge(ops.writes, FS_FREE.writes), { name: 'Daily writes' })], ops };
+  m.latestPct = m.ver.pct;
+  Object.assign(m, extra || {});
+  m.light = healthLight(m);
+  return m;
+}
+const yrOf = (d, u) => u.yr || (d.approvals.find(a => a.id === u.id) || {}).year || 'unknown';
+function adminLoadErr(sel, e) { const el = $(sel); if (el) el.innerHTML = `<p class="err">${esc(e.code || e.message || 'Could not load')}</p>`; }
+
+function vAdminAnalytics() {
+  setTitle('Analytics', true);
+  main().innerHTML = `${adminChips('analytics')}<p class="small muted">Per-account daily counts from users who opted in to usage sharing (Settings → Privacy). No names, patient data or notes.</p><div id="aan"><p class="muted small">Loading…</p></div>`;
+  Cloud.init().then(async () => {
+    const d = await adminData(), m = adminMetrics(d), f = Cloud.f, db = Cloud.db, el = $('#aan'); if (!el) return;
+    const st = countBy(d.approvals, x => x.status), weeks = weekBuckets(d.approvals.map(x => admMs(x.requestedAt)).filter(Boolean), d.now, 12).map(w => ({ label: new Date(w.start + 864e5).toISOString().slice(5, 10), n: w.n }));
+    const u30 = activeSince(d.usage, d.today, 30);
+    el.innerHTML = `${lightHTML(m.light, true)}
+      <div class="card"><h3>Accounts</h3>${statsHTML([[st.approved || 0, 'approved'], [st.pending || 0, 'pending'], [st.rejected || 0, 'rejected']])}</div>
+      <div class="card"><h3>Active users</h3>${statsHTML([[m.act.today, 'today'], [m.act.d7, 'last 7 days'], [m.act.d30, 'last 30 days']])}<small class="muted">${nfmt(d.usage.length)} users have ever sent counts.</small></div>
+      <div class="card"><h3>Sign-ups per week</h3>${barsSVG(weeks, 'Sign-ups per week, last 12 weeks')}<small class="muted">Last 12 weeks, by request date.</small></div>
+      <div class="card"><h3>By residency year <small class="muted">active 30 days</small></h3>${hbarsHTML(countBy(u30, u => yrOf(d, u)))}</div>
+      <div class="card"><h3>By department</h3>${hbarsHTML(countBy(u30, u => u.dept || 'derma'))}</div>
+      <div class="card"><h3>Platforms</h3>${hbarsHTML(countBy(u30, u => u.plat))}<h4>Installed app vs browser</h4>${hbarsHTML(countBy(u30, u => u.inst ? 'installed' : 'browser'))}</div>
+      <div class="card"><h3>Feature use <small class="muted">screen opens, latest report per user</small></h3>${hbarsHTML(sumMaps(u30.map(u => u.feat)), 'No screen opens reported yet.')}</div>
+      <div class="card"><h3>Batches</h3><div id="abatch"><p class="muted small">Counting…</p></div></div>`;
+    const bs = await f.getDocs(f.collection(db, 'batches')), wk = new Date(d.now - 7 * 864e5);
+    const rows = await Promise.all(bs.docs.map(async b => ({ name: b.data().name || b.id, members: await fsCount(f.collection(db, 'batches', b.id, 'members')), msgs: await fsCount(f.query(f.collection(db, 'batches', b.id, 'messages'), f.where('at', '>=', wk))) })));
+    const be = $('#abatch'); if (be) be.innerHTML = rows.length ? `<table class="atable"><tr><th>Batch</th><th>Members</th><th>Msgs / 7 d</th></tr>${rows.sort((a, b) => (b.members || 0) - (a.members || 0)).map(r => `<tr><td>${esc(r.name)}</td><td>${nfmt(r.members)}</td><td>${nfmt(r.msgs)}</td></tr>`).join('')}</table>` : '<p class="muted small">No batches yet.</p>';
+  }).catch(e => adminLoadErr('#aan', e));
+}
+const STORE_COLLS = ['approvals', 'usage', 'errors', 'posts', 'profiles', 'content', 'digest', 'batches', 'stories', 'study', 'follows', 'reports'];
+function vAdminStorage() {
+  setTitle('Storage', true);
+  main().innerHTML = `${adminChips('storage')}<p class="small muted">Firestore free tier: 1 GiB stored, 50,000 reads and 20,000 writes a day. Sizes and daily use are rough estimates (documented in usage.js).</p><div id="ast"><p class="muted small">Counting…</p></div>`;
+  Cloud.init().then(async () => {
+    const f = Cloud.f, db = Cloud.db, d = await adminData();
+    const counts = {}; await Promise.all(STORE_COLLS.map(async c => { counts[c] = await fsCount(f.collection(db, c)); }));
+    const bytes = sizeEstimate(counts), sg = gauge(bytes, FS_FREE.bytes), m = adminMetrics(d), [rg, wg] = m.gauges;
+    const act30 = activeSince(d.usage, d.today, 30), drv = act30.filter(u => u.drv), apps = drv.map(u => +u.drv.appMB || 0);
+    const full = drv.filter(u => u.drv.totalGB > 0 && u.drv.usedGB / u.drv.totalGB > 0.9), stale = act30.filter(u => u.lastSync != null && d.now - u.lastSync > 7 * 864e5);
+    const who = list => list.length ? `<ul class="small">${list.map(u => `<li><code>${esc(u.id.slice(0, 8))}</code> · ${esc(yrOf(d, u))}</li>`).join('')}</ul>` : '<p class="muted small">None.</p>';
+    const el = $('#ast'); if (!el) return;
+    el.innerHTML = `<div class="card"><h3>Documents per collection</h3><table class="atable"><tr><th>Collection</th><th>Docs</th><th>≈ size</th></tr>${STORE_COLLS.map(c => `<tr><td>${esc(c)}</td><td data-c="${esc(c)}">${nfmt(counts[c])}</td><td>${counts[c] == null ? '—' : (counts[c] * (FS_AVG_BYTES[c] || 1000) / 1048576).toFixed(2) + ' MB'}</td></tr>`).join('')}</table><small class="muted">Top-level collections only; batch chats and DM messages live in sub-collections.</small></div>
+      <div class="card"><h3>Free-tier use</h3>${gaugeHTML('Stored data', sg, '≈ ' + (bytes / 1048576).toFixed(1) + ' MB of 1,024 MB')}${gaugeHTML('Daily reads', rg, '≈ ' + nfmt(m.ops.reads) + ' of 50,000 (' + m.act.today + ' active today × ' + FS_PER_USER.reads + ')')}${gaugeHTML('Daily writes', wg, '≈ ' + nfmt(m.ops.writes) + ' of 20,000 (' + m.act.today + ' active today × ' + FS_PER_USER.writes + ')')}</div>
+      <div class="card"><h3>Google Drive backups <small class="muted">users' own Drives</small></h3>${statsHTML([[drv.length, 'users reporting'], [apps.length ? (apps.reduce((a, b) => a + b, 0) / 1024).toFixed(2) + ' GB' : '—', 'total backups'], [apps.length ? (apps.reduce((a, b) => a + b, 0) / apps.length).toFixed(1) + ' MB' : '—', 'average backup']])}
+        <h4>Drive over 90% full (${full.length})</h4>${who(full)}<h4>Not synced for 7+ days (${stale.length})</h4>${who(stale)}</div>
+      <div class="card"><h3>On-device storage</h3>${statsHTML([[act30.length ? (act30.reduce((a, u) => a + (+u.lsMB || 0), 0) / act30.length).toFixed(1) + ' MB' : '—', 'average per user'], [act30.length ? Math.max(...act30.map(u => +u.lsMB || 0)).toFixed(1) + ' MB' : '—', 'largest'], [act30.length, 'users (30 d)']])}</div>`;
+  }).catch(e => adminLoadErr('#ast', e));
+}
+const GH_RUNS = 'https://api.github.com/repos/osmosis0415-a11y/pg-derma-companion/actions/runs?per_page=5';
+function vAdminHealth() {
+  setTitle('App health', true);
+  main().innerHTML = `${adminChips('health')}<div id="ahl"><p class="muted small">Loading…</p></div>`;
+  Cloud.init().then(async () => {
+    const d = await adminData(), m = adminMetrics(d), el = $('#ahl'); if (!el) return;
+    const e24 = d.errors.filter(e => d.now - admMs(e.createdAt || e.at) <= 864e5);
+    const byMsg = Object.entries(countBy(m.errs7, e => String(e.msg || '').slice(0, 120))).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const b = m.bot, bAge = b && b.lastRun ? d.now - b.lastRun : null, bBad = !b || !b.lastRun || b.ok === false || bAge > BOT_STALE_MS;
+    const paint = () => { const h = $('#hlight'); if (h) h.outerHTML = lightHTML(m.light); };
+    el.innerHTML = `${lightHTML(m.light)}
+      <div class="card"><h3>Errors</h3>${statsHTML([[e24.length, 'last 24 h'], [m.errs7.length, 'last 7 days'], [pfmt(m.crashFree), 'crash-free users (7 d)']])}
+        <h4>Top messages (7 d)</h4>${byMsg.length ? `<table class="atable">${byMsg.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('')}</table>` : '<p class="muted small">No errors in the last 7 days.</p>'}
+        <h4>By version (7 d)</h4>${hbarsHTML(countBy(m.errs7, e => e.version || '?'), 'No errors.')}<a class="link small" href="#/admin?t=errors">All error reports ›</a></div>
+      <div class="card"><h3>Versions</h3>${statsHTML([[pfmt(m.latestPct), 'active users on latest'], [m.act.d7, 'active (7 d)'], [pfmt(m.syncPct), 'synced in 24 h']])}<small class="muted">Latest: <code>${esc(m.ver.latest || '?')}</code>. Sync health counts active users who use Drive sync.</small>${hbarsHTML(countBy(m.act7, u => u.v))}</div>
+      <div class="card"><h3>Approval bot</h3><p class="small" id="botst" data-bad="${bBad ? 1 : 0}">${bBad ? '🔴' : '🟢'} ${b && b.lastRun ? 'Last run ' + esc(admAgo(b.lastRun)) + (b.ok === false ? ' · reported an error' : '') : 'never'}</p><small class="muted">Written by tools/admin-bot.gs every minute (system/bot). Red when older than 10 minutes.</small></div>
+      <div class="card"><h3>GitHub Actions</h3><div id="ghruns"><p class="muted small">Checking…</p></div></div>`;
+    try {
+      const r = await fetch(GH_RUNS, { headers: { Accept: 'application/vnd.github+json' }, credentials: 'omit', referrerPolicy: 'no-referrer' });
+      if (!r.ok) throw new Error('GitHub ' + r.status);
+      const runs = ((await r.json()).workflow_runs || []).slice(0, 5), g = $('#ghruns'); if (!g) return;
+      const res = x => x.status !== 'completed' ? '🟡 ' + x.status : x.conclusion === 'success' ? '🟢 success' : x.conclusion === 'failure' ? '🔴 failure' : '⚪ ' + (x.conclusion || '');
+      const dep = runs.find(x => /deploy|pages/i.test(x.name || '')), pr = runs.find(x => x.event === 'pull_request');
+      g.innerHTML = `<p class="small">Last deploy: <b>${dep ? esc(res(dep)) + ' · ' + esc(admAgo(dep.created_at)) : '—'}</b><br>Last PR check: <b>${pr ? esc(res(pr)) + ' · ' + esc(admAgo(pr.created_at)) : '—'}</b></p>
+        <table class="atable">${runs.map(x => `<tr><td>${esc(x.name || '')}<br><small class="muted">${esc(x.head_branch || '')} · ${esc(x.event || '')}</small></td><td>${esc(res(x))}<br><small class="muted">${esc(admAgo(x.created_at))}</small></td></tr>`).join('')}</table>`;
+      if (runs[0] && runs[0].status === 'completed') { m.ci = runs[0].conclusion === 'failure' ? 'failure' : 'ok'; m.light = healthLight(m); paint(); }
+    } catch (e) { const g = $('#ghruns'); if (g) g.innerHTML = `<p class="muted small">Could not reach GitHub (${esc(e.message || 'offline')}).</p>`; }
+  }).catch(e => adminLoadErr('#ahl', e));
+}

@@ -102,6 +102,7 @@ function vHome() {
     <a class="btile bstrip" href="${due.length ? '#/cal' : '#/add'}"><span><small>${due.length ? 'Due today' : 'Quick add'}</small><b>${due.length ? esc(due[0].title) : 'New OPD case'}</b></span><em class="bround">${arrow}</em></a>
   </section>`;
   main().innerHTML = `${heroHTML}
+  ${typeof usageAskHTML === 'function' ? usageAskHTML() : ''}
   ${(!D.settings.lastBackup || daysBetween(ymd(D.settings.lastBackup), t) > 7) && !(Gate.cached && !(D.sync && D.sync.on) && !D.settings.backupNudgeOff) ? `<a class="warn" href="#/settings">No backup in the last 7 days — tap to back up</a>` : ''}
   ${Gate.cached && !(D.sync && D.sync.on) && !D.settings.backupNudgeOff ? `<div class="card backupnudge"><span class="bi">${ic('cloud')}</span><div><b>Log in on any phone with just your PIN</b><small class="muted">Turn on the encrypted Google Drive backup. On a new phone, enter your PIN and everything comes back.</small><div class="btnrow"><button class="btn sm" data-act="driveconnect">Turn on backup</button><button class="btn sm ghost" data-act="nudgeoff">Later</button></div></div></div>` : ''}
   ${AppCfg.home === 'classic' && typeof Journal !== 'undefined' && Journal.items().length ? (() => { const jn = Journal.fresh().length, j0 = Journal.items()[0]; return `<a class="card jhome" href="#/journal"><span class="jhi">${ic('news')}</span><span class="sh"><b>Journal digest${jn ? ' · ' + jn + ' new' : ''}</b><small class="muted">${esc(j0.h)}</small></span>›</a>`; })() : ''}

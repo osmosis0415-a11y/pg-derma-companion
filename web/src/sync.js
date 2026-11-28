@@ -212,7 +212,7 @@ const Sync = {
       }
       this.quiet = true; await Store.flush(); this.quiet = false;
       await this.syncPhotos();
-      D.sync.last = new Date().toISOString();
+      D.sync.last = new Date().toISOString(); D.sync.fail = 0;   // local-only; read by the usage heartbeat
       this.set('ok', 'Synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       if (pulled) { toast('Synced changes from your other device'); if (!['add', 'score', 'logadd', 'thesis-setup', 'deid', 'cam'].includes(ROUTE.path) && !$('#sheet').classList.contains('open')) render(); }
     } catch (e) {
@@ -220,6 +220,7 @@ const Sync = {
       if (e.code === 'drive/token') this.set('reconnect', 'Tap to reconnect Google Drive');
       else if (e.code === 'drive/offline') this.set('offline', 'Offline — will sync when back online');
       else { if (e.code !== 'drive/full') ErrLog.capture('sync', e.message || e.code, e.stack); }
+      if (e.code !== 'drive/offline' && D && D.sync) D.sync.fail = (D.sync.fail | 0) + 1;
       if (!['drive/token', 'drive/offline'].includes(e.code)) this.set('error', e.code === 'drive/full' ? 'Your Google Drive is full — free up space or turn off photo sync' : 'Sync failed: ' + (e.message || e.code));
     } finally {
       this.busy = false;
@@ -326,7 +327,7 @@ async function restoreWithPin(pin, m) {
   await IDB.put('kv', 'psynced', []);
   await Store.load(); D.sync = { on: true, photos: true, email: about.user && about.user.emailAddress }; await Store.flush(); await Session.save(); await Drive.persistPending();
   $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); toast('Welcome back — your data is restored. Photos download in the background.', 4500); Sync.start();
-  Calls.start(); Cloud.cfg() && Cloud.init().then(() => { Study.pull(); Social.start(); }).catch(() => {});
+  Calls.start(); Cloud.cfg() && Cloud.init().then(() => { Study.pull(); Social.start(); Usage.start(); }).catch(() => {});
 }
 /* Tell the account (not the data) that a Drive backup exists, so a new phone asks only for the PIN. */
 function markVault(on) { try { if (!Cloud.cfg() || !Cloud.user || !Cloud.f) return; Cloud.f.setDoc(Cloud.f.doc(Cloud.db, 'vaults', Cloud.user.uid), { drive: !!on, updatedAt: Cloud.f.serverTimestamp() }).catch(() => {}); } catch (e) {} }
