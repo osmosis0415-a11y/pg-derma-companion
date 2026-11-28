@@ -2,6 +2,19 @@
 
 Updates install automatically: when a new version is deployed, the app shows **"✨ New version available — tap to update"**.
 
+## 2026-11-28 — Admin dashboards and a cheaper Batch hub
+- **Admin → Analytics / Storage / Health** (admin only):
+  - **Analytics:** approved / pending / rejected, sign-ups per week, by residency year, and batches with members and messages this week.
+  - **Storage:** document counts per collection, and estimated storage and daily reads/writes against the free Firebase limits. The gauges turn yellow at 70% and red at 90%.
+  - **Health:** errors in the last 24 h and 7 days by message and version, the approval bot's last run, the latest GitHub deploy and PR-check status, and a 🟢 / 🟡 / 🔴 summary at the top.
+  - Sections that need per-user usage counts (active users, platforms, Drive, sync, version adoption) say so. Those counts are built but **switched off** until the consent wording is agreed (PR #25).
+- **Approval bot heartbeat:** the bot records each run, so Health turns red if it stops for more than 10 minutes.
+- **Batch hub is about 100× cheaper to reopen:**
+  - Chat, calendar, members and shared counts are kept, encrypted, on your phone. Reopening fetches only what's new: about 2 reads instead of about 240.
+  - Older chat loads when you scroll up or tap "Load older messages".
+  - Deletes by other members can take up to a day to disappear from your phone.
+- **Security rules tightened:** monthly call-relay totals can only be written to month-named records. The new system status record is admin-only.
+
 ## 2026-11-26 — Decluttered screens
 - **Today:**
   - "Scroll the feed" moved off Today (it's one tap away in Study).
