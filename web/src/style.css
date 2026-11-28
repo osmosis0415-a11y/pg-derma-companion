@@ -728,3 +728,9 @@ body.deck-micro .fhint,body.deck-micro .fhint2{color:var(--dk-mut)}
 
 /* Today: one row of four quick actions */
 .quick{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important}.quick a{font-size:12px;padding:10px 4px!important;text-align:center}
+/* Admin analytics / storage / health */
+.hlight b{font-size:15px}.hlight ul{margin:6px 0 0;padding-left:18px}.hl-green{border-left:4px solid var(--green)}.hl-yellow{border-left:4px solid var(--amber)}.hl-red{border-left:4px solid var(--red)}
+.abars{width:100%;height:auto;display:block}.abars rect{fill:var(--acc)}.abars text{font-size:9px;fill:var(--ink)}.abars text.ax{fill:var(--mut)}
+.hbars{display:grid;gap:6px;margin:6px 0}.hb{display:grid;grid-template-columns:minmax(70px,34%) 1fr auto;align-items:center;gap:8px;font-size:13px}.hb span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hb i{display:block;height:10px;border-radius:5px;background:var(--acc)}.hb b{font-size:12px}
+.gauge{margin:10px 0}.gbar{height:10px;border-radius:5px;background:var(--line);overflow:hidden;margin:4px 0}.gbar i{display:block;height:100%;background:var(--green)}.g-warn .gbar i{background:var(--amber)}.g-bad .gbar i{background:var(--red)}
+.atable{width:100%;border-collapse:collapse;font-size:13px}.atable td,.atable th{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:top;word-break:break-word}.atable th{color:var(--mut);font-weight:600}.atable td+td,.atable th+th{text-align:right;white-space:nowrap}

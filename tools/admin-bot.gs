@@ -68,18 +68,28 @@ function setStatus_(uid, status) {
 /* ---------- Notifications ---------- */
 function checkNew_() {
   var lock = LockService.getScriptLock(); if (!lock.tryLock(20000)) return;
+  var ok = false, note = [];
   try {
     var seen = JSON.parse(props_().getProperty('NOTIFIED') || '[]');
     var pending = listByStatus_('pending');
     var fresh = pending.filter(function (p) { return seen.indexOf(p.uid) < 0; });
-    try { pushOut_(); } catch (e) { Logger.log('push: ' + e); }
-    try { digestTick_(); } catch (e) { Logger.log('digest: ' + e); }
-    if (!fresh.length) return;
-    notifyEmail_(fresh, pending.length);
-    notifyTelegram_(fresh);
-    seen = seen.concat(fresh.map(function (p) { return p.uid; })).slice(-500);
-    props_().setProperty('NOTIFIED', JSON.stringify(seen));
-  } finally { lock.releaseLock(); }
+    try { pushOut_(); } catch (e) { Logger.log('push: ' + e); note.push('push'); }
+    try { digestTick_(); } catch (e) { Logger.log('digest: ' + e); note.push('digest'); }
+    if (fresh.length) {
+      notifyEmail_(fresh, pending.length);
+      notifyTelegram_(fresh);
+      seen = seen.concat(fresh.map(function (p) { return p.uid; })).slice(-500);
+      props_().setProperty('NOTIFIED', JSON.stringify(seen));
+    }
+    ok = true;
+  } finally { botBeat_(ok, note.join(',')); lock.releaseLock(); }
+}
+/* Heartbeat for the app's Admin -> Health tab: system/bot { lastRun, ok, note }. No user data. Never throws. */
+function botBeat_(ok, note) {
+  try {
+    var q = '?updateMask.fieldPaths=lastRun&updateMask.fieldPaths=ok&updateMask.fieldPaths=note';
+    fs_('patch', '/system/bot' + q, { fields: { lastRun: { timestampValue: new Date().toISOString() }, ok: { booleanValue: !!ok }, note: { stringValue: String(note || '').slice(0, 60) } } });
+  } catch (e) { Logger.log('beat: ' + e); }
 }
 
 function notifyEmail_(fresh, totalPending) {

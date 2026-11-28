@@ -207,10 +207,21 @@ service cloud.firestore {
         && request.resource.data.hour is int && request.resource.data.hour >= 0 && request.resource.data.hour <= 23;
       allow delete: if signedIn() && (u == request.auth.uid || isAdminUser());
     }
+    // usage/{YYYY-MM}: monthly call-relay estimate (calls.js). Only the admin reads it; the admin may delete usage docs
+    // (also used to clean up when removing an account).
     match /usage/{m} {
       allow read: if isAdminUser();
-      allow create, update: if approved() && request.resource.data.keys().hasOnly(['relayMB', 'relayCalls', 'updatedAt'])
+      allow create, update: if approved() && m.matches('^[0-9]{4}-[0-9]{2}$') && request.resource.data.keys().hasOnly(['relayMB', 'relayCalls', 'updatedAt'])
         && request.resource.data.relayMB is int && request.resource.data.relayCalls is int;
+      allow delete: if isAdminUser();
+    }
+    // App health heartbeats (system/bot). Admin only. The approval bot (tools/admin-bot.gs) writes over the REST API with
+    // the admin's OAuth token, which bypasses security rules; this rule only limits writes from app clients.
+    match /system/{s} {
+      allow read: if isAdminUser();
+      allow write: if isAdminUser() && request.resource.data.keys().hasOnly(['lastRun', 'ok', 'note'])
+        && request.resource.data.ok is bool && request.resource.data.lastRun is timestamp
+        && (!('note' in request.resource.data) || shortStr(request.resource.data.note, 60));
     }
 
     match /batches/{b} {

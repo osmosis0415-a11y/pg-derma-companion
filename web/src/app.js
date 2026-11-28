@@ -77,7 +77,7 @@ async function showLock() {
       if (Gate.signup) { if (!D.settings.name) D.settings.name = Gate.signup.name; if (!D.settings.inst) D.settings.inst = Gate.signup.college; D.community = Object.assign(D.community || {}, { college: (D.community || {}).college || Gate.signup.college }); Gate.signup = null; }
       await Store.flush(); await Session.save();
       $('#lock').hidden = true; $('#app').hidden = false; pin.value = '';
-      lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); Calls.start(); Cloud.cfg() && Cloud.init().then(() => { Study.pull(); Journal.pull(); Social.start(); }).catch(() => {});
+      lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); Calls.start(); Cloud.cfg() && Cloud.init().then(() => { Study.pull(); Journal.pull(); Social.start(); Usage.start(); }).catch(() => {});
     } catch (e) { $('#lerr').textContent = e.message; const pd = $('#pdots'); if (pd) { pd.classList.remove('shake'); void pd.offsetWidth; pd.classList.add('shake'); } $('#unlock').disabled = false; $('#unlock').textContent = auth ? 'Unlock' : 'Create vault'; pin.select(); }
   };
   $('#unlock').onclick = go2; pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); if (auth) go2(); else $('#pin2').focus(); } });
@@ -128,7 +128,7 @@ let lastW = innerWidth; addEventListener('resize', () => { if ((lastW >= 900) !=
   await IDB.open();
   await Gate.ensure();
   if (await Session.resume()) {
-    try { await Store.load(); $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); Calls.start(); Cloud.cfg() && Cloud.init().then(() => { Study.pull(); Journal.pull(); Social.start(); }).catch(() => {}); }
+    try { await Store.load(); $('#lock').hidden = true; $('#app').hidden = false; lastAct = Date.now(); render(); checkNotify(); Sync.start(); Gate.recheck(); Calls.start(); Cloud.cfg() && Cloud.init().then(() => { Study.pull(); Journal.pull(); Social.start(); Usage.start(); }).catch(() => {}); }
     catch (e) { Vault.key = null; D = null; await Session.clear(); showLock(); }
   } else showLock();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
