@@ -15,7 +15,7 @@ window.__installFsMock = (uid, email, name) => {
   const write = (p, data, merge) => locked(() => writeNow(p, data, merge));
   const snapDoc = (k, v) => ({ id: k.split('/').pop(), ref: docRef(k.split('/')), exists: () => v !== undefined, data: () => v });
   const listDocs = q => { const pre = q.p.join('/') + '/', o = load(); let docs = Object.keys(o).filter(k => k.startsWith(pre) && !k.slice(pre.length).includes('/')).map(k => snapDoc(k, o[k]));
-    for (const m of q.m || []) { if (m.op === '==') docs = docs.filter(d => d.data()[m.fld] === m.v); if (m.op === 'array-contains') docs = docs.filter(d => (d.data()[m.fld] || []).includes(m.v)); if (m.op === '>=') docs = docs.filter(d => d.data()[m.fld] >= m.v);
+    for (const m of q.m || []) { if (m.op === '==') docs = docs.filter(d => d.data()[m.fld] === m.v); if (m.op === 'array-contains') docs = docs.filter(d => (d.data()[m.fld] || []).includes(m.v)); if (m.op === '>=') docs = docs.filter(d => d.data()[m.fld] >= m.v); if (m.op === '>') docs = docs.filter(d => d.data()[m.fld] > m.v); if (m.op === '<') docs = docs.filter(d => d.data()[m.fld] < m.v); if (m.op === '<=') docs = docs.filter(d => d.data()[m.fld] <= m.v);
       if (m.ob) { const v = d => m.ob.split('.').reduce((o, k) => o == null ? undefined : o[k], d.data()); docs = docs.filter(d => v(d) !== undefined); docs.sort((a, b) => (v(a) > v(b) ? 1 : v(a) < v(b) ? -1 : 0) * (m.dir === 'desc' ? -1 : 1)); } if (m.lim) docs = docs.slice(0, m.lim); }
     return docs; };
   const f = {
@@ -27,6 +27,7 @@ window.__installFsMock = (uid, email, name) => {
     addDoc: async (c, v) => { const r = f.doc(c); await write(r.p, v); return r; },
     getDoc: async r => { const o = load(), k = r.p.join('/'); return snapDoc(k, o[k]); },
     getDocs: async q => { const docs = listDocs(q); return { docs, size: docs.length }; },
+    getCountFromServer: async q => { const n = listDocs(q).length; return { data: () => ({ count: n }) }; },
     deleteDoc: async r => locked(() => { const o = load(); delete o[r.p.join('/')]; save(o); changed(); }),
     writeBatch: () => { const ops = []; return { delete: r => ops.push(r), commit: async () => locked(() => { const o = load(); ops.forEach(r => delete o[r.p.join('/')]); save(o); changed(); }) }; },
     onSnapshot: (q, cb) => {

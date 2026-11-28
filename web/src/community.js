@@ -22,7 +22,7 @@ const Comm = {
   /* ---------- XP + public profile ---------- */
   addXP(n) { const c = this.st(), w = weekKey(); c.xp[w] = (c.xp[w] || 0) + n; c.total = (c.total || 0) + n; for (const k of Object.keys(c.xp)) if (k < 'w' + (new Date().getFullYear() - 1) + '00') delete c.xp[k]; Store.save(); clearTimeout(this._pt); this._pt = setTimeout(() => this.pushProfile(), 4000); },
   pushProfile() {
-    if (!this.ok()) return; const c = this.st(), f = Cloud.f, s = typeof Study !== 'undefined' ? Study.st() : {};
+    if (!this.ok()) return; const c = this.st(); if (!c.xp || typeof c.xp !== 'object') c.xp = {}; const f = Cloud.f, s = typeof Study !== 'undefined' ? Study.st() : {};
     const xp = {}; Object.keys(c.xp).sort().slice(-4).forEach(k => { xp[k] = c.xp[k]; });
     const ph = Object.assign(c.photo ? { photo: c.photo } : {}, { board: c.board !== false });
     f.setDoc(f.doc(Cloud.db, 'profiles', Cloud.user.uid), { ...ph, name: (D.settings.name || Cloud.user.displayName || 'Resident').slice(0, 80), year: residencyYear(new Date()), college: (c.college || '').slice(0, 80), bio: (c.bio || '').slice(0, 200),
