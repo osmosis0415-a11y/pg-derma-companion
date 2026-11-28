@@ -41,24 +41,25 @@ ok('send for a different account on this device', U.usageShouldSend({ day: '2026
 ok('never without uid', !U.usageShouldSend(null, '2026-11-28', '', true));
 ok('opt-in: never when usageShare is undefined or false', !U.usageShouldSend(null, '2026-11-28', 'u1', undefined) && !U.usageShouldSend(null, '2026-11-28', 'u1', false) && !U.usageShouldSend(null, '2026-11-28', 'u1', 'yes'));
 ok('local day format', /^\d{4}-\d{2}-\d{2}$/.test(U.usageDay()));
-// Usage.beat / track / on do nothing until the user opts in.
+// Heartbeat is switched off for this release (USAGE_ENABLED = false): nothing is sent, counted, asked or shown.
 globalThis.__cloudCalls = 0;
+// Like the browser's Storage: stored keys are the object's own enumerable properties (Object.keys(localStorage)).
+const __ls = {}; for (const [k, fn] of Object.entries({ getItem: k => (k in __ls ? __ls[k] : null), setItem: (k, v) => { __ls[k] = String(v); }, removeItem: k => { delete __ls[k]; } })) Object.defineProperty(__ls, k, { value: fn });
+globalThis.localStorage = __ls;
+globalThis.location = { hash: '#/patients' }; globalThis.ROUTES = [[/^patients$/]];
 globalThis.Gate = { enabled: () => true, cached: { uid: 'u1', status: 'approved' } };
-globalThis.Cloud = { init: async () => { globalThis.__cloudCalls++; }, user: { uid: 'u1' }, f: { setDoc: async () => { globalThis.__cloudCalls++; } } };
-globalThis.D = { settings: {} };
-const beatUndef = U.Usage.beat();
-ok('Usage.on() false while usageShare is undefined', U.Usage.on() === false);
-globalThis.D = { settings: { usageShare: false, usageShareUid: 'u1' } };
-ok('Usage.on() false after Not now', U.Usage.on() === false);
+globalThis.Cloud = { init: async () => { globalThis.__cloudCalls++; }, cfg: () => ({}), user: { uid: 'u1' }, f: { setDoc: async () => { globalThis.__cloudCalls++; }, deleteDoc: async () => { globalThis.__cloudCalls++; } } };
 globalThis.D = { settings: { usageShare: true, usageShareUid: 'u1' } };
-ok('Usage.on() true only after yes by this account', U.Usage.on() === true);
-globalThis.D = { settings: { usageShare: true } };
-ok('consent without an account is not consent', U.Usage.on() === false);
-globalThis.D = { settings: { usageShare: true, usageShareUid: 'someoneElse' } };
-ok('consent from another account does not count; card shows again', U.Usage.on() === false && U.Usage.askable() === true);
-globalThis.D = { settings: {} };
-ok('askable while undefined; not after this account chose', U.Usage.askable() === true && (globalThis.D.settings.usageShare = false, globalThis.D.settings.usageShareUid = 'u1', U.Usage.askable() === false));
-// Feature keys must be real routes (app.js ROUTES first segments) — and the same list as firestore.rules.
+ok('USAGE_ENABLED is false', U.USAGE_ENABLED === false);
+const beatUndef = U.Usage.beat();
+ok('disabled: Usage.on() false even with consent stored', U.Usage.on() === false);
+ok('disabled: no Today card (askable false)', U.Usage.askable() === false);
+U.Usage.start(1); ok('disabled: start() schedules nothing', U.Usage._t === null);
+U.Usage.track(); ok('disabled: track() keeps no local counters', Object.keys(__ls).length === 0);
+const shareP = U.Usage.setShare(true);
+for (const k of ['pgd_feat:u1', 'pgd_usage:u1', 'pgd_usage', 'pgd_other']) __ls.setItem(k, '{}');
+U.Usage.clearLocal(); ok('clearLocal still removes leftover counters (and nothing else)', Object.keys(__ls).join() === 'pgd_other');
+// Feature keys must be real routes (app.js ROUTES first segments).
 const appSrc = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
 const routeHeads = [...new Set([...appSrc.slice(0, appSrc.indexOf('function render')).matchAll(/\[\/\^([a-z][a-z-]*)/g)].map(m => m[1]))];
 ok('USAGE_ROUTES = route names in app.js ROUTES', JSON.stringify([...routeHeads].sort()) === JSON.stringify([...U.USAGE_ROUTES].sort()));
@@ -100,6 +101,7 @@ ok('daily ops from active users', JSON.stringify(U.dailyOps(10)) === JSON.string
 const fresh = { lastRun: now - 60000, ok: true };
 ok('green when all fine', U.healthLight({ now, crashFree: 100, latestPct: 90, syncPct: 95, bot: fresh, gauges: [U.gauge(10, 100)] }).light === 'green');
 ok('green with no data', U.healthLight({}).light === 'green');
+ok('missing usage data is unknown, not a problem (zero usage docs)', (() => { const z = U.versionAdoption([], '2026.11.28-0542-2652c19', now); const h = U.healthLight({ now, crashFree: U.crashFree([], []), latestPct: z.pct, syncPct: U.syncHealth([], now), bot: fresh, gauges: [U.gauge(0, 50000)] }); return z.pct === null && h.light === 'green' && h.reasons.length === 0; })());
 ok('yellow: crash-free 95', U.healthLight({ now, crashFree: 95, bot: fresh }).light === 'yellow');
 ok('red: crash-free 85', U.healthLight({ now, crashFree: 85, bot: fresh }).light === 'red');
 ok('yellow: few on latest', U.healthLight({ now, latestPct: 40, bot: fresh }).light === 'yellow');
@@ -117,18 +119,12 @@ const block = (name) => { const i = rules.indexOf('match /' + name + '/'); let d
 const ub = block('usage'), sb = block('system');
 ok('usage: read is admin only', /allow read: if isAdminUser\(\);/.test(ub) && (ub.match(/allow read/g) || []).length === 1);
 ok('usage: relay branch limited to month ids', ub.includes("allow create, update: if approved() && m.matches('^[0-9]{4}-[0-9]{2}$') && request.resource.data.keys().hasOnly(['relayMB', 'relayCalls', 'updatedAt'])\n        && request.resource.data.relayMB is int && request.resource.data.relayCalls is int;"));
-ok('usage: owner branch requires m == request.auth.uid', /allow create, update: if approved\(\) && m == request\.auth\.uid\s*\n\s*&& request\.resource\.data\.keys\(\)\.hasOnly\(ukeys\(\)\)/.test(ub));
-ok('usage: owner keys match the app whitelist', (() => { const m = ub.match(/function ukeys\(\) \{ return \[([^\]]+)\]/); return m && JSON.stringify(m[1].split(',').map(s => s.trim().replace(/'/g, ''))) === JSON.stringify(U.USAGE_KEYS); })());
-ok('usage: at == request.time, day regex, size limits', ub.includes('request.resource.data.at == request.time') && ub.includes("day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')") && ub.includes('n.size() <= 8') && ub.includes('feat.size() <= 30') && ub.includes('drv.size() <= 4'));
-ok('usage: delete by owner or admin only', /allow delete: if signedIn\(\) && \(m == request\.auth\.uid \|\| isAdminUser\(\)\);/.test(ub));
-ok('usage: n keys fixed + int values', ub.includes("n.keys().hasOnly(" + JSON.stringify(U.USAGE_N_KEYS).replace(/"/g, "'").replace(/,/g, ', ') + ")") && U.USAGE_N_KEYS.every(k => ub.includes("n.get('" + k + "', 0) is int")));
-ok('usage: drv keys fixed + number values', ub.includes("drv.keys().hasOnly(['appMB', 'usedGB', 'totalGB'])") && ['appMB', 'usedGB', 'totalGB'].every(k => ub.includes("drv.get('" + k + "', 0) is number")));
-ok('usage: feat keys = USAGE_ROUTES', (() => { const m = ub.match(/function froutes\(\) \{ return \[([^\]]+)\]/); return m && JSON.stringify(m[1].split(',').map(s => s.trim().replace(/'/g, ''))) === JSON.stringify(U.USAGE_ROUTES) && ub.includes('feat.keys().hasOnly(froutes())'); })());
-ok('usage: v pattern (or empty), dept pattern, yr list, non-negative numbers', ub.includes("request.resource.data.v == '' || request.resource.data.v.matches('^[0-9]{4}[.][0-9]{2}[.][0-9]{2}-[0-9]{4}(-[0-9a-f]{4,40})?$')") && String(U.USAGE_VER_RE) === '/^[0-9]{4}[.][0-9]{2}[.][0-9]{2}-[0-9]{4}(-[0-9a-f]{4,40})?$/' && ub.includes("dept.matches('^[a-z]{2,20}$')") && ub.includes("yr in ['', 'JR1', 'JR2', 'JR3', 'SR']") && ub.includes('lsMB >= 0') && ub.includes('syncFail >= 0'));
-ok('usage: every feat route checked as int >= 0', ub.includes('function fint(f, k) { return !(k in f) || (f[k] is int && f[k] >= 0); }') && ub.includes('featOk(request.resource.data.feat)') && U.USAGE_ROUTES.every(k => ub.includes("fint(f, '" + k + "')")));
-ok('client yr values are all allowed by the rule', ['2026-11-28', '2025-01-01', '2024-01-01', '2023-01-01', '2020-01-01'].every(st => ['', 'JR1', 'JR2', 'JR3', 'SR'].includes(U.usageYr({ residencyStart: st }, '2026-11-28'))) && U.usageYr({}, '2026-11-28') === '');
-ok('payload n keys match the rules list', JSON.stringify(Object.keys(p.n)) === JSON.stringify(U.USAGE_N_KEYS));
+ok('usage: no owner write branch (heartbeat not shipped)', !/m == request\.auth\.uid/.test(ub) && !/ukeys|froutes|fint|featOk/.test(ub) && (ub.match(/allow create, update/g) || []).length === 1);
+ok('usage: delete is admin only', /allow delete: if isAdminUser\(\);/.test(ub) && (ub.match(/allow delete/g) || []).length === 1);
+ok('system comment: bot bypasses rules via OAuth/REST', rules.includes('bypasses security rules; this rule only limits writes from app clients'));
+ok('client yr values are the documented labels', ['2026-11-28', '2025-01-01', '2024-01-01', '2023-01-01', '2020-01-01'].every(st => ['', 'JR1', 'JR2', 'JR3', 'SR'].includes(U.usageYr({ residencyStart: st }, '2026-11-28'))) && U.usageYr({}, '2026-11-28') === '');
+ok('payload n keys', JSON.stringify(Object.keys(p.n)) === JSON.stringify(U.USAGE_N_KEYS));
 ok('system: admin-only read, admin-only typed write', /allow read: if isAdminUser\(\);/.test(sb) && sb.includes("allow write: if isAdminUser() && request.resource.data.keys().hasOnly(['lastRun', 'ok', 'note'])") && sb.includes('request.resource.data.ok is bool && request.resource.data.lastRun is timestamp') && sb.includes("shortStr(request.resource.data.note, 60)") && !/approved\(\)|signedIn\(\)/.test(sb));
 
-beatUndef.then(r => { ok('Usage.beat() does nothing while usageShare is undefined (no Firebase calls)', r === false && globalThis.__cloudCalls === 0);
+Promise.all([beatUndef, shareP]).then(([r, sh]) => { ok('disabled: beat()/setShare() write nothing (no Firebase calls)', r === false && sh === false && globalThis.__cloudCalls === 0);
     console.log(fails ? fails + ' FAILED' : 'ALL PASS'); process.exit(fails ? 1 : 0); });

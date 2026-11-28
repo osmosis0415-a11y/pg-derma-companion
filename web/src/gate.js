@@ -462,11 +462,16 @@ async function adminData(force) {
   adminCache = { now, today: usageDay(now), approvals: ap.docs.map(row), usage: us.docs.map(row).filter(x => typeof x.day === 'string'), errors: er.docs.map(row), bot: bot && bot.exists() ? bot.data() : null };
   return adminCache;
 }
+/* Sections that need the per-user usage counts show this line until that update ships (no misleading zeros). */
+const NEEDS_USAGE = 'Needs the usage counts update (coming after Sriram\'s review)';
+const needsHTML = () => `<p class="muted small needs-usage">${esc(NEEDS_USAGE)}</p>`;
 function adminMetrics(d, extra) {
-  const act7 = activeSince(d.usage, d.today, 7), act = activeCounts(d.usage, d.today);
+  const hasU = d.usage.length > 0, act7 = activeSince(d.usage, d.today, 7), act = activeCounts(d.usage, d.today);
   const errs7 = d.errors.filter(e => d.now - admMs(e.createdAt || e.at) <= 7 * 864e5);
-  const ops = dailyOps(act.today);
-  const m = { now: d.now, act, act7, errs7, crashFree: crashFree(act7.map(x => x.id), errs7.map(e => e.uid)), ver: versionAdoption(act7, typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''),
+  /* Daily reads/writes: active users today from usage counts; without them, every approved account counts as active (upper estimate). */
+  const approvedN = d.approvals.filter(x => x.status === 'approved').length, opsUsers = hasU ? act.today : approvedN;
+  const ops = Object.assign(dailyOps(opsUsers), { users: opsUsers, basis: hasU ? 'active today' : 'estimate from approved users' });
+  const m = { now: d.now, hasU, act, act7, errs7, crashFree: crashFree(act7.map(x => x.id), errs7.map(e => e.uid)), ver: versionAdoption(act7, typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''),
     syncPct: syncHealth(act7, d.now), bot: d.bot ? { lastRun: admMs(d.bot.lastRun), ok: d.bot.ok } : null,
     gauges: [Object.assign(gauge(ops.reads, FS_FREE.reads), { name: 'Daily reads' }), Object.assign(gauge(ops.writes, FS_FREE.writes), { name: 'Daily writes' })], ops };
   m.latestPct = m.ver.pct;
@@ -479,19 +484,19 @@ function adminLoadErr(sel, e) { const el = $(sel); if (el) el.innerHTML = `<p cl
 
 function vAdminAnalytics() {
   setTitle('Analytics', true);
-  main().innerHTML = `${adminChips('analytics')}<p class="small muted">Per-account daily counts from users who opted in to usage sharing (Settings → Privacy). No names, patient data or notes.</p><div id="aan"><p class="muted small">Loading…</p></div>`;
+  main().innerHTML = `${adminChips('analytics')}<p class="small muted">Accounts, sign-ups and batches from Firestore. No names, patient data or notes.</p><div id="aan"><p class="muted small">Loading…</p></div>`;
   Cloud.init().then(async () => {
     const d = await adminData(), m = adminMetrics(d), f = Cloud.f, db = Cloud.db, el = $('#aan'); if (!el) return;
     const st = countBy(d.approvals, x => x.status), weeks = weekBuckets(d.approvals.map(x => admMs(x.requestedAt)).filter(Boolean), d.now, 12).map(w => ({ label: new Date(w.start + 864e5).toISOString().slice(5, 10), n: w.n }));
-    const u30 = activeSince(d.usage, d.today, 30);
+    const u30 = activeSince(d.usage, d.today, 30), U = m.hasU;
     el.innerHTML = `${lightHTML(m.light, true)}
       <div class="card"><h3>Accounts</h3>${statsHTML([[st.approved || 0, 'approved'], [st.pending || 0, 'pending'], [st.rejected || 0, 'rejected']])}</div>
-      <div class="card"><h3>Active users</h3>${statsHTML([[m.act.today, 'today'], [m.act.d7, 'last 7 days'], [m.act.d30, 'last 30 days']])}<small class="muted">${nfmt(d.usage.length)} users have ever sent counts.</small></div>
+      <div class="card"><h3>Active users</h3>${U ? statsHTML([[m.act.today, 'today'], [m.act.d7, 'last 7 days'], [m.act.d30, 'last 30 days']]) + `<small class="muted">${nfmt(d.usage.length)} users have ever sent counts.</small>` : needsHTML()}</div>
       <div class="card"><h3>Sign-ups per week</h3>${barsSVG(weeks, 'Sign-ups per week, last 12 weeks')}<small class="muted">Last 12 weeks, by request date.</small></div>
-      <div class="card"><h3>By residency year <small class="muted">active 30 days</small></h3>${hbarsHTML(countBy(u30, u => yrOf(d, u)))}</div>
-      <div class="card"><h3>By department</h3>${hbarsHTML(countBy(u30, u => u.dept || 'derma'))}</div>
-      <div class="card"><h3>Platforms</h3>${hbarsHTML(countBy(u30, u => u.plat))}<h4>Installed app vs browser</h4>${hbarsHTML(countBy(u30, u => u.inst ? 'installed' : 'browser'))}</div>
-      <div class="card"><h3>Feature use <small class="muted">screen opens, latest report per user</small></h3>${hbarsHTML(sumMaps(u30.map(u => u.feat)), 'No screen opens reported yet.')}</div>
+      <div class="card"><h3>By residency year <small class="muted">${U ? 'active 30 days' : 'approved accounts, from sign-up'}</small></h3>${U ? hbarsHTML(countBy(u30, u => yrOf(d, u))) : hbarsHTML(countBy(d.approvals.filter(x => x.status === 'approved'), x => x.year || 'unknown'), 'No approved accounts yet.')}</div>
+      <div class="card"><h3>By department</h3>${U ? hbarsHTML(countBy(u30, u => u.dept || 'derma')) : needsHTML()}</div>
+      <div class="card"><h3>Platforms</h3>${U ? hbarsHTML(countBy(u30, u => u.plat)) + '<h4>Installed app vs browser</h4>' + hbarsHTML(countBy(u30, u => u.inst ? 'installed' : 'browser')) : needsHTML()}</div>
+      <div class="card"><h3>Feature use <small class="muted">screen opens, latest report per user</small></h3>${U ? hbarsHTML(sumMaps(u30.map(u => u.feat)), 'No screen opens reported yet.') : needsHTML()}</div>
       <div class="card"><h3>Batches</h3><div id="abatch"><p class="muted small">Counting…</p></div></div>`;
     const bs = await f.getDocs(f.collection(db, 'batches')), wk = new Date(d.now - 7 * 864e5);
     const rows = await Promise.all(bs.docs.map(async b => ({ name: b.data().name || b.id, members: await fsCount(f.collection(db, 'batches', b.id, 'members')), msgs: await fsCount(f.query(f.collection(db, 'batches', b.id, 'messages'), f.where('at', '>=', wk))) })));
@@ -511,10 +516,10 @@ function vAdminStorage() {
     const who = list => list.length ? `<ul class="small">${list.map(u => `<li><code>${esc(u.id.slice(0, 8))}</code> · ${esc(yrOf(d, u))}</li>`).join('')}</ul>` : '<p class="muted small">None.</p>';
     const el = $('#ast'); if (!el) return;
     el.innerHTML = `<div class="card"><h3>Documents per collection</h3><table class="atable"><tr><th>Collection</th><th>Docs</th><th>≈ size</th></tr>${STORE_COLLS.map(c => `<tr><td>${esc(c)}</td><td data-c="${esc(c)}">${nfmt(counts[c])}</td><td>${counts[c] == null ? '—' : (counts[c] * (FS_AVG_BYTES[c] || 1000) / 1048576).toFixed(2) + ' MB'}</td></tr>`).join('')}</table><small class="muted">Top-level collections only; batch chats and DM messages live in sub-collections.</small></div>
-      <div class="card"><h3>Free-tier use</h3>${gaugeHTML('Stored data', sg, '≈ ' + (bytes / 1048576).toFixed(1) + ' MB of 1,024 MB')}${gaugeHTML('Daily reads', rg, '≈ ' + nfmt(m.ops.reads) + ' of 50,000 (' + m.act.today + ' active today × ' + FS_PER_USER.reads + ')')}${gaugeHTML('Daily writes', wg, '≈ ' + nfmt(m.ops.writes) + ' of 20,000 (' + m.act.today + ' active today × ' + FS_PER_USER.writes + ')')}</div>
-      <div class="card"><h3>Google Drive backups <small class="muted">users' own Drives</small></h3>${statsHTML([[drv.length, 'users reporting'], [apps.length ? (apps.reduce((a, b) => a + b, 0) / 1024).toFixed(2) + ' GB' : '—', 'total backups'], [apps.length ? (apps.reduce((a, b) => a + b, 0) / apps.length).toFixed(1) + ' MB' : '—', 'average backup']])}
+      <div class="card"><h3>Free-tier use</h3>${gaugeHTML('Stored data', sg, '≈ ' + (bytes / 1048576).toFixed(1) + ' MB of 1,024 MB')}${gaugeHTML('Daily reads', rg, '≈ ' + nfmt(m.ops.reads) + ' of 50,000 (' + m.ops.users + ' × ' + FS_PER_USER.reads + ', ' + m.ops.basis + ')')}${gaugeHTML('Daily writes', wg, '≈ ' + nfmt(m.ops.writes) + ' of 20,000 (' + m.ops.users + ' × ' + FS_PER_USER.writes + ', ' + m.ops.basis + ')')}</div>
+      ${!m.hasU ? `<div class="card"><h3>Google Drive backups <small class="muted">users' own Drives</small></h3>${needsHTML()}</div><div class="card"><h3>On-device storage</h3>${needsHTML()}</div>` : `<div class="card"><h3>Google Drive backups <small class="muted">users' own Drives</small></h3>${statsHTML([[drv.length, 'users reporting'], [apps.length ? (apps.reduce((a, b) => a + b, 0) / 1024).toFixed(2) + ' GB' : '—', 'total backups'], [apps.length ? (apps.reduce((a, b) => a + b, 0) / apps.length).toFixed(1) + ' MB' : '—', 'average backup']])}
         <h4>Drive over 90% full (${full.length})</h4>${who(full)}<h4>Not synced for 7+ days (${stale.length})</h4>${who(stale)}</div>
-      <div class="card"><h3>On-device storage</h3>${statsHTML([[act30.length ? (act30.reduce((a, u) => a + (+u.lsMB || 0), 0) / act30.length).toFixed(1) + ' MB' : '—', 'average per user'], [act30.length ? Math.max(...act30.map(u => +u.lsMB || 0)).toFixed(1) + ' MB' : '—', 'largest'], [act30.length, 'users (30 d)']])}</div>`;
+      <div class="card"><h3>On-device storage</h3>${statsHTML([[act30.length ? (act30.reduce((a, u) => a + (+u.lsMB || 0), 0) / act30.length).toFixed(1) + ' MB' : '—', 'average per user'], [act30.length ? Math.max(...act30.map(u => +u.lsMB || 0)).toFixed(1) + ' MB' : '—', 'largest'], [act30.length, 'users (30 d)']])}</div>`}`;
   }).catch(e => adminLoadErr('#ast', e));
 }
 const GH_RUNS = 'https://api.github.com/repos/osmosis0415-a11y/pg-derma-companion/actions/runs?per_page=5';
@@ -528,10 +533,10 @@ function vAdminHealth() {
     const b = m.bot, bAge = b && b.lastRun ? d.now - b.lastRun : null, bBad = !b || !b.lastRun || b.ok === false || bAge > BOT_STALE_MS;
     const paint = () => { const h = $('#hlight'); if (h) h.outerHTML = lightHTML(m.light); };
     el.innerHTML = `${lightHTML(m.light)}
-      <div class="card"><h3>Errors</h3>${statsHTML([[e24.length, 'last 24 h'], [m.errs7.length, 'last 7 days'], [pfmt(m.crashFree), 'crash-free users (7 d)']])}
+      <div class="card"><h3>Errors</h3>${statsHTML([[e24.length, 'last 24 h'], [m.errs7.length, 'last 7 days']].concat(m.hasU ? [[pfmt(m.crashFree), 'crash-free users (7 d)']] : []))}${m.hasU ? '' : '<h4>Crash-free users</h4>' + needsHTML()}
         <h4>Top messages (7 d)</h4>${byMsg.length ? `<table class="atable">${byMsg.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('')}</table>` : '<p class="muted small">No errors in the last 7 days.</p>'}
         <h4>By version (7 d)</h4>${hbarsHTML(countBy(m.errs7, e => e.version || '?'), 'No errors.')}<a class="link small" href="#/admin?t=errors">All error reports ›</a></div>
-      <div class="card"><h3>Versions</h3>${statsHTML([[pfmt(m.latestPct), 'active users on latest'], [m.act.d7, 'active (7 d)'], [pfmt(m.syncPct), 'synced in 24 h']])}<small class="muted">Latest: <code>${esc(m.ver.latest || '?')}</code>. Sync health counts active users who use Drive sync.</small>${hbarsHTML(countBy(m.act7, u => u.v))}</div>
+      <div class="card"><h3>Versions and sync</h3>${m.hasU ? `${statsHTML([[pfmt(m.latestPct), 'active users on latest'], [m.act.d7, 'active (7 d)'], [pfmt(m.syncPct), 'synced in 24 h']])}<small class="muted">Latest: <code>${esc(m.ver.latest || '?')}</code>. Sync health counts active users who use Drive sync.</small>${hbarsHTML(countBy(m.act7, u => u.v))}` : needsHTML()}</div>
       <div class="card"><h3>Approval bot</h3><p class="small" id="botst" data-bad="${bBad ? 1 : 0}">${bBad ? '🔴' : '🟢'} ${b && b.lastRun ? 'Last run ' + esc(admAgo(b.lastRun)) + (b.ok === false ? ' · reported an error' : '') : 'never'}</p><small class="muted">Written by tools/admin-bot.gs every minute (system/bot). Red when older than 10 minutes.</small></div>
       <div class="card"><h3>GitHub Actions</h3><div id="ghruns"><p class="muted small">Checking…</p></div></div>`;
     try {

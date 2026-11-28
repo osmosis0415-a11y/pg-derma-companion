@@ -6,6 +6,9 @@
    (retried when back online). The doc is linked to the account (usage/{uid}); only the admin can read it (firestore.rules).
    The pure functions below (no DOM, no Firebase) also drive Admin → Analytics / Storage / Health and are unit-tested in Node. */
 
+/* Heartbeat switch. false = no usage writes, no local counters, no Today card, no Settings toggle (W-1 ships without it;
+   the heartbeat waits on PR #25). Usage.clearLocal() still runs on sign-out / erase to remove keys left by test builds. */
+const USAGE_ENABLED = false;
 const USAGE_KEYS = ['day', 'v', 'plat', 'inst', 'dept', 'yr', 'n', 'feat', 'lsMB', 'drv', 'lastSync', 'syncFail', 'at'];
 const USAGE_FEAT_MAX = 30;          // matches firestore.rules feat.size() <= 30
 const USAGE_N_KEYS = ['patients', 'visits', 'photos', 'logbook', 'scores', 'thesis'];
@@ -119,9 +122,9 @@ function healthLight(m) {
 const Usage = {
   _t: null,
   /* Consent belongs to the account that gave it (usageShareUid). */
-  on() { const u = this._uid(); return !!(D && D.settings && D.settings.usageShare === true && u && D.settings.usageShareUid === u); },
+  on() { if (!USAGE_ENABLED) return false; const u = this._uid(); return !!(D && D.settings && D.settings.usageShare === true && u && D.settings.usageShareUid === u); },
   /* Ask once per account (Today card) until that account picks Yes or Not now. */
-  askable() { const u = this._uid(); return !!(D && D.settings && u && D.settings.usageShareUid !== u && typeof Gate !== 'undefined' && Gate.enabled() && Gate.cached && Gate.cached.status === 'approved'); },
+  askable() { if (!USAGE_ENABLED) return false; const u = this._uid(); return !!(D && D.settings && u && D.settings.usageShareUid !== u && typeof Gate !== 'undefined' && Gate.enabled() && Gate.cached && Gate.cached.status === 'approved'); },
   _uid() { return (typeof Gate !== 'undefined' && Gate.cached && Gate.cached.uid) || (typeof Cloud !== 'undefined' && Cloud.user && Cloud.user.uid) || ''; },
   _get(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } },
   _set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
@@ -139,7 +142,7 @@ const Usage = {
     } catch (e) {}
   },
   /* Retries a pending delete (even with sharing off), then sends today's heartbeat if sharing is on. */
-  start(ms = 8000) { clearTimeout(this._t); this._t = setTimeout(async () => { if (D && D.settings && D.settings.usageDel) await this.remove(); this.beat(); }, ms); },
+  start(ms = 8000) { if (!USAGE_ENABLED) return; clearTimeout(this._t); this._t = setTimeout(async () => { if (D && D.settings && D.settings.usageDel) await this.remove(); this.beat(); }, ms); },
   async ready() {
     if (!D || !this.on() || !navigator.onLine || typeof Gate === 'undefined' || !Gate.enabled() || !Gate.cached || Gate.cached.status !== 'approved') return null;
     await Cloud.init(); const u = Cloud.user; if (!u || (Gate.cached.uid && Gate.cached.uid !== u.uid)) return null;
@@ -172,6 +175,7 @@ const Usage = {
   /* Deletes usage/<D.settings.usageDel>. The pending uid stays set until the delete really succeeded (retried by start()/online),
      and the delete only runs while that same account is signed in. */
   async remove() {
+    if (!USAGE_ENABLED) { this.clearLocal(); return true; }
     if (!D || !D.settings.usageDel) return true;
     const want = String(D.settings.usageDel); this.clearLocal(want);
     if (!Cloud.cfg() || !navigator.onLine) return false;
@@ -183,6 +187,7 @@ const Usage = {
     } catch (e) { return false; }
   },
   async setShare(on) {
+    if (!USAGE_ENABLED) return false;
     const u = this._uid(); if (!u) return false;
     D.settings.usageShare = !!on; D.settings.usageShareUid = u;
     if (on) { if (D.settings.usageDel === u) D.settings.usageDel = false; Store.save(); Usage.start(500); return true; }
@@ -194,7 +199,7 @@ const USAGE_LABEL = 'Share daily usage counts with the admin (linked to your acc
 const USAGE_DESC = 'Linked to your account. Once a day, sends the app admin: how many patients, visits, photos, logbook entries, scores and thesis cases you have (numbers only); which screens you opened (counts); app version; Android/iOS/desktop and whether the app is installed; department and residency year; storage used on this device; and, if Drive backup is on, your backup size, Google Drive used and total space, when you last synced and how many syncs failed. Used only to improve the app and spot sync or storage problems. Never names, UHIDs, diagnoses, notes or photos. Kept until you turn this off, which deletes it.';
 /* One-time question on Today (until the user picks Yes or Not now). */
 function usageAskHTML() {
-  if (!Usage.askable()) return '';
+  if (!USAGE_ENABLED || !Usage.askable()) return '';
   return `<div class="card usageask" id="usageask"><b>${esc('Help improve the app? Share daily usage counts with the admin (linked to your account).')}</b><p class="small muted">${esc(USAGE_DESC)}</p>
     <div class="btnrow"><button class="btn sm" data-act="usageyes">Yes, share</button><button class="btn sm ghost" data-act="usageno">Not now</button></div></div>`;
 }
@@ -211,4 +216,4 @@ if (typeof ACT !== 'undefined') {
   ACT.usageyes = async () => { $('#usageask')?.remove(); await Usage.setShare(true); toast('Thanks — usage counts will be sent once a day'); };
   ACT.usageno = async () => { $('#usageask')?.remove(); const u = Usage._uid(); if (!u) return; D.settings.usageShare = false; D.settings.usageShareUid = u; Store.save(); };
 }
-if (typeof module !== 'undefined') module.exports = { Usage, USAGE_ROUTES, USAGE_VER_RE, usageVerOk, USAGE_N_KEYS, USAGE_LABEL, USAGE_DESC, USAGE_KEYS, usageDay, usagePlat, usageYr, usagePayload, usageShouldSend, weekBuckets, activeCounts, activeSince, gauge, crashFree, versionAdoption, syncHealth, countBy, sumMaps, FS_AVG_BYTES, FS_FREE, FS_PER_USER, sizeEstimate, dailyOps, healthLight, BOT_STALE_MS, GAUGE_WARN, GAUGE_BAD };
+if (typeof module !== 'undefined') module.exports = { USAGE_ENABLED, Usage, USAGE_ROUTES, USAGE_VER_RE, usageVerOk, USAGE_N_KEYS, USAGE_LABEL, USAGE_DESC, USAGE_KEYS, usageDay, usagePlat, usageYr, usagePayload, usageShouldSend, weekBuckets, activeCounts, activeSince, gauge, crashFree, versionAdoption, syncHealth, countBy, sumMaps, FS_AVG_BYTES, FS_FREE, FS_PER_USER, sizeEstimate, dailyOps, healthLight, BOT_STALE_MS, GAUGE_WARN, GAUGE_BAD };
