@@ -213,6 +213,16 @@ service cloud.firestore {
     match /usage/{m} {
       // Screen names (counts only) — same list as USAGE_ROUTES in web/src/usage.js.
       function froutes() { return ['home', 'patients', 'patient', 'add', 'visit', 'score', 'map', 'wa', 'cam', 'vault', 'photo', 'deid', 'compare', 'inv', 'cal', 'logbook', 'logadd', 'targets', 'thesis', 'thesis-setup', 'analytics', 'formulary', 'checklists', 'more', 'settings', 'batch', 'admin', 'study', 'feed', 'community', 'notifs', 'dms', 'dm', 'story-new', 'people', 'flist', 'compose', 'post', 'u', 'study-run', 'study-set', 'journal']; }
+      function fint(f, k) { return !(k in f) || (f[k] is int && f[k] >= 0); }
+      function featOk(f) {
+        return fint(f, 'home') && fint(f, 'patients') && fint(f, 'patient') && fint(f, 'add') && fint(f, 'visit') && fint(f, 'score')
+          && fint(f, 'map') && fint(f, 'wa') && fint(f, 'cam') && fint(f, 'vault') && fint(f, 'photo') && fint(f, 'deid')
+          && fint(f, 'compare') && fint(f, 'inv') && fint(f, 'cal') && fint(f, 'logbook') && fint(f, 'logadd') && fint(f, 'targets')
+          && fint(f, 'thesis') && fint(f, 'thesis-setup') && fint(f, 'analytics') && fint(f, 'formulary') && fint(f, 'checklists') && fint(f, 'more')
+          && fint(f, 'settings') && fint(f, 'batch') && fint(f, 'admin') && fint(f, 'study') && fint(f, 'feed') && fint(f, 'community')
+          && fint(f, 'notifs') && fint(f, 'dms') && fint(f, 'dm') && fint(f, 'story-new') && fint(f, 'people') && fint(f, 'flist')
+          && fint(f, 'compose') && fint(f, 'post') && fint(f, 'u') && fint(f, 'study-run') && fint(f, 'study-set') && fint(f, 'journal');
+      }
       function ukeys() { return ['day', 'v', 'plat', 'inst', 'dept', 'yr', 'n', 'feat', 'lsMB', 'drv', 'lastSync', 'syncFail', 'at']; }
       allow read: if isAdminUser();
       allow create, update: if approved() && m.matches('^[0-9]{4}-[0-9]{2}$') && request.resource.data.keys().hasOnly(['relayMB', 'relayCalls', 'updatedAt'])
@@ -220,24 +230,25 @@ service cloud.firestore {
       allow create, update: if approved() && m == request.auth.uid
         && request.resource.data.keys().hasOnly(ukeys())
         && request.resource.data.day is string && request.resource.data.day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-        && shortStr(request.resource.data.v, 40)
+        && request.resource.data.v is string && (request.resource.data.v == '' || request.resource.data.v.matches('^[0-9]{4}[.][0-9]{2}[.][0-9]{2}-[0-9]{4}(-[0-9a-f]{4,40})?$'))
         && request.resource.data.plat in ['android', 'ios', 'desktop', 'other']
         && request.resource.data.inst is bool
-        && shortStr(request.resource.data.dept, 20) && shortStr(request.resource.data.yr, 10)
+        && request.resource.data.dept is string && request.resource.data.dept.matches('^[a-z]{2,20}$')
+        && request.resource.data.yr in ['', 'JR1', 'JR2', 'JR3', 'SR']
         && request.resource.data.n is map && request.resource.data.n.size() <= 8
         && request.resource.data.n.keys().hasOnly(['patients', 'visits', 'photos', 'logbook', 'scores', 'thesis'])
         && request.resource.data.n.get('patients', 0) is int && request.resource.data.n.get('visits', 0) is int
         && request.resource.data.n.get('photos', 0) is int && request.resource.data.n.get('logbook', 0) is int
         && request.resource.data.n.get('scores', 0) is int && request.resource.data.n.get('thesis', 0) is int
         && (!('feat' in request.resource.data) || (request.resource.data.feat is map && request.resource.data.feat.size() <= 30
-          && request.resource.data.feat.keys().hasOnly(froutes())))
-        && request.resource.data.lsMB is number
+          && request.resource.data.feat.keys().hasOnly(froutes()) && featOk(request.resource.data.feat)))
+        && request.resource.data.lsMB is number && request.resource.data.lsMB >= 0
         && (!('drv' in request.resource.data) || (request.resource.data.drv is map && request.resource.data.drv.size() <= 4
           && request.resource.data.drv.keys().hasOnly(['appMB', 'usedGB', 'totalGB'])
           && request.resource.data.drv.get('appMB', 0) is number && request.resource.data.drv.get('usedGB', 0) is number
           && request.resource.data.drv.get('totalGB', 0) is number))
         && (request.resource.data.lastSync == null || request.resource.data.lastSync is number)
-        && request.resource.data.syncFail is int
+        && request.resource.data.syncFail is int && request.resource.data.syncFail >= 0
         && request.resource.data.at == request.time;
       allow delete: if signedIn() && (m == request.auth.uid || isAdminUser());
     }
@@ -245,7 +256,9 @@ service cloud.firestore {
     // OAuth token (tools/admin-bot.gs), so client writes are limited to the admin and to these keys.
     match /system/{s} {
       allow read: if isAdminUser();
-      allow write: if isAdminUser() && request.resource.data.keys().hasOnly(['lastRun', 'ok', 'note']);
+      allow write: if isAdminUser() && request.resource.data.keys().hasOnly(['lastRun', 'ok', 'note'])
+        && request.resource.data.ok is bool && request.resource.data.lastRun is timestamp
+        && (!('note' in request.resource.data) || shortStr(request.resource.data.note, 60));
     }
 
     match /batches/{b} {

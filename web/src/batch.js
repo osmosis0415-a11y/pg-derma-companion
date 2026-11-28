@@ -107,7 +107,7 @@ ACT.bjoin = async () => {
     delete D.settings.pendingJoin; Store.save(); toast('Joined ' + s.data().name); render(); Calls.start();
   } catch (e) { toast('Could not join: ' + (e.code || e.message)); }
 };
-ACT.bsignout = async () => { Cloud.stop(); Sync.stop(); await Cloud.f.signOut(Cloud.auth); render(); };
+ACT.bsignout = async () => { Usage.clearLocal(); Cloud.stop(); Sync.stop(); await Cloud.f.signOut(Cloud.auth); render(); };
 
 function batchTabsHTML() {
   Chat.sync();

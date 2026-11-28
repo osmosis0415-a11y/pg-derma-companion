@@ -35,7 +35,7 @@ await ev(SPY);
 await ev(`D.settings.residencyStart='2025-08-01'; D.patients.push({id:'p1',uhid:'UH-2026-1001',name:'Ravi Kumar',dx:['Vitiligo'],buckets:['Routine'],studyId:'T001'},{id:'p2',uhid:'UH-77',name:'Asha',buckets:['Routine']}); D.visits.push({id:'v1',pid:'p1',date:'2026-11-20',notes:'itchy rash'}); D.logbook.push({id:'l1',proc:'Punch biopsy',cat:'Other',role:'Performed',date:'2026-11-20',year:'JR2',indication:'',site:'',supervisor:'',notes:'',pid:'p1',vid:null}); Store.save();`);
 // Opt-in: nothing is sent and nothing is counted until the user says yes.
 await ev(`location.hash='#/patients'`); await sleep(250); await ev(`location.hash='#/home'`); await sleep(500);
-chk('Today asks once (opt-in card, honest wording)', await ev(`!!$('#usageask') && $('#usageask').textContent.includes('Help improve the app? Share daily usage counts with the admin.') && $('#usageask').textContent.includes('Turn off any time to delete it.') && !!$('#usageask [data-act=usageyes]') && !!$('#usageask [data-act=usageno]')`));
+chk('Today asks once (opt-in card, honest wording)', await ev(`!!$('#usageask') && $('#usageask').textContent.includes('Help improve the app? Share daily usage counts with the admin (linked to your account).') && $('#usageask').textContent.includes('Linked to your account. Once a day') && $('#usageask').textContent.includes('Kept until you turn this off, which deletes it.') && !!$('#usageask [data-act=usageyes]') && !!$('#usageask [data-act=usageno]')`));
 await shot('usage-ask');
 await ev(`Usage.start(100)`); await sleep(1200);
 chk('not opted in: no heartbeat, no counters', (await ev(`__w.filter(x=>x.p.startsWith('usage/')).length`)) === 0 && (await ev(`Usage.beat().then(r=>r===false && !Object.keys(localStorage).some(k=>/^pgd_(feat|usage)/.test(k)))`)));
@@ -70,7 +70,7 @@ await ev(`Usage.start(100)`); await sleep(1500);
 chk('second load the same day writes nothing', (await ev(`__w.filter(x=>x.p.startsWith('usage/')).length`)) === 0 && (await ev(`!!JSON.parse(localStorage.fsmock)['usage/uRes1']`)));
 // Privacy toggle (Settings)
 await ev(`location.hash='#/settings'`); await sleep(500);
-chk('Privacy toggle: honest label + description, reflects opt-in', await ev(`!!$('#s_usage') && $('#s_usage').checked && $('#main').textContent.includes('Share daily usage counts with the admin (linked to your account)') && $('#main').textContent.includes('Never names, UHIDs, diagnoses, notes or photos. Turn off any time to delete it.')`));
+chk('Privacy toggle: honest label + description, reflects opt-in', await ev(`!!$('#s_usage') && $('#s_usage').checked && $('#main').textContent.includes('Share daily usage counts with the admin (linked to your account)') && $('#main').textContent.includes('if Drive backup is on, your backup size') && $('#main').textContent.includes('Never names, UHIDs, diagnoses, notes or photos. Kept until you turn this off, which deletes it.')`));
 await shot('usage-privacy');
 await ev(`$('#s_usage').click()`); await sleep(800);
 chk('turning it off (online) deletes usage/{uid}', await ev(`D.settings.usageShare===false && !D.settings.usageDel && !JSON.parse(localStorage.fsmock)['usage/uRes1'] && __w.some(x=>x.p==='usage/uRes1'&&x.del) && $('#toast').textContent.includes('was deleted')`));
@@ -81,14 +81,23 @@ chk('back on: sends again', await ev(`D.settings.usageShare===true && !!JSON.par
 await send('Network.enable'); await send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }); await sleep(300);
 chk('offline emulated', (await ev(`navigator.onLine`)) === false);
 await ev(`$('#s_usage').click()`); await sleep(800);
-chk('off while offline: kept pending, honest toast', await ev(`D.settings.usageShare===false && D.settings.usageDel===true && !!JSON.parse(localStorage.fsmock)['usage/uRes1'] && $('#toast').textContent.includes("will be deleted when you're back online")`));
+chk('off while offline: kept pending, honest toast', await ev(`D.settings.usageShare===false && D.settings.usageDel==='uRes1' && !!JSON.parse(localStorage.fsmock)['usage/uRes1'] && $('#toast').textContent.includes("will be deleted when you're back online")`));
 await send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }); await sleep(4500);
 chk('back online: doc deleted, flag cleared', await ev(`navigator.onLine && !JSON.parse(localStorage.fsmock)['usage/uRes1'] && D.settings.usageDel===false`));
 chk('still off after the retry (no heartbeat)', (await ev(`__w.filter(x=>x.p.startsWith('usage/')&&!x.del).length`)) === 1);
 // "Not now" on a fresh account choice
-await ev(`delete D.settings.usageShare; location.hash='#/patients'`); await sleep(200); await ev(`location.hash='#/home'`); await sleep(400);
+await ev(`delete D.settings.usageShare; delete D.settings.usageShareUid; location.hash='#/patients'`); await sleep(200); await ev(`location.hash='#/home'`); await sleep(400);
 await ev(`$('#usageask [data-act=usageno]').click()`); await sleep(300);
 chk('Not now: off, card gone for good', await ev(`D.settings.usageShare===false && !$('#usageask') && (location.hash='#/patients', new Promise(r=>setTimeout(()=>{location.hash='#/home'; setTimeout(()=>r(!$('#usageask')),300)},200)))`));
+// Consent and pending deletes belong to one account.
+await ev(`D.settings.usageShare=true; D.settings.usageShareUid='uRes1'; Store.save(); Cloud.user=null; __installFsMock('uRes2','two@x.com','Dr Two'); Gate.cached={uid:'uRes2',email:'two@x.com',status:'approved'};`); await ev(SPY);
+await ev(`location.hash='#/patients'`); await sleep(200); await ev(`location.hash='#/home'`); await sleep(400);
+chk('other account: sharing off, card shown again', await ev(`Usage.on()===false && !!$('#usageask')`));
+chk('other account: no heartbeat under the first consent', (await ev(`Usage.beat()`)) === false && (await ev(`__w.filter(x=>x.p.startsWith('usage/')).length`)) === 0);
+await ev(`(()=>{const o=JSON.parse(localStorage.fsmock); o['usage/uRes1']={day:'2026-11-28'}; localStorage.fsmock=JSON.stringify(o); D.settings.usageDel='uRes1';})()`);
+chk('pending delete waits for the right account', (await ev(`Usage.remove()`)) === false && await ev(`!!JSON.parse(localStorage.fsmock)['usage/uRes1'] && D.settings.usageDel==='uRes1' && !__w.some(x=>x.del)`));
+await ev(`Cloud.user=null; __installFsMock('uRes1','res@x.com','Dr Res'); Gate.cached={uid:'uRes1',email:'res@x.com',status:'approved'};`); await ev(SPY);
+chk('pending delete runs when that account is back', (await ev(`Usage.remove()`)) === true && await ev(`!JSON.parse(localStorage.fsmock)['usage/uRes1'] && D.settings.usageDel===false`));
 // Sign-out / erase clear the local counters
 chk('clearLocal removes per-account counters', await ev(`localStorage.setItem('pgd_feat:uRes1','{}'); localStorage.setItem('pgd_usage:uX','{}'); Usage.clearLocal(); !Object.keys(localStorage).some(k=>/^pgd_(feat|usage)/.test(k))`));
 chk('no external network from heartbeat', (await ev(`__net.length`)) === 0);
@@ -155,6 +164,11 @@ chk('no other external requests', (await ev(`__net.length`)) === 0);
 // Non-admin sees nothing
 await ev(`Cloud.user=null; __installFsMock('uRes1','res@x.com','Dr Res'); Gate.cached={uid:'uRes1',email:'res@x.com',status:'approved'}; location.hash='#/admin?t=analytics'`); await sleep(600);
 chk('non-admin: admin tabs blocked', (await ev(`$('#main').textContent`)).includes('Admins only'));
+// Erase all data on this device: deletes the shared usage record first.
+await ev(`D.settings.usageShare=true; D.settings.usageShareUid='uRes1'; D.settings.usageDel=false; (()=>{const o=JSON.parse(localStorage.fsmock); o['usage/uRes1']={day:'2026-11-28'}; localStorage.fsmock=JSON.stringify(o);})()`);
+chk('erase warns about the usage record', await ev(`ACT.wipe.toString().includes('Your usage record (if shared) is deleted too.')`));
+await ev(`window.__dlgDefault=true; ACT.wipe(); 1`); await sleep(3000);
+chk('erase deleted usage/{uid}', await ev(`!JSON.parse(localStorage.fsmock||'{}')['usage/uRes1'] && !Object.keys(localStorage).some(k=>/^pgd_(feat|usage)/.test(k))`));
 chk('no console errors', errs.length === 0);
 if (errs.length) console.log('ERRORS', JSON.stringify(errs, null, 1));
 console.log(fails ? fails + ' FAILED' : 'ALL PASS'); process.exit(fails ? 1 : 0);

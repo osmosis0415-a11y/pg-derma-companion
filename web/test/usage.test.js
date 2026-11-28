@@ -31,7 +31,7 @@ ok('empty data: zeros, no drive when sync off, lastSync null', p2.n.patients ===
 ok('platform detection', U.usagePlat('Mozilla/5.0 (Windows NT 10.0; Win64)') === 'desktop' && U.usagePlat('') === 'other');
 const many = {}; for (const r of U.USAGE_ROUTES) many[r] = 1;
 ok('feat capped at 30 keys', Object.keys(U.usagePayload(D, Object.assign({}, env, { feat: many })).feat).length === 30);
-ok('version string sanitised', U.usagePayload(D, Object.assign({}, env, { v: '<script>alert(1)</script>' + 'x'.repeat(60) })).v.length <= 40 && !/[<>()]/.test(U.usagePayload(D, Object.assign({}, env, { v: '<b>' })).v));
+ok('version string: only the build shape is sent, anything else becomes empty', U.usagePayload(D, Object.assign({}, env, { v: '<script>alert(1)</script>' })).v === '' && U.usagePayload(D, Object.assign({}, env, { v: '__BUILD__' })).v === '' && U.usagePayload(D, Object.assign({}, env, { v: '2026.11.28-0542' })).v === '2026.11.28-0542');
 
 // ---------- once-per-day throttle ----------
 ok('send when never sent (opted in)', U.usageShouldSend(null, '2026-11-28', 'u1', true));
@@ -48,12 +48,16 @@ globalThis.Cloud = { init: async () => { globalThis.__cloudCalls++; }, user: { u
 globalThis.D = { settings: {} };
 const beatUndef = U.Usage.beat();
 ok('Usage.on() false while usageShare is undefined', U.Usage.on() === false);
-globalThis.D = { settings: { usageShare: false } };
+globalThis.D = { settings: { usageShare: false, usageShareUid: 'u1' } };
 ok('Usage.on() false after Not now', U.Usage.on() === false);
+globalThis.D = { settings: { usageShare: true, usageShareUid: 'u1' } };
+ok('Usage.on() true only after yes by this account', U.Usage.on() === true);
 globalThis.D = { settings: { usageShare: true } };
-ok('Usage.on() true only after yes', U.Usage.on() === true);
+ok('consent without an account is not consent', U.Usage.on() === false);
+globalThis.D = { settings: { usageShare: true, usageShareUid: 'someoneElse' } };
+ok('consent from another account does not count; card shows again', U.Usage.on() === false && U.Usage.askable() === true);
 globalThis.D = { settings: {} };
-ok('askable while undefined; not after a choice', U.Usage.askable() === true && (globalThis.D.settings.usageShare = false, U.Usage.askable() === false));
+ok('askable while undefined; not after this account chose', U.Usage.askable() === true && (globalThis.D.settings.usageShare = false, globalThis.D.settings.usageShareUid = 'u1', U.Usage.askable() === false));
 // Feature keys must be real routes (app.js ROUTES first segments) — and the same list as firestore.rules.
 const appSrc = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
 const routeHeads = [...new Set([...appSrc.slice(0, appSrc.indexOf('function render')).matchAll(/\[\/\^([a-z][a-z-]*)/g)].map(m => m[1]))];
@@ -72,10 +76,21 @@ ok('gauge ok < 70', U.gauge(69, 100).level === 'ok');
 ok('gauge warn >= 70', U.gauge(70, 100).level === 'warn' && U.gauge(89.9, 100).level === 'warn');
 ok('gauge bad >= 90', U.gauge(90, 100).level === 'bad' && U.gauge(45000, 50000).pct === 90);
 ok('crash-free %', U.crashFree(['a', 'b', 'c', 'd'], ['b', 'zz']) === 75 && U.crashFree([], ['a']) === null && U.crashFree(['a'], []) === 100);
-const va = U.versionAdoption([{ v: '2026.11.20-0100-a' }, { v: '2026.11.28-0500-b' }, { v: '2026.11.28-0500-b' }, { v: '2026.11.01-0100-c' }], '2026.11.25-0000-z');
-ok('version adoption: latest = max seen, % on it', va.latest === '2026.11.28-0500-b' && va.pct === 50);
-ok('version adoption: build newer than all', U.versionAdoption([{ v: '2026.01.01-0000-a' }], '2026.12.01-0000-b').pct === 0);
-ok('version adoption: ignores junk versions when picking latest', (() => { const r = U.versionAdoption([{ v: '2026.11.28-0500-b' }, { v: 'zzz-hacked' }, { v: '9999' }, { v: '?' }], '?'); return r.latest === '2026.11.28-0500-b' && r.pct === 25; })());
+const va = U.versionAdoption([{ v: '2026.11.20-0100-aaaa' }, { v: '2026.11.28-0500-bbbb' }, { v: '2026.11.28-0500-bbbb' }, { v: '2026.11.01-0100-cccc' }], '2026.11.25-0000-ffff', now);
+ok('version adoption: latest = max seen, % on it', va.latest === '2026.11.28-0500-bbbb' && va.pct === 50);
+ok('version adoption: build newer than all', U.versionAdoption([{ v: '2026.01.01-0000-aaaa' }], '2026.11.28-0000-bbbb', now).pct === 0);
+ok('version adoption: ignores junk versions when picking latest', (() => { const r = U.versionAdoption([{ v: '2026.11.28-0500-bbbb' }, { v: 'zzz-hacked' }, { v: '9999' }, { v: '?' }], '?', now); return r.latest === '2026.11.28-0500-bbbb' && r.pct === 25; })());
+// QA repro: forged stamps must not become "latest".
+const G = '2026.11.28-0542-2652c19', qnow = Date.parse('2026-11-28T06:00:00Z');
+ok('impossible date 2026.99.99-9999 ignored (66.7% stays on the real build)', (r => r.latest === G && r.pct === 66.7)(U.versionAdoption([{ v: G }, { v: G }, { v: '2026.99.99-9999' }], G, qnow)));
+ok('trailing junk 9999.12.31-2359<script> ignored', (r => r.latest === G && r.pct === 66.7)(U.versionAdoption([{ v: G }, { v: G }, { v: '9999.12.31-2359<script>' }], G, qnow)));
+ok('far-future 2030 stamp ignored (> now + 2 days)', (r => r.latest === G)(U.versionAdoption([{ v: G }, { v: '2030.01.01-0000-abcd' }], G, qnow)));
+ok('stamp within 2 days ahead (clock skew) accepted', (r => r.latest === '2026.11.29-0100-abcd')(U.versionAdoption([{ v: G }, { v: '2026.11.29-0100-abcd' }], G, qnow)));
+// Decision: '-abc' is not a git short sha (hex, 4+ chars) — build.py never produces it and the rules reject it, so it is ignored.
+ok("'2026.11.28-0542-abc' ignored; latest stays the real build at 50%", (r => r.latest === G && r.pct === 50)(U.versionAdoption([{ v: G }, { v: G }, { v: '2026.11.28-0542-abc' }, { v: '2026.11.28-0542-abc' }], G, qnow)));
+ok('usageVerOk: no-git build shape accepted, garbage rejected', U.usageVerOk('2026.11.28-0542', qnow) && U.usageVerOk(G, qnow) && !U.usageVerOk('2026.02.30-1200', qnow) && !U.usageVerOk('2026.11.28-2460', qnow) && !U.usageVerOk('__BUILD__', qnow));
+const buildPy = fs.readFileSync(path.join(__dirname, '../build.py'), 'utf8');
+ok('build.py BUILD shape matches USAGE_VER_RE', buildPy.includes("strftime('%Y.%m.%d-%H%M')") && buildPy.includes("['git','rev-parse','--short','HEAD']"));
 ok('sync health', U.syncHealth([{ lastSync: now - 1000 }, { lastSync: now - 3 * 864e5 }, { lastSync: null }], now) === 50 && U.syncHealth([{ lastSync: null }], now) === null);
 ok('countBy / sumMaps', JSON.stringify(U.countBy([{ p: 'a' }, { p: 'a' }, { p: 'b' }, {}], x => x.p)) === '{"a":2,"b":1}' && JSON.stringify(U.sumMaps([{ x: 1 }, { x: 2, y: 3 }, null])) === '{"x":3,"y":3}');
 ok('size estimate uses documented averages', U.sizeEstimate({ posts: 10, usage: 2, unknown: 1 }) === 10 * U.FS_AVG_BYTES.posts + 2 * U.FS_AVG_BYTES.usage + 1000);
@@ -109,8 +124,11 @@ ok('usage: delete by owner or admin only', /allow delete: if signedIn\(\) && \(m
 ok('usage: n keys fixed + int values', ub.includes("n.keys().hasOnly(" + JSON.stringify(U.USAGE_N_KEYS).replace(/"/g, "'").replace(/,/g, ', ') + ")") && U.USAGE_N_KEYS.every(k => ub.includes("n.get('" + k + "', 0) is int")));
 ok('usage: drv keys fixed + number values', ub.includes("drv.keys().hasOnly(['appMB', 'usedGB', 'totalGB'])") && ['appMB', 'usedGB', 'totalGB'].every(k => ub.includes("drv.get('" + k + "', 0) is number")));
 ok('usage: feat keys = USAGE_ROUTES', (() => { const m = ub.match(/function froutes\(\) \{ return \[([^\]]+)\]/); return m && JSON.stringify(m[1].split(',').map(s => s.trim().replace(/'/g, ''))) === JSON.stringify(U.USAGE_ROUTES) && ub.includes('feat.keys().hasOnly(froutes())'); })());
+ok('usage: v pattern (or empty), dept pattern, yr list, non-negative numbers', ub.includes("request.resource.data.v == '' || request.resource.data.v.matches('^[0-9]{4}[.][0-9]{2}[.][0-9]{2}-[0-9]{4}(-[0-9a-f]{4,40})?$')") && String(U.USAGE_VER_RE) === '/^[0-9]{4}[.][0-9]{2}[.][0-9]{2}-[0-9]{4}(-[0-9a-f]{4,40})?$/' && ub.includes("dept.matches('^[a-z]{2,20}$')") && ub.includes("yr in ['', 'JR1', 'JR2', 'JR3', 'SR']") && ub.includes('lsMB >= 0') && ub.includes('syncFail >= 0'));
+ok('usage: every feat route checked as int >= 0', ub.includes('function fint(f, k) { return !(k in f) || (f[k] is int && f[k] >= 0); }') && ub.includes('featOk(request.resource.data.feat)') && U.USAGE_ROUTES.every(k => ub.includes("fint(f, '" + k + "')")));
+ok('client yr values are all allowed by the rule', ['2026-11-28', '2025-01-01', '2024-01-01', '2023-01-01', '2020-01-01'].every(st => ['', 'JR1', 'JR2', 'JR3', 'SR'].includes(U.usageYr({ residencyStart: st }, '2026-11-28'))) && U.usageYr({}, '2026-11-28') === '');
 ok('payload n keys match the rules list', JSON.stringify(Object.keys(p.n)) === JSON.stringify(U.USAGE_N_KEYS));
-ok('system: admin-only read, admin-only limited write', /allow read: if isAdminUser\(\);/.test(sb) && /allow write: if isAdminUser\(\) && request\.resource\.data\.keys\(\)\.hasOnly\(\['lastRun', 'ok', 'note'\]\);/.test(sb) && !/approved\(\)|signedIn\(\)/.test(sb));
+ok('system: admin-only read, admin-only typed write', /allow read: if isAdminUser\(\);/.test(sb) && sb.includes("allow write: if isAdminUser() && request.resource.data.keys().hasOnly(['lastRun', 'ok', 'note'])") && sb.includes('request.resource.data.ok is bool && request.resource.data.lastRun is timestamp') && sb.includes("shortStr(request.resource.data.note, 60)") && !/approved\(\)|signedIn\(\)/.test(sb));
 
 beatUndef.then(r => { ok('Usage.beat() does nothing while usageShare is undefined (no Firebase calls)', r === false && globalThis.__cloudCalls === 0);
-  console.log(fails ? fails + ' FAILED' : 'ALL PASS'); process.exit(fails ? 1 : 0); });
+    console.log(fails ? fails + ' FAILED' : 'ALL PASS'); process.exit(fails ? 1 : 0); });
