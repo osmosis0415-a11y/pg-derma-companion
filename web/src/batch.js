@@ -197,16 +197,17 @@ function evChanged() { B().events = (B().events || []).filter(e => e.date >= evW
 function subscribeBatch() {
   Cloud.stop(); const f = Cloud.f, id = B().id, db = Cloud.db, gen = Cloud.gen, hc = hubCache(), now = Date.now(), t = ROUTE.q.t || 'cal';
   const same = () => !!(B() && B().id === id), live = () => Cloud.gen === gen && same(); // same: data still applies; live: this subscription is current
-  const err = e => { if (!same()) return; if (e && !e.code) { try { ErrLog.capture('hub', String(e.message || e), e.stack); } catch (x) {} } if (e && e.code === 'permission-denied') { toast('You are no longer a member of this batch'); Calls.stop(); D.batch = null; Store.save(); render(); Calls.start(); } };
+  const err = e => { if (!same()) return; if (e && !e.code) { try { ErrLog.capture('hub', String(e.message || e), e.stack); } catch (x) {} } if (e && e.code === 'permission-denied') { toast('You are no longer a member of this batch'); Calls.stop(); D.batch = null; Chat.msgs = []; Chat.more = false; Store.save(); render(); Calls.start(); } };
   const col = n => f.collection(db, 'batches', id, n);
   Chat.sync(); // paint from cache straight away
   const due = k => !(now - (hc.full[k] || 0) < HUB_DAY);
-  const daily = async (k, fn) => { if (!due(k)) return; const prev = hc.full[k]; hc.full[k] = now; try { await fn(); } catch (e) { hc.full[k] = prev; throw e; } };
+  // fn returns false when it got no server answer (offline / served from cache): the day is not marked done, so the next open retries.
+  const daily = async (k, fn) => { if (!due(k)) return; const prev = hc.full[k]; hc.full[k] = now; try { if ((await fn()) === false) hc.full[k] = prev; } catch (e) { hc.full[k] = prev; throw e; } };
 
   // events
   (async () => {
     await daily('ev', async () => {
-      const s = await hubOnce(f.query(col('events'), f.where('date', '>=', evWindow()), f.orderBy('date'))); if (!same() || fromCache(s)) return;
+      const s = await hubOnce(f.query(col('events'), f.where('date', '>=', evWindow()), f.orderBy('date'))); if (!same() || fromCache(s)) return false;
       const got = s.docs.map(evOf), top = Math.max(0, ...got.map(e => e.createdAt || 0));
       B().events = got.concat((B().events || []).filter(e => (e.createdAt || 0) > top && !got.some(g => g.id === e.id))); evChanged(); // keep anything a newer listener already added
     });
@@ -226,7 +227,7 @@ function subscribeBatch() {
   // members + logstats: live while their tab is open, otherwise at most one fetch a day
   const memOf = d => ({ id: d.id, name: d.data().name, year: d.data().year }), stOf = d => ({ id: d.id, counts: d.data().counts || {} });
   for (const [k, tab, key, map] of [['members', 'mem', 'members', memOf], ['logstats', 'log', 'stats', stOf]]) {
-    const apply = s => { if (!same() || fromCache(s)) return; B()[key] = s.docs.map(map); hc.full[k] = Date.now(); Store.save(); if (ROUTE.path === 'batch' && t === tab) paintBatch(); };
+    const apply = s => { if (!same() || fromCache(s)) return false; B()[key] = s.docs.map(map); hc.full[k] = Date.now(); Store.save(); if (ROUTE.path === 'batch' && t === tab) paintBatch(); };
     if (t === tab) Cloud.unsubs.push(f.onSnapshot(col(k), apply, err));
     else daily(k, async () => apply(await hubOnce(col(k)))).catch(err);
   }
@@ -235,7 +236,7 @@ function subscribeBatch() {
   try {
     (async () => {
       await daily('msg', async () => {
-        const s = await hubOnce(f.query(col('messages'), f.orderBy('at', 'desc'), f.limit(MSG_FULL))); if (!same() || fromCache(s)) return;
+        const s = await hubOnce(f.query(col('messages'), f.orderBy('at', 'desc'), f.limit(MSG_FULL))); if (!same() || fromCache(s)) return false;
         const got = s.docs.map(msgOf).sort(byAt), list = Chat.msgs;
         if (!got.length) { Chat.more = false; setMsgs([]); } // empty collection (e.g. admin cleared the chat)
         else {
@@ -247,7 +248,8 @@ function subscribeBatch() {
         chatChanged();
       });
       if (!live()) return;
-      const since = Chat.msgs.length ? Chat.msgs[Chat.msgs.length - 1].at : 0;
+      // With nothing cached (first open was offline), listen only to the last hour; the daily fetch (retried next open) brings the rest.
+      const since = Chat.msgs.length ? Chat.msgs[Chat.msgs.length - 1].at : Date.now() - 36e5;
       Cloud.unsubs.push(f.onSnapshot(f.query(col('messages'), f.where('at', '>=', tsVal(since)), f.orderBy('at')), s => {
         if (!live()) return;
         const got = s.docs.map(msgOf), ids = new Set(got.map(m => m.id));

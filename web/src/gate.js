@@ -463,7 +463,7 @@ async function adminData(force) {
   return adminCache;
 }
 /* Sections that need the per-user usage counts show this line until that update ships (no misleading zeros). */
-const NEEDS_USAGE = 'Needs the usage counts update (coming after Sriram\'s review)';
+const NEEDS_USAGE = 'Needs the usage counts update (coming in a later update)';
 const needsHTML = () => `<p class="muted small needs-usage">${esc(NEEDS_USAGE)}</p>`;
 function adminMetrics(d, extra) {
   const hasU = d.usage.length > 0, act7 = activeSince(d.usage, d.today, 7), act = activeCounts(d.usage, d.today);
@@ -530,14 +530,14 @@ function vAdminHealth() {
     const d = await adminData(), m = adminMetrics(d), el = $('#ahl'); if (!el) return;
     const e24 = d.errors.filter(e => d.now - admMs(e.createdAt || e.at) <= 864e5);
     const byMsg = Object.entries(countBy(m.errs7, e => String(e.msg || '').slice(0, 120))).sort((a, b) => b[1] - a[1]).slice(0, 8);
-    const b = m.bot, bAge = b && b.lastRun ? d.now - b.lastRun : null, bBad = !b || !b.lastRun || b.ok === false || bAge > BOT_STALE_MS;
+    const b = m.bot, bAge = b && b.lastRun ? d.now - b.lastRun : null, bNever = !b || !b.lastRun, bBad = !bNever && (b.ok === false || bAge > BOT_STALE_MS);
     const paint = () => { const h = $('#hlight'); if (h) h.outerHTML = lightHTML(m.light); };
     el.innerHTML = `${lightHTML(m.light)}
       <div class="card"><h3>Errors</h3>${statsHTML([[e24.length, 'last 24 h'], [m.errs7.length, 'last 7 days']].concat(m.hasU ? [[pfmt(m.crashFree), 'crash-free users (7 d)']] : []))}${m.hasU ? '' : '<h4>Crash-free users</h4>' + needsHTML()}
         <h4>Top messages (7 d)</h4>${byMsg.length ? `<table class="atable">${byMsg.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('')}</table>` : '<p class="muted small">No errors in the last 7 days.</p>'}
         <h4>By version (7 d)</h4>${hbarsHTML(countBy(m.errs7, e => e.version || '?'), 'No errors.')}<a class="link small" href="#/admin?t=errors">All error reports ›</a></div>
       <div class="card"><h3>Versions and sync</h3>${m.hasU ? `${statsHTML([[pfmt(m.latestPct), 'active users on latest'], [m.act.d7, 'active (7 d)'], [pfmt(m.syncPct), 'synced in 24 h']])}<small class="muted">Latest: <code>${esc(m.ver.latest || '?')}</code>. Sync health counts active users who use Drive sync.</small>${hbarsHTML(countBy(m.act7, u => u.v))}` : needsHTML()}</div>
-      <div class="card"><h3>Approval bot</h3><p class="small" id="botst" data-bad="${bBad ? 1 : 0}">${bBad ? '🔴' : '🟢'} ${b && b.lastRun ? 'Last run ' + esc(admAgo(b.lastRun)) + (b.ok === false ? ' · reported an error' : '') : 'never'}</p><small class="muted">Written by tools/admin-bot.gs every minute (system/bot). Red when older than 10 minutes.</small></div>
+      <div class="card"><h3>Approval bot</h3><p class="small" id="botst" data-bad="${bBad ? 1 : 0}" data-never="${bNever ? 1 : 0}">${bBad ? '🔴' : bNever ? '🟡' : '🟢'} ${b && b.lastRun ? 'Last run ' + esc(admAgo(b.lastRun)) + (b.ok === false ? ' · reported an error' : '') : 'never'}</p><small class="muted">Written by tools/admin-bot.gs every minute (system/bot). Yellow until its first run; red when older than 10 minutes or it reported an error.</small></div>
       <div class="card"><h3>GitHub Actions</h3><div id="ghruns"><p class="muted small">Checking…</p></div></div>`;
     try {
       const r = await fetch(GH_RUNS, { headers: { Accept: 'application/vnd.github+json' }, credentials: 'omit', referrerPolicy: 'no-referrer' });

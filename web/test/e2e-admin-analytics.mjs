@@ -69,7 +69,7 @@ await ev(`Cloud.user=null; __installFsMock('uAdm','sriramdeverashetty@gmail.com'
   localStorage.fsmock=JSON.stringify(o); adminCache=null; })()`);
 // Start with ZERO usage docs (only the monthly relay doc), as in this release.
 await ev(`(()=>{ const o=JSON.parse(localStorage.fsmock); window.__usageSeed={}; for (const k of Object.keys(o)) if (k.startsWith('usage/u')) { __usageSeed[k]=o[k]; delete o[k]; } localStorage.fsmock=JSON.stringify(o); adminCache=null; })()`);
-const NEEDS = 'Needs the usage counts update (coming after Sriram';
+const NEEDS = 'Needs the usage counts update (coming in a later update)';
 await ev(`location.hash='#/admin?t=analytics'`); await sleep(1500);
 const an0 = await ev(`$('#aan').textContent`);
 chk('no usage: analytics approvals counts', await ev(`(()=>{const s=$$('#aan .card')[1].querySelectorAll('.stat b');return s[0].textContent==='3'&&s[1].textContent==='1'&&s[2].textContent==='1'})()`));
@@ -121,7 +121,7 @@ chk('health: GitHub runs shown (stubbed)', hx.includes('Deploy to GitHub Pages')
 chk('health: traffic light red (crash-free < 90%)', await ev(`$('#hlight').dataset.light==='red' && $('#hlight').textContent.includes('🔴') && $('#hlight').textContent.includes('crash-free')`));
 await shot('admin-health');
 await ev(`(()=>{const o=JSON.parse(localStorage.fsmock); delete o['system/bot']; localStorage.fsmock=JSON.stringify(o); adminCache=null; window.__ghFail=1; render();})()`); await sleep(1500);
-chk('health: bot "never" when missing', await ev(`$('#botst').dataset.bad==='1' && $('#botst').textContent.includes('never')`));
+chk('health: bot "never" when missing', await ev(`$('#botst').dataset.bad==='0' && $('#botst').dataset.never==='1' && $('#botst').textContent.includes('🟡') && $('#botst').textContent.includes('never')`));
 chk('health: GitHub failure handled', (await ev(`$('#ghruns').textContent`)).includes('Could not reach GitHub'));
 await ev(`(()=>{const o=JSON.parse(localStorage.fsmock); o['system/bot']={lastRun:Date.now()-30*60e3,ok:true}; for(const k of ['errors/e1','errors/e2']) delete o[k]; localStorage.fsmock=JSON.stringify(o); adminCache=null; render();})()`); await sleep(1500);
 chk('health: stale bot (> 10 min) turns it red', await ev(`$('#botst').dataset.bad==='1' && $('#hlight').dataset.light==='red' && $('#hlight').textContent.includes('bot')`));

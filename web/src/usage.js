@@ -10,9 +10,9 @@
    the heartbeat waits on PR #25). Usage.clearLocal() still runs on sign-out / erase to remove keys left by test builds. */
 const USAGE_ENABLED = false;
 const USAGE_KEYS = ['day', 'v', 'plat', 'inst', 'dept', 'yr', 'n', 'feat', 'lsMB', 'drv', 'lastSync', 'syncFail', 'at'];
-const USAGE_FEAT_MAX = 30;          // matches firestore.rules feat.size() <= 30
+const USAGE_FEAT_MAX = 30;          // the usage/{uid} rule ships with the heartbeat PR (#25)
 const USAGE_N_KEYS = ['patients', 'visits', 'photos', 'logbook', 'scores', 'thesis'];
-/* Screen names that may be counted in feat — the first segment of every route in app.js ROUTES (also the firestore.rules list). */
+/* Screen names that may be counted in feat — the first segment of every route in app.js ROUTES (the heartbeat PR's rule uses the same list). */
 const USAGE_ROUTES = ['home', 'patients', 'patient', 'add', 'visit', 'score', 'map', 'wa', 'cam', 'vault', 'photo', 'deid', 'compare', 'inv', 'cal', 'logbook', 'logadd', 'targets', 'thesis', 'thesis-setup', 'analytics', 'formulary', 'checklists', 'more', 'settings', 'batch', 'admin', 'study', 'feed', 'community', 'notifs', 'dms', 'dm', 'story-new', 'people', 'flist', 'compose', 'post', 'u', 'study-run', 'study-set', 'journal'];
 /* BUILD from web/build.py: 'YYYY.MM.DD-HHMM' plus '-<git short sha>' when git is available. Same pattern as firestore.rules. */
 const USAGE_VER_RE = /^[0-9]{4}[.][0-9]{2}[.][0-9]{2}-[0-9]{4}(-[0-9a-f]{4,40})?$/;
